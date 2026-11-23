@@ -754,7 +754,7 @@ end
 
 -- BEGIN MODULE Pages
 __aether_factories["Pages"] = function()
-local U=__aether_require("Util");local S=__aether_require("Schema");local Symbol=__aether_require("Symbol");local Hud=__aether_require("Hud");local Avatar=__aether_require("Avatar");local Cues=__aether_require("Cues");local Http=game:GetService("HttpService")
+local U=__aether_require("Util");local S=__aether_require("Schema");local MotionPacks=__aether_require("MotionPacks");local Symbol=__aether_require("Symbol");local Hud=__aether_require("Hud");local Avatar=__aether_require("Avatar");local Cues=__aether_require("Cues");local Http=game:GetService("HttpService")
 local E={}
 local function names(t) local a=U.keys(t);return a end
 local function preset(ui,a,group)
@@ -826,6 +826,12 @@ function E.render(a,tab,ui)
    ui:chips({"Toy","Robot","Ninja","Bubbly","Stylish","Mage","Levitation","Oldschool","Vampire","Astronaut","Zombie","Cartoony"},
     function(style) a:patch({walkAnimation=true,walkStyle=style}) end,4,
     function() return a.s.walkStyle end)
+   ui:title("COMMUNITY-INSPIRED ANIMATIONS")
+   ui:note("26 original interpretations of creator-made Roblox UGC locomotion: float, swoop, slither, doll-like steps, cartoon bounce, skating and more. Use Walking intensity to adjust the effect.",54)
+   local ugc={}
+   for i=13,#MotionPacks.order do table.insert(ugc,MotionPacks.order[i]) end
+   ui:chips(ugc,function(style) a:patch({walkAnimation=true,walkStyle=style}) end,4,
+    function() return a.s.walkStyle end)
   end
   preset(ui,a,tab);ui:group(tab)
  elseif tab=="Ambient" then local sky=ui:row(106,"SkyPreview");local grad=U.gradient(sky,Color3.new(),Color3.new(),90);local sun=U.frame(sky,"Sun",nil,UDim2.fromOffset(30,30));U.corner(sun,30);ui:watch(function() local s=a.s;sky.BackgroundColor3=Color3.new(1,1,1);grad.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,U.hex(s.skyA)),ColorSequenceKeypoint.new(.64,U.hex(s.skyB)),ColorSequenceKeypoint.new(1,U.hex(s.skyC))});sun.BackgroundColor3=U.hex(s.skyC);sun.Position=UDim2.fromScale(.7,.66-.45*math.sin(s.time/240*math.pi));sun.BackgroundTransparency=.04+s.fog*.004 end);preset(ui,a,tab);ui:group(tab)
@@ -876,7 +882,8 @@ for _,row in {{"hp","Health",82,13},{"clock","Clock",3,93},{"profile","Player ca
  local k,t=row[1],row[2];toggle("HUD",k,t,true); range("HUD",k.."X",t.." · horizontal %",row[3],0,100);range("HUD",k.."Y",t.." · vertical %",row[4],0,100)
  range("HUD",k.."Scale",t.." · scale %",100,50,160);range("HUD",k.."Turn",t.." · rotation",0,-180,180);range("HUD",k.."Alpha",t.." · opacity %",100,10,100)
 end
-toggle("Character","walkAnimation","Custom walking animation",false);choice("Character","walkStyle","Walking style","Natural",{"Natural","Heroic","Floating","Bouncy","Glide","Ethereal","Toy","Robot","Ninja","Bubbly","Stylish","Mage","Levitation","Oldschool","Vampire","Astronaut","Zombie","Cartoony"});range("Character","walkIntensity","Walking intensity %",65,0,100);toggle("Character","aura","Aura particles",false);toggle("Character","trail","Motion trail",false);range("Character","auraRate","Emission / second",12,1,45);range("Character","trailLife","Trail lifetime (ms)",400,80,1300);color("Character","auraColor","Aura color","C4A3FF")
+toggle("Character","walkAnimation","Custom walking animation",false);choice("Character","walkStyle","Walking style","Natural",{"Natural","Heroic","Floating","Bouncy","Glide","Ethereal","Toy","Robot","Ninja","Bubbly","Stylish","Mage","Levitation","Oldschool","Vampire","Astronaut","Zombie","Cartoony",
+ "Angel Glide","Bat Swoop","Mermaid Drift","Serpent Slither","Cartwheel Flow","Rubberhose","Dream Sleep","Plushie","Cat Paws","Shy Kawaii","Gymnast","Skip Hop","Reindeer Prance","Fighter","Harpy Glide","Godly Aura","Wavy Expressive","Retro Zombie","Tsundere","Doll Walk","Skater","Little Duck","Floating Head","Dark Aura","Anime Hero","Headless Float"});range("Character","walkIntensity","Walking intensity %",65,0,100);toggle("Character","aura","Aura particles",false);toggle("Character","trail","Motion trail",false);range("Character","auraRate","Emission / second",12,1,45);range("Character","trailLife","Trail lifetime (ms)",400,80,1300);color("Character","auraColor","Aura color","C4A3FF")
 toggle("Wings","wings","Show wings",false);choice("Wings","wingStyle","Silhouette","Seraph",{"Seraph","Blade","Sylph","Phoenix","Frost","Butterfly","Raven","Celestial","Crystal","Dusk","Petal","Storm","Royal","Eclipse"});range("Wings","wingSpan","Span %",100,50,175);range("Wings","wingSweep","Sweep (degrees)",24,-25,65);range("Wings","wingBeat","Flap speed %",90,0,200);color("Wings","wingColor","Feather color","B49BFF");toggle("Wings","wingRainbow","Prismatic feathers",false);choice("Wings","wingDetail","Feather detail","High",{"Balanced","High","Ultra"});toggle("Wings","wingWalk","Walking wing reaction",true)
 toggle("Halos","halo","Show halo",false);choice("Halos","haloStyle","Orbit form","Ring",{"Ring","Binary","Crown","Double Ring","Spiral","Starfall","Solar","Lunar","Orbitals","Thorns","Prism","Eclipse","Comet","Lotus"});range("Halos","haloRadius","Radius %",88,45,175);range("Halos","haloHeight","Height above head %",105,55,220);range("Halos","haloSpin","Orbit speed %",75,0,200);color("Halos","haloColor","Halo color","FFB4D6");toggle("Halos","haloRainbow","Prismatic halo",false);choice("Halos","haloDetail","Halo geometry detail","High",{"Balanced","High","Ultra"});toggle("Halos","haloWalk","Walking halo reaction",true)
 toggle("Neon","neon","Character outline",true);range("Neon","neonFill","Body tint %",10,0,65);range("Neon","neonLight","Light intensity %",40,0,100);color("Neon","neonColor","Neon color","AB87FF");toggle("Neon","neonRainbow","Rainbow neon",false)
@@ -932,6 +939,10 @@ S.presets.Character.EtherealHover={walkAnimation=true,walkStyle="Ethereal",walkI
 for _,name in {"Toy","Robot","Ninja","Bubbly","Stylish","Mage","Levitation",
  "Oldschool","Vampire","Astronaut","Zombie","Cartoony"} do
  S.presets.Character[name.." Inspired"]={walkAnimation=true,walkStyle=name,walkIntensity=80}
+end
+-- UGC-inspired styles: original procedural interpretation, no paid clips copied.
+for _,name in {"Angel Glide","Bat Swoop","Mermaid Drift","Serpent Slither","Cartwheel Flow","Rubberhose","Dream Sleep","Plushie","Cat Paws","Shy Kawaii","Gymnast","Skip Hop","Reindeer Prance","Fighter","Harpy Glide","Godly Aura","Wavy Expressive","Retro Zombie","Tsundere","Doll Walk","Skater","Little Duck","Floating Head","Dark Aura","Anime Hero","Headless Float"} do
+ S.presets.Character[name]={walkAnimation=true,walkStyle=name,walkIntensity=75}
 end
 for _,v in S.defs.wingStyle.min do S.presets.Wings[v]={wings=true,wingStyle=v} end
 for _,v in S.defs.haloStyle.min do S.presets.Halos[v]={halo=true,haloStyle=v} end
