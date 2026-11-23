@@ -76,7 +76,6 @@ function A.mannequin(world)
  local m=U.new("Model",{Name="PreviewRig"},world);for _,v in {{"UpperTorso",0,1.8,0,2,1.6,1},{"Head",0,3.15,0,1.2,1.2,1.2},{"LeftArm",-1.4,1.8,0,.65,1.9,.7},{"RightArm",1.4,1.8,0,.65,1.9,.7},{"LeftLeg",-.5,.1,0,.85,1.8,.8},{"RightLeg",.5,.1,0,.85,1.8,.8}} do local p=part(m,v[1],Vector3.new(v[5],v[6],v[7]),if v[1]=="Head" then Enum.PartType.Ball else Enum.PartType.Block);p.Color=Color3.fromRGB(89,80,119);p.Material=Enum.Material.SmoothPlastic;p.Position=Vector3.new(v[2],v[3],v[4]) end;return m
 end
 return A
-
 end
 -- END MODULE Avatar
 
@@ -142,7 +141,6 @@ function UI:control(k)
 end
 function UI:group(g,skip) for _,k in S.order do if S.defs[k].group==g and not(skip and skip[k]) then self:control(k) end end end
 return UI
-
 end
 -- END MODULE Controls
 
@@ -212,7 +210,6 @@ function C.start(source,grants)
  return vm
 end
 return C
-
 end
 -- END MODULE Cues
 
@@ -285,7 +282,6 @@ function H:step(s,f,dt)
  for id,w in f.widgets do local n=self.extras[id];if not n then n=U.label(self.view,"",14,nil,UDim2.fromOffset(150,25));n.Name="Cue_"..id;n.ZIndex=4;self.extras[id]=n end;n.Text=w.text;n.FontFace=U.font(s);n.TextColor3=U.hex(s.fontA);n.TextStrokeTransparency=.4;local wave=if s.reduce then 0 else math.sin(t*3);n.Position=UDim2.new(w.x/100,0,w.y/100,if w.animation=="float" then wave*5 else 0);n.TextTransparency=if w.animation=="pulse" then .17+wave*.16 else 0 end
 end
 return H
-
 end
 -- END MODULE Hud
 
@@ -368,7 +364,6 @@ function E.render(a,tab,ui)
  elseif tab=="Diagnostics" then local info=ui:note("",54);local log=ui:box("Session events","",165);log.TextEditable=false;local function refresh() info.Text=string.format("%s  ·  HP %s / %s  ·  %d tracked\n%s",a.mode,tostring(a.frame.hp),tostring(a.frame.max),#a.frame.targets,a.store.status);log.Text=table.concat(a.logs,"\n") end;ui:chips({"Refresh","Clear log","Reset settings"},function(n) if n=="Clear log" then table.clear(a.logs) elseif n=="Reset settings" then a:replace(S.defaults()) end;refresh() end,3);refresh() end
 end
 return E
-
 end
 -- END MODULE Pages
 
@@ -455,7 +450,6 @@ S.presets={Theme={Violet={accent="A68AFF",secondary="FF89C7",glassColor="211C35"
 for _,v in S.shapes do S.presets.Indicators[v]={shape=v,indicators=true} end
 for _,v in S.skies do S.presets.Ambient[v[1]]=S.sky(v) end
 return S
-
 end
 -- END MODULE Schema
 
@@ -493,7 +487,6 @@ function Store:tick(now)
  if self.dirty and self.ready and not self.pending and now-self.lastEdit>2 and now-self.lastWrite>12 then self:save() end
 end
 return Store
-
 end
 -- END MODULE Storage
 
@@ -551,7 +544,6 @@ function M.new(parent,name,round)
  self:shape(name,round or 30);self:paint(Color3.fromRGB(185,150,255),Color3.fromRGB(255,165,220),50,8);return self
 end
 return M
-
 end
 -- END MODULE Symbol
 
@@ -581,7 +573,6 @@ function U.ease(t,name) t=math.clamp(t,0,1);if name=="Linear" then return t else
 function U.keys(t) local a={};for k in t do table.insert(a,k) end;table.sort(a);return a end
 function U.count(t) local n=0;for _ in t do n+=1 end;return n end
 return U
-
 end
 -- END MODULE Util
 
@@ -626,7 +617,6 @@ function V:step(s,hum,menu,dt,t)
  end;self.settings=s
 end
 return V
-
 end
 -- END MODULE View
 
@@ -655,7 +645,6 @@ function W:apply(s)
  set(L,{Ambient=U.hex(s.skyA),OutdoorAmbient=U.hex(s.skyB),Brightness=s.light/40,ClockTime=s.time/10});set(self.atmo,{Color=U.hex(s.skyC),Decay=U.hex(s.skyB),Density=s.fog/150,Haze=s.fog/30});set(self.bloom,{Intensity=s.bloom/50,Size=26,Threshold=1.2});set(self.grade,{Saturation=s.saturation/100,TintColor=Color3.new(1,1,1):Lerp(U.hex(s.skyC),.13)});set(self.blur,{Size=s.blur})
 end
 return W
-
 end
 -- END MODULE World
 
@@ -941,5 +930,4 @@ scope:add(function()
     world:clear()
     view:destroy()
 end)
-
 -- END CLIENT
