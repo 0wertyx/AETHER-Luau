@@ -213,7 +213,12 @@ function M.new(parent)
     local ok,err=pcall(render,self.editable,mask,s,t)
     if not ok then
      warn("AETHER SVG rasterizer:",err)
-     self.display.Visible=false
+     if self.display then self.display:Destroy();self.display=nil end
+     if self.previewObject then self.previewObject:Destroy();self.previewObject=nil end
+     if self.editable then self.editable:Destroy();self.editable=nil end
+     self.mode="fallback"
+     self.oldFallback.root.Visible=true
+     if self.previewFallback then self.previewFallback.root.Visible=true end
     end
    end
   end
