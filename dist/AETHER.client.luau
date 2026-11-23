@@ -1262,7 +1262,26 @@ __aether_factories["View"] = function()
 local Input=game:GetService("UserInputService");local Gui=game:GetService("GuiService");local U=__aether_require("Util");local VectorCursor=__aether_require("VectorCursor")
 local V={};V.__index=V
 function V.new(player,layer)
- local self=setmetatable({player=player,angle=0,clock=0},V);self.pointer=U.frame(layer,"Pointer",nil,UDim2.fromOffset(32,32),nil,1);self.pointer.Visible=false;self.pointer.Active=false;self.glyph=VectorCursor.new(self.pointer);self.image=U.new("ImageLabel",{Name="Asset",BackgroundTransparency=1,Active=false,Size=UDim2.fromScale(1,1),ScaleType=Enum.ScaleType.Fit,ZIndex=10},self.pointer);return self
+ local self=setmetatable({player=player,angle=0,clock=0,trails={},trailPoints={}},V)
+ -- This anchor marks the exact click pixel. Animated skin always rotates AROUND it.
+ self.pointer=U.frame(layer,"MouseHotspot",nil,UDim2.fromOffset(1,1),nil,1)
+ self.pointer.Active=false;self.pointer.Visible=false;self.pointer.ZIndex=10
+ self.skin=U.frame(self.pointer,"CursorSkin",nil,UDim2.fromOffset(32,32),nil,1)
+ self.skin.Active=false;self.skin.ZIndex=10
+ self.glyph=VectorCursor.new(self.skin)
+ self.image=U.new("ImageLabel",{
+  Name="Asset",BackgroundTransparency=1,Active=false,Selectable=false,
+  Size=UDim2.fromScale(1,1),ScaleType=Enum.ScaleType.Fit,ZIndex=12
+ },self.skin)
+ for i=1,6 do
+  local dot=U.frame(layer,"CursorTail"..i,nil,UDim2.fromOffset(4,4),Color3.fromRGB(185,145,255),.5)
+  dot.AnchorPoint=Vector2.new(.5,.5);dot.Active=false;dot.Visible=false;dot.ZIndex=9
+  U.corner(dot,99);self.trails[i]=dot
+ end
+ self.hotspotDebug=U.frame(self.pointer,"HotspotDebug",UDim2.fromOffset(-3,-3),UDim2.fromOffset(7,7),Color3.fromRGB(255,80,85),0)
+ self.hotspotDebug.ZIndex=20;self.hotspotDebug.Active=false;self.hotspotDebug.Visible=false
+ U.corner(self.hotspotDebug,99)
+ return self
 end
 function V:releaseLock()
  if self.mouse then Input.MouseBehavior=self.mouse;self.mouse=nil end;if self.lockHum then if self.lockHum.Parent then self.lockHum.AutoRotate=self.auto end;self.lockHum=nil end
@@ -1291,6 +1310,7 @@ function V:destroy()
  if self.icon~=nil then Input.MouseIconEnabled=self.icon;self.icon=nil end
  if self.previewImage then self.previewImage:Destroy();self.previewImage=nil end
  self.glyph:destroy()
+ for _,tail in self.trails do tail:Destroy() end
  self.pointer:Destroy()
 end
 -- Keep the real click hotspot and the visual pointer aligned.
@@ -1307,23 +1327,74 @@ function V:cursorStep(s)
   Input.MouseIconEnabled=self.icon;self.icon=nil
  end
  self.pointer.Visible=show
- if not show then return end
+ self.hotspotDebug.Visible=show and s.cursorDebug==true
+ for _,tail in self.trails do tail.Visible=show and s.cursorTrail==true and not s.reduce end
+ if not show then
+  table.clear(self.trailPoints)
+  return
+ end
+
+ -- Viewport/screen coordinates use ScreenInsets=None. Avoid GuiInset subtraction.
+ -- Cursor offset is for manual calibration in experiences with an unusual cursor.
+ local mouse=Input:GetMouseLocation()
+ local origin=self.pointer.Parent.AbsolutePosition
+ local hit=Vector2.new(
+  mouse.X-origin.X+(s.cursorOffsetX or 0),
+  mouse.Y-origin.Y+(s.cursorOffsetY or 0))
+ self.pointer.Position=UDim2.fromOffset(hit.X,hit.Y)
+
+ -- Values in SVG viewBox (32x32), giving exact tip for built-in cursor silhouettes.
  local hx,hy=s.hotX/100,s.hotY/100
  if s.hotX==19 and s.hotY==8 then
-  local tip={["Rounded Triangle"]={.188,.094},["Soft Arrow"]={.188,.125},
+  local tip={["Rounded Triangle"]={.1875,.09375},["Soft Arrow"]={.1875,.125},
    Diamond={.5,.0625},Orbit={.5,.0625},Spark={.5,.0625},Chevron={.125,.25}}
   local p=tip[s.cursorShape]
   if p then hx,hy=p[1],p[2] end
  end
- self.pointer.AnchorPoint=Vector2.new(hx,hy)
- self.pointer.Size=UDim2.fromOffset(s.cursorSize,s.cursorSize)
+
+ local anim=if s.reduce then "Off" else (s.cursorAnimation or "Off")
+ local t=os.clock()*(s.cursorMotionSpeed or 100)/100
+ local angle=0;local zoom=1
+ if anim=="Sway" then
+  angle=math.sin(t*2.8)*7
+  zoom=1+math.sin(t*3.1)*.035
+ elseif anim=="Breathe" then
+  zoom=1+math.sin(t*3.3)*.06
+ elseif anim=="Spin" then
+  angle=(t*85)%360
+ elseif anim=="Pulse" then
+  zoom=1+math.abs(math.sin(t*5))*.11
+ end
+ local size=s.cursorSize*zoom
+ self.skin.Size=UDim2.fromOffset(size,size)
+ self.skin.Rotation=angle
+ -- The Roblox Frame rotates about its CENTER, not AnchorPoint. Counter-rotate
+ -- the center offset so the image's click hotspot remains fixed on the real pixel.
+ local dx=(hx-.5)*size
+ local dy=(hy-.5)*size
+ local rad=math.rad(angle)
+ local cx=dx*math.cos(rad)-dy*math.sin(rad)
+ local cy=dx*math.sin(rad)+dy*math.cos(rad)
+ self.skin.Position=UDim2.fromOffset(-cx-size*.5,-cy-size*.5)
  self.image.Visible=image
  if image then self.image.Image="rbxassetid://"..s.image end
- local pos=Input:GetMouseLocation()
- -- ScreenGui uses IgnoreGuiInset=true / ScreenInsets.None.
- -- GetMouseLocation() is already in that full-screen coordinate system.
- local origin=self.pointer.Parent.AbsolutePosition
- self.pointer.Position=UDim2.fromOffset(pos.X-origin.X,pos.Y-origin.Y)
+ if s.cursorTrail and not s.reduce then
+  local tint=U.hex(s.cursorA or "B78AFF")
+  local previous=hit
+  for i,tail in self.trails do
+   local sampled=self.trailPoints[i] or hit
+   local factor=if i==1 then .42 else .27
+   sampled=sampled:Lerp(previous,factor)
+   self.trailPoints[i]=sampled
+   previous=sampled
+   tail.Size=UDim2.fromOffset(math.max(1,5-i*.6),math.max(1,5-i*.6))
+   tail.Position=UDim2.fromOffset(sampled.X,sampled.Y)
+   tail.BackgroundColor3=tint
+   tail.BackgroundTransparency=.24+i*.095
+  end
+ else
+  table.clear(self.trailPoints)
+ end
 end
 function V:step(s,hum,menu,dt,t)
  local camera=workspace.CurrentCamera;local hrp=hum and hum.Parent and hum.Parent:FindFirstChild("HumanoidRootPart");local enabled=s.camera and hrp and hum.Health>0 and camera
