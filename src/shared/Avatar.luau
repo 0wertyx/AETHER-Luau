@@ -13,10 +13,10 @@ function A:bind(char,body,head,s)
  local key=table.concat({tostring(s.wings),s.wingStyle,tostring(s.halo),s.haloStyle,tostring(s.neon),tostring(s.aura),tostring(s.trail)},"/")
  if not (body and head and char) or not(s.wings or s.halo or s.neon or s.aura or s.trail) then if self.root then self:clear() end;return end
  if self.key==key and self.char==char then return end;self:clear();self.key=key;self.char=char;self.scope=U.scope();self.root=self.scope:add(U.new("Folder",{Name="AetherAvatarFX"},self.parent));self.paintAt=-1
- if s.wings then for _,side in {-1,1} do for i=1,if s.wingStyle=="Sylph" then 6 else 9 do
-  local p=part(self.root,"Wing",Vector3.one,if s.wingStyle=="Blade" then Enum.PartType.Block else Enum.PartType.Ball);table.insert(self.feathers,{p=p,side=side,i=i});table.insert(self.parts,p)
+ if s.wings then for _,side in {-1,1} do for i=1,if s.wingStyle=="Sylph" or s.wingStyle=="Butterfly" or s.wingStyle=="Petal" then 6 else 9 do
+  local p=part(self.root,"Wing",Vector3.one,if s.wingStyle=="Blade" or s.wingStyle=="Crystal" or s.wingStyle=="Storm" then Enum.PartType.Block else Enum.PartType.Ball);table.insert(self.feathers,{p=p,side=side,i=i});table.insert(self.parts,p)
  end end end
- if s.halo then local count=if s.haloStyle=="Binary" then 36 else 24;for i=1,count do local p=part(self.root,"Halo",Vector3.one,if s.haloStyle=="Crown" and i%3==0 then Enum.PartType.Ball else Enum.PartType.Block);table.insert(self.beads,p);table.insert(self.parts,p) end end
+ if s.halo then local count=if s.haloStyle=="Binary" or s.haloStyle=="Double Ring" or s.haloStyle=="Orbitals" or s.haloStyle=="Eclipse" then 48 else 24;for i=1,count do local p=part(self.root,"Halo",Vector3.one,if s.haloStyle=="Crown" and i%3==0 then Enum.PartType.Ball else Enum.PartType.Block);table.insert(self.beads,p);table.insert(self.parts,p) end end
  if s.neon then self.highlight=U.new("Highlight",{Name="Neon",Adornee=char,DepthMode=Enum.HighlightDepthMode.Occluded},self.root) end
  if not self.preview and (s.neon or s.aura or s.trail) then
   -- Attachments belong to this renderer. No changes to rig geometry, motors or character materials.
@@ -31,13 +31,13 @@ function A:step(char,s,t)
  self:bind(char,body,head,s);if not self.root then return end
  local time=if s.reduce then 0 else t;local scale=s.wingSpan/100*math.clamp(body.Size.X/2,.65,1.5);local flap=math.sin(time*s.wingBeat*.032)*.26;local idx=0
  for _,f in self.feathers do
-  local i=f.i;local v=(i-1)/8;local side=f.side;local wing=s.wingStyle;local y=if wing=="Sylph" then math.sin(v*5)*.95 else .15+v*(if wing=="Blade" then .8 else .58)
-  local len=(if wing=="Blade" then 1.8-v*.7 elseif wing=="Sylph" then 1.4-v*.45 else 1.8-v*.9)*scale
-  local size=Vector3.new((if wing=="Sylph" then .48 else .25)*scale,len,.15*scale);if f.p.Size~=size then f.p.Size=size end
-  idx+=1;self.frames[idx]=body.CFrame*CFrame.new(0,0,body.Size.Z*.54)*CFrame.Angles(0,side*(flap-math.rad(s.wingSweep)),0)*CFrame.new(side*(.65+2.5*v)*scale,y*scale,.25+v*.18)*CFrame.Angles(.15,0,-side*(.48+v*.7))
+  local i=f.i;local v=(i-1)/8;local side=f.side;local wing=s.wingStyle;local y=if wing=="Sylph" or wing=="Butterfly" then math.sin(v*5)*.95 elseif wing=="Phoenix" or wing=="Storm" then .2+v*1.35 elseif wing=="Raven" or wing=="Dusk" then -.2-v*.7 elseif wing=="Petal" then math.sin(v*8)*.5 else .15+v*(if wing=="Blade" then .8 else .58)
+  local len=(if wing=="Blade" or wing=="Crystal" then 1.8-v*.7 elseif wing=="Sylph" or wing=="Butterfly" then 1.4-v*.45 elseif wing=="Phoenix" or wing=="Storm" then 2.4-v*1.2 elseif wing=="Raven" or wing=="Dusk" then 1.6+v*.7 elseif wing=="Royal" or wing=="Celestial" then 2.1-v*.75 elseif wing=="Petal" then 1.1-v*.35 else 1.8-v*.9)*scale
+  local size=Vector3.new((if wing=="Sylph" or wing=="Butterfly" or wing=="Petal" then .48 elseif wing=="Royal" then .35 else .25)*scale,len,.15*scale);if f.p.Size~=size then f.p.Size=size end
+  idx+=1;self.frames[idx]=body.CFrame*CFrame.new(0,0,body.Size.Z*.54)*CFrame.Angles(0,side*(flap-math.rad(s.wingSweep)),0)*CFrame.new(side*(.65+2.5*v)*scale,y*scale,.25+v*.18)*CFrame.Angles(if wing=="Eclipse" then -.3 else .15,0,-side*(if wing=="Raven" or wing=="Dusk" then -.4-v*.4 else .48+v*.7))
  end
- for i,p in self.beads do local ring=(s.haloStyle=="Binary" and i>24);local n=if ring then 12 else 24;local r=s.haloRadius/100*(if ring then .73 else 1);local a=(i-1)/n*math.pi*2+time*s.haloSpin*.013*(if ring then -1 else 1);local crown=s.haloStyle=="Crown" and i%3==0
-  local size=Vector3.new(2*math.sin(math.pi/n)*r*1.04,if crown then .38 else .075,if crown then .13 else .09);if p.Size~=size then p.Size=size end;idx+=1;self.frames[idx]=head.CFrame*CFrame.new(0,s.haloHeight/100+(if ring then .2 else 0)+.05*math.sin(time*2),0)*CFrame.Angles(if ring then .27 else 0,a,0)*CFrame.new(0,if crown then .1 else 0,r)
+ for i,p in self.beads do local style=s.haloStyle;local ring=i>24;local n=if ring then 24 else 24;local r=s.haloRadius/100*(if ring then (if style=="Orbitals" then 1.28 else .73) else 1);local a=(i-1)/n*math.pi*2+time*s.haloSpin*.013*(if ring then -1 else 1);local crown=(style=="Crown" or style=="Thorns" or style=="Starfall" or style=="Lotus") and i%3==0
+  local size=Vector3.new(2*math.sin(math.pi/n)*r*1.04,if crown then (if style=="Thorns" then .52 else .38) else .075,if crown then .13 else .09);if p.Size~=size then p.Size=size end;idx+=1;self.frames[idx]=head.CFrame*CFrame.new(0,s.haloHeight/100+(if style=="Spiral" then (i/24)*.65 elseif style=="Comet" then math.sin(a*2)*.22 elseif ring then .2 else 0)+.05*math.sin(time*2),0)*CFrame.Angles(if ring then .27 elseif style=="Lunar" then .48 elseif style=="Solar" then -.25 else 0,a,0)*CFrame.new(0,if crown then .1 else 0,r)
  end
  if idx>0 then for i,p in self.parts do p.CFrame=self.frames[i] end end
  if t-self.paintAt>=.07 or self.settings~=s then
