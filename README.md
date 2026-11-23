@@ -93,3 +93,25 @@ GitHub Actions пересобирает `dist` при изменениях мо�
 `Profiles.server.luau` отсутствует, поэтому постоянное сохранение профилей
 без серверной части недоступно. Runtime-проверка внутри Roblox Studio
 пока не проводилась.
+
+## Оригинальные курсоры AETHER Desktop
+
+Шесть исходных SVG-контуров из `AETHER_Build/Web/dist/cursors.js` сохранены в
+`assets/cursors/` вместе с пятью цветовыми палитрами. В Roblox их обрабатывает
+`src/shared/VectorCursor.luau`: кривые Безье и fill-rule evenodd растрируются
+со сглаживанием в 128×128, затем `EditableImage` отображается через `ImageLabel.ImageContent`.
+Один и тот же `EditableImage` используется для курсора и предпросмотра в Cursor Studio.
+
+**Ограничения Roblox:** в опубликованных плейсах нужно включить Mesh / Image APIs
+в настройках опыта; сам пользователь не может включить их для чужого плейса.
+Когда `EditableImage` недоступен, применяется старый GUI-рендерер `Symbol`:
+он работает без разрешений, но края могут быть ступенчатыми. Сами SVG-файлы
+из GitHub не становятся Roblox-изображениями автоматически — для обычного
+`ImageLabel.Image` требуется импорт PNG в Roblox и разрешённый asset ID.
+
+Слой `AETHER_Pointer` использует `IgnoreGuiInset=true`. Поэтому позиция
+из `UserInputService:GetMouseLocation()` применяется без повторного вычитания
+`GuiService:GetGuiInset()`. Точка привязки (hotspot) настраивается в Cursor.
+
+Проверка графики, курсорных координат и ограничений API непосредственно в Roblox
+Studio / опубликованном плейсе ещё нужна: автосборка не заменяет runtime-тест.
