@@ -702,7 +702,7 @@ function V:step(s,hum,menu,dt,t)
  end
  local image=s.cursorShape=="Image";local show=s.cursor and Input.MouseEnabled and not Gui.MenuIsOpen and (not image or s.image~="") and Input:GetLastInputType()~=Enum.UserInputType.Touch
  if show then if self.icon==nil then self.icon=Input.MouseIconEnabled end;Input.MouseIconEnabled=false elseif self.icon~=nil then Input.MouseIconEnabled=self.icon;self.icon=nil end
- self.pointer.Visible=show;if show then local pos=Input:GetMouseLocation();local layer=self.pointer.Parent;self.pointer.Position=UDim2.fromOffset(pos.X-layer.AbsolutePosition.X,pos.Y-layer.AbsolutePosition.Y);self.pointer.AnchorPoint=Vector2.new(s.hotX/100,s.hotY/100);self.pointer.Size=UDim2.fromOffset(s.cursorSize,s.cursorSize);self.glyph.root.Visible=not image;self.image.Visible=image
+ self.pointer.Visible=show;if show then local pos=Input:GetMouseLocation();local layer=self.pointer.Parent;local inset=Gui:GetGuiInset();local origin=layer.AbsolutePosition;self.pointer.Position=UDim2.fromOffset(pos.X-origin.X,pos.Y-origin.Y);self.pointer.AnchorPoint=Vector2.new(s.hotX/100,s.hotY/100);self.pointer.Size=UDim2.fromOffset(s.cursorSize,s.cursorSize);self.glyph.root.Visible=not image;self.image.Visible=image
   if image then self.image.Image="rbxassetid://"..s.image else self.glyph:shape(s.cursorShape,60);if t>=self.clock or self.settings~=s then self.clock=t+.06;local h=if s.reduce then 0 else t*s.cursorSpeed*.001;self.glyph:paint(if s.cursorRainbow then Color3.fromHSV(h%1,.6,1) else U.hex(s.cursorA),if s.cursorRainbow then Color3.fromHSV((h+.25)%1,.58,1) else U.hex(s.cursorB),s.cursorGlow,8) end end
  end;self.settings=s
 end
