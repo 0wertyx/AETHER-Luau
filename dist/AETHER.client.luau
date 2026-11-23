@@ -792,7 +792,16 @@ end
 function E.render(a,tab,ui)
  if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. RightShift opens Studio; LeftAlt toggles shoulder lock.",43);ui:chips({"Game","Simulator"},function(n) a:modeSet(n) end,2,function() return a.mode end);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme");ui:note("For 32 ORIGINAL desktop icons, upload AETHER_original_icons_atlas.png as a Roblox image and enter its asset ID above. The atlas includes all 32 icons at 224px per tile.",53);ui:title("MOTION");ui:group("Motion")
  elseif tab=="HUD" then preview(ui,a);preset(ui,a,"HUD");ui:control("locked");ui:control("compact");ui:note("Unlock layout and drag a widget in the preview, or edit its coordinates below.",29);ui:chips({"hp","clock","profile","dock","cross"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab;for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end
- elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then avatarPreview(ui,a);preset(ui,a,tab);ui:group(tab)
+ elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
+  avatarPreview(ui,a)
+  if tab=="Character" then
+   ui:title("ANIMATION PACK-INSPIRED MOTION")
+   ui:note("Original AETHER styles based on the feel of Roblox avatar packs, not copied animation assets. Procedural R6/R15 poses for idle, walk, run, jump/fall, swim and climb. Visual-only motion.",55)
+   ui:chips({"Toy","Robot","Ninja","Bubbly","Stylish","Mage","Levitation","Oldschool","Vampire","Astronaut","Zombie","Cartoony"},
+    function(style) a:patch({walkAnimation=true,walkStyle=style}) end,4,
+    function() return a.s.walkStyle end)
+  end
+  preset(ui,a,tab);ui:group(tab)
  elseif tab=="Ambient" then local sky=ui:row(106,"SkyPreview");local grad=U.gradient(sky,Color3.new(),Color3.new(),90);local sun=U.frame(sky,"Sun",nil,UDim2.fromOffset(30,30));U.corner(sun,30);ui:watch(function() local s=a.s;sky.BackgroundColor3=Color3.new(1,1,1);grad.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,U.hex(s.skyA)),ColorSequenceKeypoint.new(.64,U.hex(s.skyB)),ColorSequenceKeypoint.new(1,U.hex(s.skyC))});sun.BackgroundColor3=U.hex(s.skyC);sun.Position=UDim2.fromScale(.7,.66-.45*math.sin(s.time/240*math.pi));sun.BackgroundTransparency=.04+s.fog*.004 end);preset(ui,a,tab);ui:group(tab)
  elseif tab=="Indicators" then preview(ui,a);gallery(ui,a);ui:group(tab,{shape=true});ui:title("PER-PLAYER OVERRIDE");local id=ui:box("UserId or simulator ID","1");local label=ui:box("Label override","");local color=ui:box("Override hex",a.s.arrowA);ui:chips({"Assign current shape","Remove override"},function(k) local p=S.copy(a.s.players);if k=="Assign current shape" then p[id.Text]={label=label.Text,color=color.Text,shape=a.s.shape} else p[id.Text]=nil end;a:set("players",p);ui:message("Overrides updated") end,2)
  elseif tab=="Cursor" then local f=ui:row(94,"CursorPreview");local host=U.frame(f,"OriginalCursorPreview",UDim2.fromScale(.5,.5),UDim2.fromOffset(60,60),nil,1);host.AnchorPoint=Vector2.new(.5,.5);a.preview={cursorHost=host};preset(ui,a,tab);ui:group(tab);ui:note("Cursor animation never moves its click hotspot. Enable Show hotspot marker to compare the real mouse position with the skin; use Pointer offset X/Y only for calibration. EditableImage renders desktop SVG; imports need an authorized asset ID.",57)
