@@ -1,7 +1,7 @@
 local Input=game:GetService("UserInputService");local Gui=game:GetService("GuiService");local U=require(script.Parent.Util);local Symbol=require(script.Parent.Symbol)
 local V={};V.__index=V
 function V.new(player,layer)
- local self=setmetatable({player=player,angle=0,clock=0},V);self.pointer=U.frame(layer,"Pointer",nil,UDim2.fromOffset(32,32),nil,1);self.pointer.Visible=false;self.glyph=Symbol.new(self.pointer,"Rounded Triangle",65);self.image=U.new("ImageLabel",{Name="Asset",BackgroundTransparency=1,Size=UDim2.fromScale(1,1),ScaleType=Enum.ScaleType.Fit},self.pointer);return self
+ local self=setmetatable({player=player,angle=0,clock=0},V);self.pointer=U.frame(layer,"Pointer",nil,UDim2.fromOffset(32,32),nil,1);self.pointer.Visible=false;self.pointer.Active=false;self.glyph=Symbol.new(self.pointer,"Rounded Triangle",65);self.image=U.new("ImageLabel",{Name="Asset",BackgroundTransparency=1,Active=false,Size=UDim2.fromScale(1,1),ScaleType=Enum.ScaleType.Fit,ZIndex=10},self.pointer);return self
 end
 function V:releaseLock()
  if self.mouse then Input.MouseBehavior=self.mouse;self.mouse=nil end;if self.lockHum then if self.lockHum.Parent then self.lockHum.AutoRotate=self.auto end;self.lockHum=nil end
