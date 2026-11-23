@@ -123,35 +123,31 @@ local function colors(s)
  end
  return rgb
 end
-local function render(img,mask,settings,t)
+-- Bake only the alpha coverage; colors and movement are handled by UIGradient on GPU.
+-- This avoids 16,384 pixel writes every animation tick, which stalled pointer positioning.
+local function render(img,mask,glowPercent)
  local data=buffer.create(RES*RES*4)
- local grad=colors(settings)
- local phase=if settings.reduce then 0 else t*math.pi*2/math.max(1,15-(settings.cursorSpeed or 65)*.07)
- local ux=math.cos(phase+math.pi/4);local uy=math.sin(phase+math.pi/4)
- local glow=math.clamp((settings.cursorGlow or 0)/100,0,1)
- for y=0,RES-1 do
-  local dy=(y+.5)/RES-.5
-  for x=0,RES-1 do
-   local i=y*RES+x+1
-   local fill=mask.coverage[i];local haze=mask.bloom[i]
-   local a=math.clamp(fill+(1-fill)*haze*glow*.5,0,1)
-   local p=i*4-4
-   if a==0 then
-    buffer.writeu32(data,p,0)
-   else
-    local dx=(x+.5)/RES-.5
-    local u=math.clamp(.5+(dx*ux+dy*uy)*.71,0,1)*(#grad-1)
-    local left=math.min(#grad-1,math.floor(u)+1)
-    local mix=math.clamp(u-(left-1),0,1)
-    local c0=grad[left];local c1=grad[left+1]
-    for k=0,2 do
-     buffer.writeu8(data,p+k,math.clamp(math.round((c0[k+1]*(1-mix)+c1[k+1]*mix)*255),0,255))
-    end
-    buffer.writeu8(data,p+3,math.round(a*255))
-   end
+ local glow=math.clamp((glowPercent or 0)/100,0,1)
+ for i=1,RES*RES do
+  local fill=mask.coverage[i]
+  local haze=mask.bloom[i]
+  local alpha=math.clamp(fill+(1-fill)*haze*glow*.5,0,1)
+  if alpha>0 then
+   local offset=(i-1)*4
+   buffer.writeu32(data,offset,0x00FFFFFF)
+   buffer.writeu8(data,offset+3,math.round(alpha*255))
   end
  end
  img:WritePixelsBuffer(Vector2.zero,Vector2.new(RES,RES),data)
+end
+local function gradientSequence(s)
+ local rgb=colors(s)
+ local stops={}
+ local last=math.max(#rgb-1,1)
+ for i,c in rgb do
+  table.insert(stops,ColorSequenceKeypoint.new((i-1)/last,Color3.new(c[1],c[2],c[3])))
+ end
+ return ColorSequence.new(stops)
 end
 local function nativeImage(parent,source)
  return U.new("ImageLabel",{
@@ -161,7 +157,7 @@ local function nativeImage(parent,source)
  },parent)
 end
 function M.new(parent)
- local self={parent=parent,editable=nil,display=nil,oldFallback=nil,previewParent=nil,previewObject=nil,previewFallback=nil,lastKey="",lastTime=-1,mode="fallback"}
+ local self={parent=parent,editable=nil,display=nil,oldFallback=nil,previewParent=nil,previewObject=nil,previewFallback=nil,gradient=nil,previewGradient=nil,lastKey="",lastPaletteKey="",mode="fallback"}
  if apiAvailable~=false then
   local ok,img=pcall(function()
    local edit=AssetService:CreateEditableImage({Size=Vector2.new(RES,RES)})
@@ -170,7 +166,7 @@ function M.new(parent)
   end)
   if ok and img then
    local fine,display=pcall(nativeImage,parent,img)
-   if fine then self.editable=img;self.display=display;self.mode="vector";apiAvailable=true
+   if fine then self.editable=img;self.display=display;self.gradient=U.new("UIGradient",{},display);self.mode="vector";apiAvailable=true
    else img:Destroy();apiAvailable=false end
   else apiAvailable=false end
  end
@@ -179,13 +175,13 @@ function M.new(parent)
  self.oldFallback.root.Visible=not self.display
  function self:preview(host)
   if self.previewParent==host and (not host or (self.previewObject and self.previewObject.Parent==host) or (self.previewFallback and self.previewFallback.root.Parent==host)) then return end
-  if self.previewObject then self.previewObject:Destroy();self.previewObject=nil end
+  if self.previewObject then self.previewObject:Destroy();self.previewObject=nil;self.previewGradient=nil end
   if self.previewFallback then self.previewFallback.root:Destroy();self.previewFallback=nil end
   self.previewParent=host
   if not host then return end
   if self.editable then
    local ok,image=pcall(nativeImage,host,self.editable)
-   if ok then self.previewObject=image else warn("AETHER preview EditableImage:",image) end
+   if ok then self.previewObject=image;self.previewGradient=U.new("UIGradient",{Color=self.gradient.Color,Rotation=self.gradient.Rotation},image) else warn("AETHER preview EditableImage:",image) end
   end
   self.previewFallback=Symbol.new(host,"Rounded Triangle",60)
   self.previewFallback.root.Size=UDim2.fromScale(1,1)
@@ -205,21 +201,35 @@ function M.new(parent)
   if self.previewObject then self.previewObject.Visible=original end
   if self.previewFallback then self.previewFallback.root.Visible=not (self.previewObject and original) end
   local shape=s.cursorShape
-  local key=table.concat({shape,s.cursorPalette or "",s.cursorA or "",s.cursorB or "",s.cursorGlow or 0,s.reduce and 1 or 0},":")
   if self.editable and original then
-   if key~=self.lastKey or (not s.reduce and t-self.lastTime>=.12) then
-    self.lastKey=key;self.lastTime=t
-    local mask=prepare(shape)
-    local ok,err=pcall(render,self.editable,mask,s,t)
+   local maskKey=shape..":"..tostring(s.cursorGlow or 0)
+   if maskKey~=self.lastKey then
+    self.lastKey=maskKey
+    local ok,err=pcall(function()
+     render(self.editable,prepare(shape),s.cursorGlow)
+    end)
     if not ok then
      warn("AETHER SVG rasterizer:",err)
-     if self.display then self.display:Destroy();self.display=nil end
-     if self.previewObject then self.previewObject:Destroy();self.previewObject=nil end
+     if self.display then self.display:Destroy();self.display=nil;self.gradient=nil end
+     if self.previewObject then self.previewObject:Destroy();self.previewObject=nil;self.previewGradient=nil end
      if self.editable then self.editable:Destroy();self.editable=nil end
      self.mode="fallback"
      self.oldFallback.root.Visible=true
      if self.previewFallback then self.previewFallback.root.Visible=true end
     end
+   end
+   if self.gradient then
+    local paletteKey=table.concat({s.cursorPalette or "",s.cursorA or "",s.cursorB or ""},":")
+    if self.lastPaletteKey~=paletteKey then
+     self.lastPaletteKey=paletteKey
+     local sequence=gradientSequence(s)
+     self.gradient.Color=sequence
+     if self.previewGradient then self.previewGradient.Color=sequence end
+    end
+    local seconds=math.max(1,15-(s.cursorSpeed or 65)*.07)
+    local rotation=if s.reduce then 45 else (t*360/seconds+45)%360
+    self.gradient.Rotation=rotation
+    if self.previewGradient then self.previewGradient.Rotation=rotation end
    end
   end
   if not original or not self.editable then
