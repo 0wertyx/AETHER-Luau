@@ -1304,6 +1304,17 @@ function V:preview(host,s)
   self.previewImage.Visible=image
   if image then self.previewImage.Image="rbxassetid://"..s.image end
  end
+ if host then
+  local animation=if s.reduce then "Off" else (s.cursorAnimation or "Off")
+  local t=os.clock()*(s.cursorMotionSpeed or 100)/100
+  local rotation=if animation=="Spin" then (t*85)%360
+   elseif animation=="Sway" then math.sin(t*2.8)*7 else 0
+  local size=if animation=="Pulse" then 60*(1+math.abs(math.sin(t*5))*.11)
+   elseif animation=="Breathe" or animation=="Sway" then 60*(1+math.sin(t*3.1)*.045)
+   else 60
+  host.Rotation=rotation
+  host.Size=UDim2.fromOffset(size,size)
+ end
 end
 function V:destroy()
  self:releaseCamera()
