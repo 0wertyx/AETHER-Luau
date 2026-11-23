@@ -1,4 +1,4 @@
-local U=require(script.Parent.Util);local S=require(script.Parent.Schema);local Symbol=require(script.Parent.Symbol);local Hud=require(script.Parent.Hud);local Avatar=require(script.Parent.Avatar);local Cues=require(script.Parent.Cues);local Http=game:GetService("HttpService")
+local U=require(script.Parent.Util);local S=require(script.Parent.Schema);local MotionPacks=require(script.Parent.MotionPacks);local Symbol=require(script.Parent.Symbol);local Hud=require(script.Parent.Hud);local Avatar=require(script.Parent.Avatar);local Cues=require(script.Parent.Cues);local Http=game:GetService("HttpService")
 local E={}
 local function names(t) local a=U.keys(t);return a end
 local function preset(ui,a,group)
@@ -69,6 +69,12 @@ function E.render(a,tab,ui)
    ui:note("Original AETHER styles based on the feel of Roblox avatar packs, not copied animation assets. Procedural R6/R15 poses for idle, walk, run, jump/fall, swim and climb. Visual-only motion.",55)
    ui:chips({"Toy","Robot","Ninja","Bubbly","Stylish","Mage","Levitation","Oldschool","Vampire","Astronaut","Zombie","Cartoony"},
     function(style) a:patch({walkAnimation=true,walkStyle=style}) end,4,
+    function() return a.s.walkStyle end)
+   ui:title("COMMUNITY-INSPIRED ANIMATIONS")
+   ui:note("26 original interpretations of creator-made Roblox UGC locomotion: float, swoop, slither, doll-like steps, cartoon bounce, skating and more. Use Walking intensity to adjust the effect.",54)
+   local ugc={}
+   for i=13,#MotionPacks.order do table.insert(ugc,MotionPacks.order[i]) end
+   ui:chips(ugc,function(style) a:patch({walkAnimation=true,walkStyle=style}) end,4,
     function() return a.s.walkStyle end)
   end
   preset(ui,a,tab);ui:group(tab)
