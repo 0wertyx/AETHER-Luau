@@ -1,6 +1,7 @@
 -- Additive R6 / R15 walking, graceful glide, and ethereal hover.
 -- Poses are visual-only; HumanoidRootPart physics and game controls are unchanged.
 -- Evaluated at PreSimulation after Animator's own animation tracks.
+local MotionPacks=require(script.Parent.MotionPacks)
 local W={}
 W.__index=W
 local function motor(rig,...)
@@ -55,10 +56,17 @@ function W:step(character,s,dt)
  local grounded=hum.FloorMaterial~=Enum.Material.Air
  local movement=hum.MoveDirection.Magnitude
  local intensity=math.clamp((s.walkIntensity or 65)/100,0,1)
- local target=if enabled then intensity*(if pack then
-   (if movement>.08 or airborne or climbing or swimming then 1 else if pack.hover then .82 else .6)
-   elseif floating then (if grounded then .62+.38*movement else 1)
-   else (if grounded then movement else 0)) else 0
+ local target=0
+ if enabled then
+  if pack then
+   target=intensity*(if movement>.08 or airborne or climbing or swimming then 1
+    elseif pack.hover then .82 else .6)
+  elseif floating then
+   target=intensity*(if grounded then .62+.38*movement else 1)
+  else
+   target=intensity*(if grounded then movement else 0)
+  end
+ end
  self.blend+=(target-self.blend)*(1-math.exp(-dt*9))
  if self.blend<.002 then return end
  local speed=math.clamp(hum.WalkSpeed/16,.6,2.3)
@@ -77,7 +85,7 @@ function W:step(character,s,dt)
   local gait=wave*(1-snap)+stepped*snap
   local stride=if airborne then .08 elseif climbing then .25
    elseif swimming then .15 else pack.stride
-  local walk=if airborne then .14 else if moving>.08 then moving else 0
+  local walk=if airborne then .14 elseif moving>.08 then moving else 0
   local run=if moving>.08 and hum.WalkSpeed>19 then 1 else 0
   local cycle=gait*walk
   local swing=stride*cycle*(1+run*.3)
