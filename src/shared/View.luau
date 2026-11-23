@@ -32,6 +32,38 @@ function V:destroy()
  self.glyph:destroy()
  self.pointer:Destroy()
 end
+-- Keep the real click hotspot and the visual pointer aligned.
+-- This function runs in a separate, cheap render callback so complex SVG work
+-- and HUD updates cannot defer the position assignment.
+function V:cursorStep(s)
+ local image=s.cursorShape=="Image"
+ local show=s.cursor and Input.MouseEnabled and not Gui.MenuIsOpen
+  and (not image or s.image~="") and Input:GetLastInputType()~=Enum.UserInputType.Touch
+ if show then
+  if self.icon==nil then self.icon=Input.MouseIconEnabled end
+  Input.MouseIconEnabled=false
+ elseif self.icon~=nil then
+  Input.MouseIconEnabled=self.icon;self.icon=nil
+ end
+ self.pointer.Visible=show
+ if not show then return end
+ local hx,hy=s.hotX/100,s.hotY/100
+ if s.hotX==19 and s.hotY==8 then
+  local tip={["Rounded Triangle"]={.188,.094},["Soft Arrow"]={.188,.125},
+   Diamond={.5,.0625},Orbit={.5,.0625},Spark={.5,.0625},Chevron={.125,.25}}
+  local p=tip[s.cursorShape]
+  if p then hx,hy=p[1],p[2] end
+ end
+ self.pointer.AnchorPoint=Vector2.new(hx,hy)
+ self.pointer.Size=UDim2.fromOffset(s.cursorSize,s.cursorSize)
+ self.image.Visible=image
+ if image then self.image.Image="rbxassetid://"..s.image end
+ local pos=Input:GetMouseLocation()
+ -- ScreenGui uses IgnoreGuiInset=true / ScreenInsets.None.
+ -- GetMouseLocation() is already in that full-screen coordinate system.
+ local origin=self.pointer.Parent.AbsolutePosition
+ self.pointer.Position=UDim2.fromOffset(pos.X-origin.X,pos.Y-origin.Y)
+end
 function V:step(s,hum,menu,dt,t)
  local camera=workspace.CurrentCamera;local hrp=hum and hum.Parent and hum.Parent:FindFirstChild("HumanoidRootPart");local enabled=s.camera and hrp and hum.Health>0 and camera
  if self.cam and (not enabled or self.cam~=camera or self.hum~=hum) then self:releaseCamera() end
@@ -50,27 +82,8 @@ function V:step(s,hum,menu,dt,t)
    if lock then if not self.mouse then self.mouse=Input.MouseBehavior;self.lockHum=hum;self.auto=hum.AutoRotate end;Input.MouseBehavior=Enum.MouseBehavior.LockCenter;hum.AutoRotate=false;local look=camera.CFrame.LookVector*Vector3.new(1,0,1);if look.Magnitude>.01 and not hum.Sit then hrp.CFrame=CFrame.lookAt(hrp.Position,hrp.Position+look) end else self:releaseLock() end
   end
  end
- local image=s.cursorShape=="Image";local show=s.cursor and Input.MouseEnabled and not Gui.MenuIsOpen and (not image or s.image~="") and Input:GetLastInputType()~=Enum.UserInputType.Touch
- if show then if self.icon==nil then self.icon=Input.MouseIconEnabled end;Input.MouseIconEnabled=false elseif self.icon~=nil then Input.MouseIconEnabled=self.icon;self.icon=nil end
- self.pointer.Visible=show
- if show or self.previewHost then self.glyph:step(s,t) end
- if show then
-  -- PointerLayer's ScreenGui uses IgnoreGuiInset=true: GetMouseLocation() is
-  -- already in its screen space, so subtracting GuiInset adds an erroneous offset.
-  local pos=Input:GetMouseLocation()
-  local origin=self.pointer.Parent.AbsolutePosition
-  self.pointer.Position=UDim2.fromOffset(pos.X-origin.X,pos.Y-origin.Y)
-  local hx,hy=s.hotX/100,s.hotY/100
-  if s.hotX==19 and s.hotY==8 then
-   local tip={["Rounded Triangle"]={.188,.094},["Soft Arrow"]={.188,.125},Diamond={.5,.0625},Orbit={.5,.0625},Spark={.5,.0625},Chevron={.125,.25}}
-   local p=tip[s.cursorShape]
-   if p then hx,hy=p[1],p[2] end
-  end
-  self.pointer.AnchorPoint=Vector2.new(hx,hy)
-  self.pointer.Size=UDim2.fromOffset(s.cursorSize,s.cursorSize)
-  self.image.Visible=image
-  if image then self.image.Image="rbxassetid://"..s.image end
- end
+ -- Rasterization and gradient work is independent of pointer position.
+ if self.pointer.Visible or self.previewHost then self.glyph:step(s,t) end
  self.settings=s
 end
 return V
