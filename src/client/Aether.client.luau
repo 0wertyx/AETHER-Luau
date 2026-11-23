@@ -23,7 +23,6 @@ local Controls = module("Controls")
 local Pages = module("Pages")
 local Storage = module("Storage")
 local Cues = module("Cues")
-local Cursor = module("Cursor")
 
 -- Prevent multiple copies if the script is restarted in Studio.
 local pg = player:WaitForChild("PlayerGui")
@@ -35,8 +34,11 @@ local gui = scope:add(U.new("ScreenGui", {
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 50,
 }, pg))
 local overlay = U.frame(gui, "HUDLayer", nil, nil, nil, 1)
-local pointer = U.frame(gui, "PointerLayer", nil, nil, nil, 1)
-local cursor = Cursor.new(pg, scope)
+local pointerGui = scope:add(U.new("ScreenGui", {
+    Name = "AETHER_Pointer", ResetOnSpawn = false, IgnoreGuiInset = true,
+    DisplayOrder = 10000, ZIndexBehavior = Enum.ZIndexBehavior.Global,
+}, pg))
+local pointer = U.frame(pointerGui, "PointerLayer", nil, nil, nil, 1)
 local studioLayer = U.frame(gui, "StudioLayer", nil, nil, nil, 1)
 
 local app = {
@@ -255,7 +257,6 @@ local function frame(dt, now)
     avatar:step(if app.mode == "Game" then character else nil, styled, now)
     world:apply(styled)
     view:step(styled, humanoid, ui.opened, dt, now)
-    cursor:step(styled, ui.opened, now)
     if app.preview then
         if app.preview.hud then app.preview.hud:step(styled, result, dt) end
         if app.preview.avatar then app.preview.avatar:step(app.preview.rig, styled, now) end
@@ -284,5 +285,4 @@ scope:add(function()
     avatar:clear()
     world:clear()
     view:destroy()
-    cursor:destroy()
 end)
