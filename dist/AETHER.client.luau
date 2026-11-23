@@ -143,7 +143,7 @@ local function wingMetrics(style,v,layer)
   elseif dark then 1.2+v*.82
   elseif folded then 1.48-v*.48
   else 1.72-v*.69
- local width=if broad then .39 else if folded then .18 else .27
+ local width=if broad then .39 elseif folded then .18 else .27
  if layer==2 then
   spread=spread*.68
   y-=.38
@@ -219,7 +219,7 @@ function A:step(char,s,t)
   local t0=(b.index-1)/b.count*math.pi*2
   local spin=time*s.haloSpin*.012*(if ring==2 then -1 else 1)
   local a=t0+spin
-  local r=hRadius*(if ring==1 then 1 else if style=="Orbitals" then 1.18 else .72)
+  local r=hRadius*(if ring==1 then 1 elseif style=="Orbitals" then 1.18 else .72)
   local tilt=if style=="Orbitals" then (if ring==2 then .97 else -.19)
    elseif style=="Lunar" then -.44
    elseif style=="Solar" then .12
