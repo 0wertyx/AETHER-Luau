@@ -28,6 +28,9 @@ local Cues = module("Cues")
 local pg = player:WaitForChild("PlayerGui")
 local prior = pg:FindFirstChild("AETHER_Studio")
 if prior then prior:Destroy() end
+-- Reloads must not leave a previous high-order pointer behind.
+local priorPointer = pg:FindFirstChild("AETHER_Pointer")
+if priorPointer then priorPointer:Destroy() end
 local scope = U.scope()
 local gui = scope:add(U.new("ScreenGui", {
     Name = "AETHER_Studio", ResetOnSpawn = false, IgnoreGuiInset = true,
@@ -35,8 +38,10 @@ local gui = scope:add(U.new("ScreenGui", {
 }, pg))
 local overlay = U.frame(gui, "HUDLayer", nil, nil, nil, 1)
 local pointerGui = scope:add(U.new("ScreenGui", {
-    Name = "AETHER_Pointer", ResetOnSpawn = false, IgnoreGuiInset = true,
-    DisplayOrder = 10000, ZIndexBehavior = Enum.ZIndexBehavior.Global,
+    Name = "AETHER_Pointer", ResetOnSpawn = false,
+    IgnoreGuiInset = true, ScreenInsets = Enum.ScreenInsets.None,
+    ClipToDeviceSafeArea = false, DisplayOrder = 10000,
+    ZIndexBehavior = Enum.ZIndexBehavior.Global,
 }, pg))
 local pointer = U.frame(pointerGui, "PointerLayer", nil, nil, nil, 1)
 local studioLayer = U.frame(gui, "StudioLayer", nil, nil, nil, 1)
@@ -264,6 +269,19 @@ local function frame(dt, now)
     end
     store:tick(now)
 end
+-- Cursor tracking is isolated from the expensive AETHER/EditableImage frame.
+-- Use a unique binding: cleaning up an older reload cannot unbind the newer one.
+local pointerRenderBinding = "AETHER_Pointer_" .. game:GetService("HttpService"):GenerateGUID(false)
+RunService:BindToRenderStep(pointerRenderBinding, Enum.RenderPriority.Last.Value, function()
+    if not gui.Parent then return end
+    local ok, err = pcall(view.cursorStep, view, app.s)
+    if not ok and not app.pointerError then
+        app.pointerError = true
+        warn("AETHER cursor position:", err)
+    end
+end)
+scope:add(function() RunService:UnbindFromRenderStep(pointerRenderBinding) end)
+
 local elapsed = 0
 scope:on(RunService.RenderStepped, function(dt)
     if not gui.Parent then scope:clear(); return end
