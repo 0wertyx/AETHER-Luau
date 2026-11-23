@@ -66,3 +66,30 @@ git push -u origin main
 
 Управление: **RightShift** — меню; **LeftAlt** — переключение camera lock.
 Работа в чужих играх Roblox не обеспечивается данным проектом или Rojo.
+
+
+## Автономный клиент без Rojo
+
+Для **своего плейса** можно использовать один собранный `LocalScript`:
+`dist/AETHER.client.luau`. Сборка объединяет все `src/shared/*.luau` и
+`src/client/Aether.client.luau` в один файл с локальным загрузчиком модулей.
+
+```powershell
+python tools/build.py
+python tools/build.py --check
+```
+
+Содержимое `dist/AETHER.client.luau` вставляется в `LocalScript` внутри
+`StarterPlayer > StarterPlayerScripts` в Roblox Studio. Оригинальные исходники
+продолжают храниться раздельно в `src/`.
+
+GitHub Actions пересобирает `dist` при изменениях модулей в `main`.
+Для этого в настройках репозитория GitHub Actions должны быть разрешены права
+записи в репозиторий. Если репозиторий приватный, ссылки GitHub Raw без
+авторизации не будут доступны.
+
+**Ограничение:** это обычный Roblox `LocalScript`, а не исполняемый инжектор и
+не средство запуска в чужих играх. При запуске автономной сборки серверный
+`Profiles.server.luau` отсутствует, поэтому постоянное сохранение профилей
+без серверной части недоступно. Runtime-проверка внутри Roblox Studio
+пока не проводилась.
