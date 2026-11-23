@@ -845,10 +845,9 @@ function M.new(parent)
    else img:Destroy();apiAvailable=false end
   else apiAvailable=false end
  end
- if not self.display then
-  self.oldFallback=Symbol.new(parent,"Rounded Triangle",60)
-  self.oldFallback.root.Size=UDim2.fromScale(1,1)
- end
+ self.oldFallback=Symbol.new(parent,"Rounded Triangle",60)
+ self.oldFallback.root.Size=UDim2.fromScale(1,1)
+ self.oldFallback.root.Visible=not self.display
  function self:preview(host)
   if self.previewParent==host and (not host or (self.previewObject and self.previewObject.Parent==host) or (self.previewFallback and self.previewFallback.root.Parent==host)) then return end
   if self.previewObject then self.previewObject:Destroy();self.previewObject=nil end
@@ -859,10 +858,9 @@ function M.new(parent)
    local ok,image=pcall(nativeImage,host,self.editable)
    if ok then self.previewObject=image else warn("AETHER preview EditableImage:",image) end
   end
-  if not self.previewObject then
-   self.previewFallback=Symbol.new(host,"Rounded Triangle",60)
-   self.previewFallback.root.Size=UDim2.fromScale(1,1)
-  end
+  self.previewFallback=Symbol.new(host,"Rounded Triangle",60)
+  self.previewFallback.root.Size=UDim2.fromScale(1,1)
+  self.previewFallback.root.Visible=not self.previewObject
  end
  function self:step(s,t)
   if s.cursorShape=="Image" then
@@ -872,13 +870,14 @@ function M.new(parent)
    if self.previewFallback then self.previewFallback.root.Visible=false end
    return
   end
-  if self.display then self.display.Visible=true end
-  if self.oldFallback then self.oldFallback.root.Visible=true end
-  if self.previewObject then self.previewObject.Visible=true end
-  if self.previewFallback then self.previewFallback.root.Visible=true end
-  local shape=paths[s.cursorShape] and s.cursorShape or "Rounded Triangle"
+  local original=paths[s.cursorShape]~=nil
+  if self.display then self.display.Visible=original end
+  if self.oldFallback then self.oldFallback.root.Visible=not (self.display and original) end
+  if self.previewObject then self.previewObject.Visible=original end
+  if self.previewFallback then self.previewFallback.root.Visible=not (self.previewObject and original) end
+  local shape=s.cursorShape
   local key=table.concat({shape,s.cursorPalette or "",s.cursorA or "",s.cursorB or "",s.cursorGlow or 0,s.reduce and 1 or 0},":")
-  if self.editable then
+  if self.editable and original then
    if key~=self.lastKey or (not s.reduce and t-self.lastTime>=.12) then
     self.lastKey=key;self.lastTime=t
     local mask=prepare(shape)
@@ -888,9 +887,10 @@ function M.new(parent)
      self.display.Visible=false
     end
    end
-  else
-   local a=U.hex((palettes[s.cursorPalette] or {s.cursorA})[1])
-   local b=U.hex((palettes[s.cursorPalette] or {s.cursorB})[2])
+  end
+  if not original or not self.editable then
+   local p=palettes[s.cursorPalette] or {s.cursorA or "B78AFF",s.cursorB or "FC82D6"}
+   local a=U.hex(p[1]);local b=U.hex(p[2])
    self.oldFallback:shape(shape,60)
    self.oldFallback:paint(a,b,s.cursorGlow,6)
    if self.previewFallback then
