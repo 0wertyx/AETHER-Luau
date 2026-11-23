@@ -1376,6 +1376,7 @@ local U = module("Util")
 local S = module("Schema")
 local Hud = module("Hud")
 local Avatar = module("Avatar")
+local WalkMotion = module("WalkMotion")
 local World = module("World")
 local View = module("View")
 local Controls = module("Controls")
@@ -1515,6 +1516,7 @@ end
 
 local hud = Hud.new(scope, overlay, false, function(tab) app.ui:open(tab) end)
 local avatar = Avatar.new(workspace, false)
+local walkMotion = WalkMotion.new()
 local world = World.new()
 local view = View.new(player, pointer)
 app.view = view
@@ -1641,6 +1643,18 @@ RunService:BindToRenderStep(pointerRenderBinding, Enum.RenderPriority.Last.Value
 end)
 scope:add(function() RunService:UnbindFromRenderStep(pointerRenderBinding) end)
 
+-- Additive procedural walk runs between Animator and physics, never overriding
+-- the game's AnimationTracks. Disabled unless Character.walkAnimation is enabled.
+scope:on(RunService.PreSimulation, function(dt)
+    if not gui.Parent then return end
+    local characterToAnimate = if app.mode == "Game" then character else nil
+    local ok, err = pcall(walkMotion.step, walkMotion, characterToAnimate, app.s, dt)
+    if not ok and not app.walkError then
+        app.walkError = true
+        warn("AETHER walk cycle:", err)
+    end
+end)
+
 local elapsed = 0
 scope:on(RunService.RenderStepped, function(dt)
     if not gui.Parent then scope:clear(); return end
@@ -1657,6 +1671,7 @@ end)
 scope:add(function()
     app:stopCue()
     avatar:clear()
+    walkMotion:destroy()
     world:clear()
     view:destroy()
 end)
