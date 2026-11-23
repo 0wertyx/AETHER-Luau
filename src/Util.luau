@@ -1,0 +1,23 @@
+local U={}
+function U.new(class,props,parent)
+ local obj=Instance.new(class);for k,v in props or {} do obj[k]=v end;obj.Parent=parent;return obj
+end
+function U.scope()
+ local s={items={},dead=false}
+ function s:add(v) assert(not self.dead,"Closed scope");table.insert(self.items,v);return v end
+ function s:on(signal,fn) return self:add(signal:Connect(fn)) end
+ function s:clear() if self.dead then return end;self.dead=true;for i=#self.items,1,-1 do local v=self.items[i];local ok,err=pcall(function() if typeof(v)=="RBXScriptConnection" then v:Disconnect() elseif typeof(v)=="Instance" then v:Destroy() else v() end end);if not ok then warn("AETHER cleanup:",err) end end;table.clear(self.items) end
+ return s
+end
+function U.corner(p,r) return U.new("UICorner",{CornerRadius=UDim.new(0,r or 10)},p) end
+function U.stroke(p,c,alpha,width) return U.new("UIStroke",{Color=c,Transparency=alpha or .5,Thickness=width or 1,ApplyStrokeMode=Enum.ApplyStrokeMode.Border},p) end
+function U.gradient(p,a,b,rot) return U.new("UIGradient",{Color=ColorSequence.new(a,b),Rotation=rot or 25},p) end
+function U.frame(p,name,pos,size,color,alpha) return U.new("Frame",{Name=name,Position=pos or UDim2.new(),Size=size or UDim2.fromScale(1,1),BackgroundColor3=color or Color3.fromRGB(22,18,37),BackgroundTransparency=alpha or 0,BorderSizePixel=0},p) end
+function U.label(p,text,sz,pos,size) return U.new("TextLabel",{BackgroundTransparency=1,Text=text,Font=Enum.Font.GothamMedium,TextSize=sz,TextColor3=Color3.fromRGB(242,237,255),TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd,Position=pos or UDim2.new(),Size=size or UDim2.fromScale(1,1)},p) end
+function U.button(p,text) local b=U.new("TextButton",{Text=text,Font=Enum.Font.GothamMedium,TextSize=13,TextColor3=Color3.fromRGB(241,234,255),BackgroundColor3=Color3.fromRGB(52,40,77),BorderSizePixel=0,AutoButtonColor=true},p);U.corner(b,8);return b end
+function U.hex(s) return Color3.fromHex(s) end
+function U.font(s) local w=Enum.FontWeight[s.weight];if s.fontAsset~="" then return Font.new("rbxassetid://"..s.fontAsset,w) end;local base=Font.fromEnum(Enum.Font[s.font]);return Font.new(base.Family,w,base.Style) end
+function U.ease(t,name) t=math.clamp(t,0,1);if name=="Linear" then return t elseif name=="Sine" then return .5-.5*math.cos(math.pi*t) else return t*t*(3-2*t) end end
+function U.keys(t) local a={};for k in t do table.insert(a,k) end;table.sort(a);return a end
+function U.count(t) local n=0;for _ in t do n+=1 end;return n end
+return U

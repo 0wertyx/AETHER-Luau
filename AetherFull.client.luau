@@ -1,0 +1,777 @@
+-- AETHER Full · standalone native Roblox LocalScript
+local factories,cache={},{}
+local function use(n) if cache[n]==nil then cache[n]=factories[n]() end;return cache[n] end
+factories["Util"]=function()
+local U={}
+function U.new(class,props,parent)
+ local obj=Instance.new(class);for k,v in props or {} do obj[k]=v end;obj.Parent=parent;return obj
+end
+function U.scope()
+ local s={items={},dead=false}
+ function s:add(v) assert(not self.dead,"Closed scope");table.insert(self.items,v);return v end
+ function s:on(signal,fn) return self:add(signal:Connect(fn)) end
+ function s:clear() if self.dead then return end;self.dead=true;for i=#self.items,1,-1 do local v=self.items[i];local ok,err=pcall(function() if typeof(v)=="RBXScriptConnection" then v:Disconnect() elseif typeof(v)=="Instance" then v:Destroy() else v() end end);if not ok then warn("AETHER cleanup:",err) end end;table.clear(self.items) end
+ return s
+end
+function U.corner(p,r) return U.new("UICorner",{CornerRadius=UDim.new(0,r or 10)},p) end
+function U.stroke(p,c,alpha,width) return U.new("UIStroke",{Color=c,Transparency=alpha or .5,Thickness=width or 1,ApplyStrokeMode=Enum.ApplyStrokeMode.Border},p) end
+function U.gradient(p,a,b,rot) return U.new("UIGradient",{Color=ColorSequence.new(a,b),Rotation=rot or 25},p) end
+function U.frame(p,name,pos,size,color,alpha) return U.new("Frame",{Name=name,Position=pos or UDim2.new(),Size=size or UDim2.fromScale(1,1),BackgroundColor3=color or Color3.fromRGB(22,18,37),BackgroundTransparency=alpha or 0,BorderSizePixel=0},p) end
+function U.label(p,text,sz,pos,size) return U.new("TextLabel",{BackgroundTransparency=1,Text=text,Font=Enum.Font.GothamMedium,TextSize=sz,TextColor3=Color3.fromRGB(242,237,255),TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd,Position=pos or UDim2.new(),Size=size or UDim2.fromScale(1,1)},p) end
+function U.button(p,text) local b=U.new("TextButton",{Text=text,Font=Enum.Font.GothamMedium,TextSize=13,TextColor3=Color3.fromRGB(241,234,255),BackgroundColor3=Color3.fromRGB(52,40,77),BorderSizePixel=0,AutoButtonColor=true},p);U.corner(b,8);return b end
+function U.hex(s) return Color3.fromHex(s) end
+function U.font(s) local w=Enum.FontWeight[s.weight];if s.fontAsset~="" then return Font.new("rbxassetid://"..s.fontAsset,w) end;local base=Font.fromEnum(Enum.Font[s.font]);return Font.new(base.Family,w,base.Style) end
+function U.ease(t,name) t=math.clamp(t,0,1);if name=="Linear" then return t elseif name=="Sine" then return .5-.5*math.cos(math.pi*t) else return t*t*(3-2*t) end end
+function U.keys(t) local a={};for k in t do table.insert(a,k) end;table.sort(a);return a end
+function U.count(t) local n=0;for _ in t do n+=1 end;return n end
+return U
+
+end
+factories["Schema"]=function()
+-- Shared, data-only contract. All settings/banks contain JSON primitives, not Instances.
+local S = {version = 1, defs = {}, order = {}, kinds = {"Theme","HUD","Motion","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Fonts","Scripts"}}
+S.shapes = {"Soft Triangle","Chevron","Diamond","Neon Pointer","Double Chevron","Angel Wings","Orbit Arc","Location Pin","Arrowhead","Split Arrow","Needle","Broad Chevron","Hollow Diamond","Crystal","Spear","Twin Wings","Shield","Beacon","Star Pointer","Compass","Double Spike","Arc Pointer","Kite","Crosshair"}
+S.fonts = {"Gotham","Code","RobotoMono","Ubuntu","Nunito","GothamMedium","SciFi","Arcade","FredokaOne","Oswald","TitilliumWeb","SourceSans","Highway","Fantasy","Garamond","Bodoni","Bangers","Cartoon","Kalam","Roboto","Sarpanch"}
+-- name, high sky, horizon, low light, fog %, bloom %, clock (tenths of an hour), brightness %, saturation.
+S.skies = {
+ {"Dreamcore","282057","8C70C2","EAB6CD",35,40,166,105,9},{"Cyberpunk","090B2A","741CA4","F032A9",26,80,210,92,42},
+ {"Anime","70AFE5","C8A4E8","FFE0AD",16,34,141,118,18},{"Midnight","060A1D","1A2455","403D75",20,18,8,65,-22},
+ {"Aurora","091E33","2B6B86","A56ACC",24,48,30,91,25},{"Sunset","563857","DC7165","FFC888",42,60,178,108,23},
+ {"Nebula","151137","6143A0","C882CB",56,65,225,87,34},{"Moonlight","080F35","526493","D1DEED",34,52,24,79,-24},
+ {"Anime Sunset","5269B9","EAA6AE","FFE1A1",25,43,174,106,12},{"Vaporwave","281858","D258B0","F2A8C6",37,57,189,95,32},
+ {"Golden Hour","2E254D","D8798A","FFCE7E",38,52,171,107,8},{"Ocean Night","061A30","124969","52B4BC",28,30,34,73,-4},
+ {"Sakura","5B3B83","C18EC4","FFCEE4",32,48,145,108,5},{"Eclipse","090914","393251","B187A5",23,61,120,64,-24},
+ {"Neon Rain","070F25","2646A5","BC4CF3",57,70,201,82,28},{"Twilight","151A49","74539C","E1A6BD",34,35,185,88,-10},
+}
+local function def(g,k,title,kind,value,lo,hi)
+ S.defs[k]={group=g,label=title,kind=kind,default=value,min=lo,max=hi}; table.insert(S.order,k)
+end
+local function toggle(g,k,t,v) def(g,k,t,"bool",v) end
+local function range(g,k,t,v,a,b) def(g,k,t,"number",v,a,b) end
+local function choice(g,k,t,v,opts) def(g,k,t,"choice",v,opts) end
+local function color(g,k,t,v) def(g,k,t,"color",v) end
+local function text(g,k,t,v,n) def(g,k,t,"text",v,0,n) end
+color("Theme","accent","Accent","A68AFF");color("Theme","secondary","Second neon","FF89C7");color("Theme","glassColor","Glass tint","211C35")
+range("Theme","glass","Glass opacity %",81,10,100);range("Theme","rim","Neon rim %",55,0,100);toggle("Theme","sparkles","Floating sparkles",true)
+toggle("Motion","reduce","Reduce motion",false);range("Motion","speed","Animation speed %",100,40,200);range("Motion","duration","Transition (ms)",300,80,1400);choice("Motion","ease","Interpolation","Smooth",{"Smooth","Linear","Sine"})
+toggle("HUD","locked","Lock widget positions",true);toggle("HUD","compact","Compact health panel",false)
+for _,row in {{"hp","Health",82,13},{"clock","Clock",3,93},{"profile","Player card",96,94},{"dock","Studio dock",48,95},{"cross","Reticle",50,50}} do
+ local k,t=row[1],row[2];toggle("HUD",k,t,true); range("HUD",k.."X",t.." · horizontal %",row[3],0,100);range("HUD",k.."Y",t.." · vertical %",row[4],0,100)
+ range("HUD",k.."Scale",t.." · scale %",100,50,160);range("HUD",k.."Turn",t.." · rotation",0,-180,180);range("HUD",k.."Alpha",t.." · opacity %",100,10,100)
+ toggle("HUD",k.."Material","Override widget material",false);color("HUD",k.."First","First tint","8261C7");color("HUD",k.."Second","Second tint","482D68");toggle("HUD",k.."Flow","Animate gradient",false);range("HUD",k.."FlowRate","Gradient rotation (degrees/s)",35,3,180);range("HUD",k.."Glow","Local neon intensity %",55,0,100)
+end
+toggle("Character","aura","Aura particles",false);toggle("Character","trail","Motion trail",false);range("Character","auraRate","Emission / second",12,1,45);range("Character","trailLife","Trail lifetime (ms)",400,80,1300);color("Character","auraColor","Aura color","C4A3FF")
+toggle("Wings","wings","Show wings",false);choice("Wings","wingStyle","Silhouette","Seraph",{"Seraph","Blade","Sylph"});range("Wings","wingSpan","Span %",100,50,175);range("Wings","wingSweep","Sweep (degrees)",24,-25,65);range("Wings","wingBeat","Flap speed %",90,0,200);color("Wings","wingColor","Feather color","B49BFF");toggle("Wings","wingRainbow","Prismatic feathers",false)
+toggle("Halos","halo","Show halo",false);choice("Halos","haloStyle","Orbit form","Ring",{"Ring","Binary","Crown"});range("Halos","haloRadius","Radius %",88,45,175);range("Halos","haloHeight","Height above head %",105,55,220);range("Halos","haloSpin","Orbit speed %",75,0,200);color("Halos","haloColor","Halo color","FFB4D6");toggle("Halos","haloRainbow","Prismatic halo",false)
+toggle("Neon","neon","Character outline",true);range("Neon","neonFill","Body tint %",10,0,65);range("Neon","neonLight","Light intensity %",40,0,100);color("Neon","neonColor","Neon color","AB87FF");toggle("Neon","neonRainbow","Rainbow neon",false)
+toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA","High sky","282057");color("Ambient","skyB","Horizon","8C70C2");color("Ambient","skyC","Ground light","EAB6CD");range("Ambient","fog","Fog density %",35,0,90);range("Ambient","bloom","Bloom %",40,0,100);range("Ambient","time","Time (tenths of an hour)",166,0,239);range("Ambient","light","Brightness %",105,25,180);range("Ambient","saturation","Saturation %",9,-85,85);range("Ambient","blur","Depth blur",0,0,16);range("Ambient","fade","Atmosphere fade (ms)",700,0,3500)
+toggle("Indicators","indicators","Directional indicators",true);choice("Indicators","shape","Indicator shape","Soft Triangle",S.shapes);range("Indicators","size","Size (px)",31,14,72);range("Indicators","corners","Corner softness %",30,0,100);range("Indicators","edge","Distance from edges %",11,4,30);range("Indicators","turn","Rotation smoothing (ms)",180,0,800);range("Indicators","ink","Neon intensity %",60,0,100);range("Indicators","spread","Neon spread (px)",6,0,18);range("Indicators","arrowAlpha","Opacity %",95,10,100);range("Indicators","arrowSpeed","Animation speed %",100,40,220);color("Indicators","arrowA","Gradient start","BFA2FF");color("Indicators","arrowB","Gradient end","FF9ECE");toggle("Indicators","arrowRainbow","Rainbow gradient",false);toggle("Indicators","pulse","Pulsation",true);choice("Indicators","labels","Arrow labels","Both",{"Off","Name","Distance","Both"});toggle("Indicators","nearby","Nearby nameplates",false);range("Indicators","reach","Tracking range (studs)",800,50,2500)
+toggle("Cursor","cursor","Custom game pointer",false);choice("Cursor","cursorShape","Pointer shape","Rounded Triangle",{"Rounded Triangle","Soft Arrow","Diamond","Orbit","Spark","Chevron","Image"});range("Cursor","cursorSize","Pointer size",30,12,72);range("Cursor","cursorGlow","Pointer glow %",55,0,100);range("Cursor","hotX","Hotspot X %",19,0,100);range("Cursor","hotY","Hotspot Y %",8,0,100);color("Cursor","cursorA","Gradient start","BA99FF");color("Cursor","cursorB","Gradient end","69D9FA");toggle("Cursor","cursorRainbow","Rainbow pointer",true);range("Cursor","cursorSpeed","Gradient speed %",65,10,200);def("Cursor","image","Roblox image asset ID","asset","")
+toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Camera","lock","Shift-lock · LeftAlt",false)
+choice("Fonts","font","Typeface","Gotham",S.fonts);choice("Fonts","weight","Weight","Bold",{"Regular","Medium","Bold","Heavy"});def("Fonts","fontAsset","Optional Roblox font family ID","asset","");text("Fonts","sample","Preview text","AETHER · Your interface",96);range("Fonts","fontSize","HUD type scale %",100,70,145);toggle("Fonts","fontGradient","Gradient lettering",true);range("Fonts","fontOutline","Text outline %",24,0,100);range("Fonts","fontGlow","Letter glow %",35,0,100);color("Fonts","fontA","Letter color","F1E6FF");color("Fonts","fontB","Letter gradient","CCA4FF")
+S.example='hud.widget("status", "Ready", 8, 38)\nfunction onHealthChanged(hp, maxHP)\n  hud.widget("status", hud.join("HP: ", hp), 8, 38)\n  if hp > 0 and hp <= maxHP * 0.3 then\n    hud.animate("status", "pulse")\n  else\n    hud.animate("status", "none")\n  end\nend'
+text("Scripts","cue","HUD script",S.example,8192);text("Scripts","luau","Luau draft",'-- ModuleScript for your own place\nreturn function(humanoid: Humanoid)\n  return humanoid.HealthChanged:Connect(function(hp)\n    print(hp, humanoid.MaxHealth)\n  end)\nend',8192)
+S.defs.players={group="Indicators",kind="players",default={}};table.insert(S.order,"players")
+function S.copy(v) if type(v)~="table" then return v end;local r={};for k,x in v do r[k]=S.copy(x) end;return r end
+local function str(s,n) return type(s)=="string" and #s<=n and utf8.len(s)~=nil end
+local function name(s) return str(s,48) and s:match("%S") and not s:find("%c") end
+local function hex(s) return type(s)=="string" and #s==6 and s:match("^%x+$")~=nil end
+function S.value(k,v)
+ local d=S.defs[k];if not d then error("Unknown setting: "..tostring(k),0) end
+ local a=d.kind
+ if a=="bool" and type(v)=="boolean" then return v end
+ if a=="number" and type(v)=="number" and v==math.floor(v) and v>=d.min and v<=d.max then return v end
+ if a=="choice" and table.find(d.min,v) then return v end
+ if a=="color" and hex(v) then return string.upper(v) end
+ if a=="text" and str(v,d.max) then return v end
+ if a=="asset" and str(v,16) and (v=="" or v:match("^[1-9]%d*$")) then return v end
+ if a=="players" and type(v)=="table" then local r,n={},0;for id,o in v do
+   n+=1;assert(n<=16 and str(id,18) and id:match("^%-?%d+$") and type(o)=="table" and str(o.label,32) and hex(o.color) and table.find(S.shapes,o.shape),"Invalid player override");r[id]={label=o.label,color=o.color,shape=o.shape}
+  end;return r end
+ error("Invalid value: "..k,0)
+end
+function S.defaults() local r={};for k,d in S.defs do r[k]=S.copy(d.default) end;return r end
+function S.settings(v,group)
+ assert(type(v)=="table","Expected settings");local r=if group then {} else S.defaults();local count=0
+ for k,x in v do local d=S.defs[k];assert(d and (not group or d.group==group),"Unexpected setting");r[k]=S.value(k,x);count+=1 end
+ if group then assert(count>0,"Empty asset") end;return r
+end
+function S.capture(settings,group) local r={};for k,d in S.defs do if d.group==group then r[k]=S.copy(settings[k]) end end;return r end
+function S.asset(v) assert(type(v)=="table" and v.version==1 and name(v.name) and table.find(S.kinds,v.kind),"Invalid AETHER asset");return {version=1,name=v.name,kind=v.kind,data=S.settings(v.data,v.kind)} end
+function S.blank() return {version=1,settings=S.defaults(),profiles={},assets={}} end
+function S.bank(v)
+ assert(type(v)=="table" and v.version==1,"Unsupported bank version");local r=S.blank();r.settings=S.settings(v.settings)
+ local n=0;assert(type(v.profiles)=="table" and type(v.assets)=="table","Invalid library");for k,x in v.profiles do n+=1;assert(n<=10 and name(k),"Invalid profile name/count");r.profiles[k]=S.settings(x) end
+ n=0;for k,x in v.assets do n+=1;assert(n<=40 and name(k),"Invalid asset name/count");r.assets[k]=S.asset(x);assert(k==r.assets[k].name,"Asset name mismatch") end;return r
+end
+function S.sky(row) return {ambient=true,skyA=row[2],skyB=row[3],skyC=row[4],fog=row[5],bloom=row[6],time=row[7],light=row[8],saturation=row[9]} end
+S.presets={Theme={Violet={accent="A68AFF",secondary="FF89C7",glassColor="211C35"},Ocean={accent="68CEF4",secondary="9B91FF",glassColor="112636"},Rose={accent="F699C6",secondary="D8A5FF",glassColor="301B31"}},HUD={Classic={hpX=82,hpY=13,clockX=3,clockY=93,compact=false},Broadcast={hpX=3,hpY=78,clockX=95,clockY=5,hpScale=115},Compact={compact=true,hpX=96,hpY=16,hpScale=80}},Motion={Calm={speed=70,duration=520},Swift={speed=155,duration=150},Still={reduce=true}},Wings={Seraph={wings=true,wingStyle="Seraph",wingSpan=115},Blade={wings=true,wingStyle="Blade",wingColor="76E3FF"},Sylph={wings=true,wingStyle="Sylph",wingRainbow=true}},Halos={Crown={halo=true,haloStyle="Crown"},Binary={halo=true,haloStyle="Binary",haloColor="82D9FF"}},Character={Comet={aura=true,trail=true,auraColor="AA89FE"}},Neon={Pulse={neon=true,neonRainbow=true,neonLight=65}},Cursor={Aurora={cursor=true,cursorShape="Rounded Triangle",cursorRainbow=true},Diamond={cursor=true,cursorShape="Diamond",hotX=50,hotY=50}},Camera={Portrait={camera=true,cameraMode="Orbit",fov=55,radius=8,lock=false},Shoulder={camera=true,cameraMode="Follow",lock=true}},Fonts={Terminal={font="Code",weight="Bold",fontAsset="",fontGradient=false},Soft={font="FredokaOne",weight="Regular",fontAsset=""}},Indicators={},Ambient={},Scripts={Vitals={cue=S.example}}}
+for _,v in S.shapes do S.presets.Indicators[v]={shape=v,indicators=true} end
+for _,v in S.skies do S.presets.Ambient[v[1]]=S.sky(v) end
+return S
+
+end
+factories["Symbol"]=function()
+-- Native vector masks. Scan-convert once per silhouette/softness, merge identical runs vertically.
+-- No image uploads, EditableImage permissions, or external texture dependencies for built-ins.
+local U=use("Util")
+local M={};local masks={};local N=28
+local paths={
+ ["Soft Triangle"]="16,1 30,29 16,22 2,29",Chevron="2,22 16,6 30,22 26,26 16,15 6,26",Diamond="16,1 28,17 16,31 4,17",
+ ["Neon Pointer"]="16,1 27,30 16,21 5,30|16,8 19,19 13,19",["Double Chevron"]="3,16 16,3 29,16 25,20 16,11 7,20|3,26 16,13 29,26 25,30 16,21 7,30",
+ ["Angel Wings"]="1,4 12,10 16,21 20,10 31,4 28,16 23,18 25,20 19,25 16,31 13,25 7,20 9,18 4,16",
+ Arrowhead="16,2 30,29 16,22 2,29",["Split Arrow"]="16,2 30,27 18,20 16,30 14,20 2,27",Needle="16,1 22,30 16,23 10,30",["Broad Chevron"]="2,24 16,7 30,24 25,29 16,18 7,29",
+ ["Hollow Diamond"]="16,1 31,16 16,31 1,16|16,8 8,16 16,24 24,16",Crystal="16,1 29,14 22,30 10,30 3,14",Spear="16,1 28,29 16,21 4,29|16,8 17,19 15,19",
+ ["Twin Wings"]="1,8 13,14 16,28 19,14 31,8 24,26 16,31 8,26",Shield="16,2 29,8 26,23 16,31 6,23 3,8",Beacon="16,1 26,10 26,25 16,31 6,25 6,10",
+ ["Star Pointer"]="16,1 21,12 31,16 21,20 16,31 11,20 1,16 11,12",Compass="16,1 20,12 31,16 20,20 16,31 12,20 1,16 12,12|16,12 20,16 16,20 12,16",
+ ["Double Spike"]="16,1 28,18 16,14 4,18|16,19 25,31 16,27 7,31",["Arc Pointer"]="2,21 5,15 10,9 16,6 22,9 27,15 30,21 24,26 20,19 16,15 12,19 8,26",Kite="16,1 29,14 16,31 3,14",Crosshair="14,1 18,1 18,12 21,15 31,15 31,18 20,18 18,22 18,31 14,31 14,22 12,18 1,18 1,15 12,15 14,12",
+ ["Rounded Triangle"]="5,2 28,22 17,23 8,31",["Soft Arrow"]="4,2 29,18 19,22 13,31",Spark="16,1 20,12 31,16 20,20 16,31 12,20 1,16 12,12",
+ Heart="16,29 4,18 1,12 2,7 5,4 10,3 14,5 16,8 19,4 23,3 28,5 31,9 30,15 26,21",
+ Studio="16,1 20,12 31,16 20,20 16,31 12,20 1,16 12,12",
+}
+local function smooth(poly,r)
+ if r==0 then return poly end;local out={};for i,p in poly do local a=poly[(i-2)%#poly+1]-p;local b=poly[i%#poly+1]-p
+  local s=p+a.Unit*math.min(r,a.Magnitude*.43);local e=p+b.Unit*math.min(r,b.Magnitude*.43)
+  for j=0,3 do local t=j/3;table.insert(out,s*(1-t)^2+p*2*t*(1-t)+e*t^2) end
+ end;return out
+end
+local function build(name,round)
+ local polys={};for sub in string.gmatch(paths[name] or paths.Diamond,"[^|]+") do local a={};for x,y in sub:gmatch("(%d+),(%d+)") do table.insert(a,Vector2.new(tonumber(x),tonumber(y))) end;table.insert(polys,smooth(a,round*.055)) end
+ local rows={};local last={}
+ for y=0,N-1 do local yy=(y+.5)*32/N;local inter={};for _,p in polys do for i,a in p do local b=p[i%#p+1];if (a.Y>yy)~=(b.Y>yy) then table.insert(inter,a.X+(yy-a.Y)*(b.X-a.X)/(b.Y-a.Y)) end end end;table.sort(inter)
+  local function pixel(x) local xx=(x+.5)*32/N
+   if name=="Location Pin" then return ((xx-16)^2+(yy-20)^2<112 or (yy>=2 and yy<21 and math.abs(xx-16)<(yy-1)*.56)) and (xx-16)^2+(yy-20)^2>15 end
+   if name=="Orbit Arc" or name=="Orbit" then local d=(xx-16)^2+(yy-17)^2;return (d<186 and d>93 and (yy>=13 or xx<13)) or (yy<13 and math.abs(xx-18)<yy*.55) end
+   for i=1,#inter-1,2 do if xx>=inter[i] and xx<inter[i+1] then return true end end;return false end
+  local x=0;local nextRow={};while x<N do if not pixel(x) then x+=1;continue end;local l=x;repeat x+=1 until x==N or not pixel(x);local id=l*64+x;local b=last[id];if b then b.h+=1 else b={x=l,y=y,w=x-l,h=1};table.insert(rows,b) end;nextRow[id]=b end;last=nextRow
+ end;return rows
+end
+function M.new(parent,name,round)
+ local root=U.new("CanvasGroup",{Name="Glyph",BackgroundTransparency=1,AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromScale(1,1)},parent)
+ local outer=U.frame(root,"OuterGlow",nil,nil,nil,.89);U.corner(outer,999);local inner=U.frame(root,"InnerGlow",nil,nil,nil,.80);U.corner(inner,999)
+ local ink=U.frame(root,"Ink",nil,nil,nil,1);for _,f in {outer,inner,ink} do f.AnchorPoint=Vector2.new(.5,.5);f.Position=UDim2.fromScale(.5,.5) end
+ local self={root=root,ink=ink,parts={},key=""}
+ function self:shape(n,r)
+  r=math.round(r/10)*10;local key=n..r;if self.key==key then return end;self.key=key;local mask=masks[key];if not mask then mask=build(n,r);masks[key]=mask end
+  for i,rect in mask do local part=self.parts[i] or U.frame(ink,"Run",nil,nil,Color3.new(1,1,1));self.parts[i]=part;part.Position=UDim2.fromScale(rect.x/N,rect.y/N);part.Size=UDim2.fromScale(rect.w/N,rect.h/N);part.Visible=true end
+  for i=#mask+1,#self.parts do self.parts[i].Visible=false end;self.mask=mask;self.a=nil
+ end
+ function self:paint(a,b,glow,spread)
+  if self.a~=a or self.b~=b then for i,rect in self.mask do self.parts[i].BackgroundColor3=a:Lerp(b,(rect.y+rect.h*.5)/N) end;outer.BackgroundColor3=b;inner.BackgroundColor3=a;self.a=a;self.b=b end
+  if self.glow~=glow or self.spread~=spread then outer.BackgroundTransparency=1-glow*.0016;inner.BackgroundTransparency=1-glow*.0024;outer.Visible=glow>0;inner.Visible=glow>0;local k=.69+spread*.016;outer.Size=UDim2.fromScale(k,k);inner.Size=UDim2.fromScale(k*.77,k*.77);ink.Size=UDim2.fromScale(.73,.73);self.glow=glow;self.spread=spread end
+ end
+ self:shape(name,round or 30);self:paint(Color3.fromRGB(185,150,255),Color3.fromRGB(255,165,220),50,8);return self
+end
+return M
+
+end
+factories["Avatar"]=function()
+local U=use("Util")
+local A={};A.__index=A
+local function part(parent,name,size,shape)
+ return U.new("Part",{Name=name,Size=size,Shape=shape or Enum.PartType.Block,Anchored=true,CanCollide=false,CanTouch=false,CanQuery=false,CastShadow=false,Material=Enum.Material.Neon},parent)
+end
+function A.new(parent,preview)
+ return setmetatable({parent=parent,preview=preview,feathers={},beads={},parts={},frames={},key="",paintAt=-1},A)
+end
+function A:clear()
+ if self.scope then self.scope:clear();self.scope=nil end;self.root=nil;self.highlight=nil;self.emitter=nil;self.trail=nil;self.light=nil;self.char=nil;self.body=nil;self.key="";table.clear(self.feathers);table.clear(self.beads);table.clear(self.parts);table.clear(self.frames)
+end
+function A:bind(char,body,head,s)
+ local key=table.concat({tostring(s.wings),s.wingStyle,tostring(s.halo),s.haloStyle,tostring(s.neon),tostring(s.aura),tostring(s.trail)},"/")
+ if not (body and head and char) or not(s.wings or s.halo or s.neon or s.aura or s.trail) then if self.root then self:clear() end;return end
+ if self.key==key and self.char==char and self.body==body then return end;self:clear();self.key=key;self.char=char;self.body=body;self.scope=U.scope();self.root=self.scope:add(U.new("Folder",{Name="AetherAvatarFX"},self.parent));self.paintAt=-1
+ if s.wings then for _,side in {-1,1} do for i=1,if s.wingStyle=="Sylph" then 6 else 9 do
+  local p=part(self.root,"Wing",Vector3.one,if s.wingStyle=="Blade" then Enum.PartType.Block else Enum.PartType.Ball);table.insert(self.feathers,{p=p,side=side,i=i});table.insert(self.parts,p)
+ end end end
+ if s.halo then local count=if s.haloStyle=="Binary" then 36 else 24;for i=1,count do local p=part(self.root,"Halo",Vector3.one,if s.haloStyle=="Crown" and i%3==0 then Enum.PartType.Ball else Enum.PartType.Block);table.insert(self.beads,p);table.insert(self.parts,p) end end
+ if s.neon then self.highlight=U.new("Highlight",{Name="Neon",Adornee=char,DepthMode=Enum.HighlightDepthMode.Occluded},self.root) end
+ if not self.preview and (s.neon or s.aura or s.trail) then
+  -- Attachments belong to this renderer. No changes to rig geometry, motors or character materials.
+  local a=self.scope:add(U.new("Attachment",{Name="AetherEmitter",Position=Vector3.new(0,.5,.5)},body))
+  if s.neon then self.light=U.new("PointLight",{Range=9,Shadows=false},a) end
+  if s.aura then self.emitter=U.new("ParticleEmitter",{Name="Aura",Texture="rbxasset://textures/particles/sparkles_main.dds",Lifetime=NumberRange.new(.55,1.3),Speed=NumberRange.new(.8,2.5),SpreadAngle=Vector2.new(80,80),LightEmission=.9,Size=NumberSequence.new({NumberSequenceKeypoint.new(0,.18),NumberSequenceKeypoint.new(1,0)})},a) end
+  if s.trail then local b=self.scope:add(U.new("Attachment",{Name="AetherTrailEnd",Position=Vector3.new(0,-.65,.5)},body));self.trail=U.new("Trail",{Name="AetherTrail",Attachment0=a,Attachment1=b,LightEmission=.85,MinLength=.08,FaceCamera=true,Transparency=NumberSequence.new(.15,1)},a) end
+ end
+end
+function A:step(char,s,t)
+ local body=char and (char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart"));local head=char and char:FindFirstChild("Head")
+ self:bind(char,body,head,s);if not self.root then return end
+ local time=if s.reduce then 0 else t;local scale=s.wingSpan/100*math.clamp(body.Size.X/2,.65,1.5);local flap=math.sin(time*s.wingBeat*.032)*.26;local idx=0
+ for _,f in self.feathers do
+  local i=f.i;local v=(i-1)/8;local side=f.side;local wing=s.wingStyle;local y=if wing=="Sylph" then math.sin(v*5)*.95 else .15+v*(if wing=="Blade" then .8 else .58)
+  local len=(if wing=="Blade" then 1.8-v*.7 elseif wing=="Sylph" then 1.4-v*.45 else 1.8-v*.9)*scale
+  local size=Vector3.new((if wing=="Sylph" then .48 else .25)*scale,len,.15*scale);if f.p.Size~=size then f.p.Size=size end
+  idx+=1;self.frames[idx]=body.CFrame*CFrame.new(0,0,body.Size.Z*.54)*CFrame.Angles(0,side*(flap-math.rad(s.wingSweep)),0)*CFrame.new(side*(.65+2.5*v)*scale,y*scale,.25+v*.18)*CFrame.Angles(.15,0,-side*(.48+v*.7))
+ end
+ for i,p in self.beads do local ring=(s.haloStyle=="Binary" and i>24);local n=if ring then 12 else 24;local r=s.haloRadius/100*(if ring then .73 else 1);local a=(i-1)/n*math.pi*2+time*s.haloSpin*.013*(if ring then -1 else 1);local crown=s.haloStyle=="Crown" and i%3==0
+  local size=Vector3.new(2*math.sin(math.pi/n)*r*1.04,if crown then .38 else .075,if crown then .13 else .09);if p.Size~=size then p.Size=size end;idx+=1;self.frames[idx]=head.CFrame*CFrame.new(0,s.haloHeight/100+(if ring then .2 else 0)+.05*math.sin(time*2),0)*CFrame.Angles(if ring then .27 else 0,a,0)*CFrame.new(0,if crown then .1 else 0,r)
+ end
+ if idx>0 then for i,p in self.parts do p.CFrame=self.frames[i] end end
+ if t-self.paintAt>=.07 or self.settings~=s then
+  self.settings=s;self.paintAt=t;local col=U.hex(s.secondary);for _,f in self.feathers do f.p.Color=if s.wingRainbow then Color3.fromHSV((time*.1+f.i*.052)%1,.55,1) else U.hex(s.wingColor):Lerp(col,(f.i-1)/14) end
+  for i,p in self.beads do p.Color=if s.haloRainbow then Color3.fromHSV((time*.1+i/#self.beads)%1,.58,1) else U.hex(s.haloColor):Lerp(col,.25*(1+math.sin(i*.6))) end
+  if self.highlight then local c=if s.neonRainbow then Color3.fromHSV(time*.12%1,.66,1) else U.hex(s.neonColor);self.highlight.OutlineColor=c;self.highlight.FillColor=c;self.highlight.FillTransparency=1-s.neonFill/100;self.highlight.OutlineTransparency=.12;if self.light then self.light.Color=c;self.light.Brightness=s.neonLight*.035 end end
+  if self.emitter then self.emitter.Color=ColorSequence.new(U.hex(s.auraColor),col);self.emitter.Rate=if s.reduce then 0 else s.auraRate end
+  if self.trail then self.trail.Enabled=not s.reduce;self.trail.Color=ColorSequence.new(U.hex(s.auraColor),col);self.trail.Lifetime=s.trailLife/1000 end
+ end
+end
+function A.mannequin(world)
+ local m=U.new("Model",{Name="PreviewRig"},world);for _,v in {{"UpperTorso",0,1.8,0,2,1.6,1},{"Head",0,3.15,0,1.2,1.2,1.2},{"LeftArm",-1.4,1.8,0,.65,1.9,.7},{"RightArm",1.4,1.8,0,.65,1.9,.7},{"LeftLeg",-.5,.1,0,.85,1.8,.8},{"RightLeg",.5,.1,0,.85,1.8,.8}} do local p=part(m,v[1],Vector3.new(v[5],v[6],v[7]),if v[1]=="Head" then Enum.PartType.Ball else Enum.PartType.Block);p.Color=Color3.fromRGB(89,80,119);p.Material=Enum.Material.SmoothPlastic;p.Position=Vector3.new(v[2],v[3],v[4]) end;return m
+end
+return A
+
+end
+factories["World"]=function()
+local L=game:GetService("Lighting");local T=game:GetService("TweenService");local U=use("Util")
+local W={};W.__index=W
+function W.new() return setmetatable({saved={},owned={},tweens={}},W) end
+function W:stop()
+ for _,tw in self.tweens do tw:Cancel();tw:Destroy() end;table.clear(self.tweens)
+end
+function W:clear()
+ self:stop();for obj,props in self.saved do if obj==L or obj.Parent then for k,v in props do obj[k]=v end end end;table.clear(self.saved)
+ for _,obj in self.owned do obj:Destroy() end;table.clear(self.owned);self.atmo=nil;self.key=nil
+end
+function W:apply(s)
+ if not s.ambient then if self.atmo then self:clear() end;return end
+ local key=table.concat({s.skyA,s.skyB,s.skyC,s.fog,s.bloom,s.time,s.light,s.saturation,s.blur,s.fade,tostring(s.reduce)},":");if self.key==key then return end;self.key=key;self:stop()
+ local function own(class) local o=U.new(class,{Name="Aether"..class},L);table.insert(self.owned,o);return o end
+ if not self.atmo then self.atmo=L:FindFirstChildOfClass("Atmosphere") or own("Atmosphere");self.bloom=own("BloomEffect");self.grade=own("ColorCorrectionEffect");self.blur=own("BlurEffect") end
+ local function set(o,p)
+  if not self.saved[o] then self.saved[o]={};for k in p do self.saved[o][k]=o[k] end end
+  if s.reduce or s.fade==0 then for k,v in p do o[k]=v end else local tw=T:Create(o,TweenInfo.new(s.fade/1000,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),p);table.insert(self.tweens,tw);tw:Play() end
+ end
+ set(L,{Ambient=U.hex(s.skyA),OutdoorAmbient=U.hex(s.skyB),Brightness=s.light/40,ClockTime=s.time/10});set(self.atmo,{Color=U.hex(s.skyC),Decay=U.hex(s.skyB),Density=s.fog/150,Haze=s.fog/30});set(self.bloom,{Intensity=s.bloom/50,Size=26,Threshold=1.2});set(self.grade,{Saturation=s.saturation/100,TintColor=Color3.new(1,1,1):Lerp(U.hex(s.skyC),.13)});set(self.blur,{Size=s.blur})
+end
+return W
+
+end
+factories["View"]=function()
+local Input=game:GetService("UserInputService");local Gui=game:GetService("GuiService");local U=use("Util");local Symbol=use("Symbol")
+local V={};V.__index=V
+function V.new(player,layer)
+ local self=setmetatable({player=player,angle=0,clock=0},V);self.pointer=U.frame(layer,"Pointer",nil,UDim2.fromOffset(32,32),nil,1);self.pointer.Visible=false;self.glyph=Symbol.new(self.pointer,"Rounded Triangle",65);self.image=U.new("ImageLabel",{Name="Asset",BackgroundTransparency=1,Size=UDim2.fromScale(1,1),ScaleType=Enum.ScaleType.Fit},self.pointer);return self
+end
+function V:releaseLock()
+ if self.mouse then Input.MouseBehavior=self.mouse;self.mouse=nil end;if self.lockHum then if self.lockHum.Parent then self.lockHum.AutoRotate=self.auto end;self.lockHum=nil end
+end
+function V:releaseCamera()
+ self:releaseLock();if self.cam then local c=self.cam;local b=self.before;if c.Parent then c.FieldOfView=b.fov;c.CameraType=b.kind;if b.subject and b.subject.Parent then c.CameraSubject=b.subject end;if b.kind==Enum.CameraType.Scriptable then c.CFrame=b.cf;c.Focus=b.focus end end;self.player.CameraMode=b.mode;self.cam=nil end
+ if self.hum then if self.hum.Parent then self.hum.CameraOffset=self.offset end;self.hum=nil end;self.orbitPos=nil
+end
+function V:destroy() self:releaseCamera();if self.icon~=nil then Input.MouseIconEnabled=self.icon;self.icon=nil end;self.pointer:Destroy() end
+function V:step(s,hum,menu,dt,t)
+ local camera=workspace.CurrentCamera;local hrp=hum and hum.Parent and hum.Parent:FindFirstChild("HumanoidRootPart");local enabled=s.camera and hrp and hum.Health>0 and camera
+ if self.cam and (not enabled or self.cam~=camera or self.hum~=hum) then self:releaseCamera() end
+ if enabled then
+  if not self.cam then self.cam=camera;self.before={fov=camera.FieldOfView,mode=self.player.CameraMode,kind=camera.CameraType,subject=camera.CameraSubject,cf=camera.CFrame,focus=camera.Focus};self.hum=hum;self.offset=hum.CameraOffset end
+  local lock=s.lock and s.cameraMode=="Follow" and not menu and not Gui.MenuIsOpen and Input:GetFocusedTextBox()==nil
+  local first=s.cameraMode=="First Person" and not menu;local mode=if first then Enum.CameraMode.LockFirstPerson else Enum.CameraMode.Classic;if self.player.CameraMode~=mode then self.player.CameraMode=mode end
+  local k=if s.reduce or s.follow==0 then 1 else 1-math.exp(-dt*1000/s.follow);camera.FieldOfView+=(s.fov-camera.FieldOfView)*k
+  local dest=Vector3.new(if lock then s.shoulder/10 else 0,s.cameraHeight/10,0);hum.CameraOffset=hum.CameraOffset:Lerp(dest,k)
+  if s.cameraMode=="Orbit" then
+   self:releaseLock();camera.CameraType=Enum.CameraType.Scriptable;local center=hrp.Position+Vector3.new(0,1+s.cameraHeight/10,0);self.angle+=if s.reduce then 0 else math.rad(s.orbitSpeed)*dt
+   local desired=Vector3.new(math.sin(self.angle)*s.radius,s.radius*.25,math.cos(self.angle)*s.radius);local params=self.ray or RaycastParams.new();self.ray=params;params.FilterType=Enum.RaycastFilterType.Exclude;params.FilterDescendantsInstances={hum.Parent}
+   local hit=workspace:Raycast(center,desired,params);local pos=center+desired.Unit*(if hit then math.max(.4,hit.Distance-.28) else desired.Magnitude);self.orbitPos=if hit then pos else (self.orbitPos or pos):Lerp(pos,k);camera.CFrame=CFrame.lookAt(self.orbitPos,center);camera.Focus=CFrame.new(center)
+  else
+   if camera.CameraType~=Enum.CameraType.Custom then camera.CameraType=Enum.CameraType.Custom end;camera.CameraSubject=hum;self.orbitPos=nil
+   if lock then if not self.mouse then self.mouse=Input.MouseBehavior;self.lockHum=hum;self.auto=hum.AutoRotate end;Input.MouseBehavior=Enum.MouseBehavior.LockCenter;hum.AutoRotate=false;local look=camera.CFrame.LookVector*Vector3.new(1,0,1);if look.Magnitude>.01 and not hum.Sit then hrp.CFrame=CFrame.lookAt(hrp.Position,hrp.Position+look) end else self:releaseLock() end
+  end
+ end
+ local image=s.cursorShape=="Image";if image then self.image.Image=if s.image~="" then "rbxassetid://"..s.image else "" end
+ local show=s.cursor and Input.MouseEnabled and not Gui.MenuIsOpen and (not image or s.image~="" and self.image.IsLoaded) and Input:GetLastInputType()~=Enum.UserInputType.Touch
+ if show then if self.icon==nil then self.icon=Input.MouseIconEnabled end;Input.MouseIconEnabled=false elseif self.icon~=nil then Input.MouseIconEnabled=self.icon;self.icon=nil end
+ self.pointer.Visible=show;if show then local pos=Input:GetMouseLocation();local layer=self.pointer.Parent;self.pointer.Position=UDim2.fromOffset(pos.X-layer.AbsolutePosition.X,pos.Y-layer.AbsolutePosition.Y);self.pointer.AnchorPoint=Vector2.new(s.hotX/100,s.hotY/100);self.pointer.Size=UDim2.fromOffset(s.cursorSize,s.cursorSize);self.glyph.root.Visible=not image;self.image.Visible=image
+  if image then self.image.Image="rbxassetid://"..s.image else self.glyph:shape(s.cursorShape,60);if t>=self.clock or self.settings~=s then self.clock=t+.06;local h=if s.reduce then 0 else t*s.cursorSpeed*.001;self.glyph:paint(if s.cursorRainbow then Color3.fromHSV(h%1,.6,1) else U.hex(s.cursorA),if s.cursorRainbow then Color3.fromHSV((h+.25)%1,.58,1) else U.hex(s.cursorB),s.cursorGlow,8) end end
+ end;self.settings=s
+end
+return V
+
+end
+factories["Hud"]=function()
+local U=use("Util");local Symbol=use("Symbol")
+local H={};H.__index=H
+local sizes={hp=Vector2.new(180,61),clock=Vector2.new(82,49),profile=Vector2.new(112,40),dock=Vector2.new(153,36),cross=Vector2.new(16,16)}
+local function center(p,t,size) local n=U.label(p,t,size);n.TextXAlignment=Enum.TextXAlignment.Center;return n end
+function H.new(scope,parent,preview,go,drag)
+ local self=setmetatable({view=parent,preview=preview,widgets={},markers={},extras={},spark={},time=0,phase=0,paintAt=0,last=-1},H)
+ self.layer=U.frame(parent,"Directions",nil,nil,nil,1);self.layer.ClipsDescendants=true
+ for i=1,9 do local n=U.frame(parent,"Dust",UDim2.fromScale((i*.617)%1,(i*.349)%1),UDim2.fromOffset(2+i%2,2+i%2),nil,.54);U.corner(n,8);self.spark[i]=n end
+ for _,k in {"hp","clock","profile","dock","cross"} do local d=sizes[k];local p=U.new("CanvasGroup",{Name=k,BackgroundColor3=Color3.new(1,1,1),Size=UDim2.fromOffset(d.X,d.Y),BorderSizePixel=0,ZIndex=3},parent);local g=U.gradient(p,Color3.fromRGB(53,40,75),Color3.fromRGB(22,21,36));U.corner(p,if k=="cross" then 0 else 10);local rim=U.stroke(p,Color3.fromRGB(189,156,255),.4);local scale=U.new("UIScale",{},p);self.widgets[k]={p=p,g=g,rim=rim,scale=scale};if drag then p.Active=true;scope:on(p.InputBegan,function(i) drag(i,k,p,parent) end) end end
+ local hp=self.widgets.hp.p;self.heart=Symbol.new(hp,"Heart",50);self.heart.root.Position=UDim2.fromOffset(23,20);self.heart.root.Size=UDim2.fromOffset(31,31)
+ self.hpTitle=U.label(hp,"HEALTH",11,UDim2.fromOffset(41,6),UDim2.fromOffset(67,17));self.value=U.label(hp,"—",13,UDim2.fromOffset(40,23),UDim2.fromOffset(134,20));self.stateText=U.label(hp,"",10,UDim2.fromOffset(101,6),UDim2.fromOffset(72,17));self.stateText.TextXAlignment=Enum.TextXAlignment.Right
+ self.track=U.frame(hp,"Meter",UDim2.fromOffset(10,48),UDim2.new(1,-20,0,6),Color3.fromRGB(63,54,79));U.corner(self.track,4);self.trail=U.frame(self.track,"DamageTrail",nil,nil,Color3.fromRGB(239,214,251));U.corner(self.trail,4);self.fill=U.frame(self.track,"Fill",nil,nil,Color3.new(1,1,1));U.corner(self.fill,4);self.fillG=U.gradient(self.fill,Color3.new(1,1,1),Color3.new(1,1,1),0)
+ self.clock=U.label(self.widgets.clock.p,"--:--",16,UDim2.fromOffset(9,3),UDim2.new(1,-14,0,23));self.clockSub=U.label(self.widgets.clock.p,"AETHER TIME",9,UDim2.fromOffset(9,26),UDim2.new(1,-12,0,15));self.name=center(self.widgets.profile.p,"",12)
+ for i,item in {{"HUD","HUD"},{"FX","Character"},{"Assets","Workshop"}} do local b=U.button(self.widgets.dock.p,item[1]);b.Size=UDim2.fromOffset(46,26);b.Position=UDim2.fromOffset(5+(i-1)*48,5);b.TextSize=11;scope:on(b.Activated,function() go(item[2]) end) end
+ local cr=self.widgets.cross.p;cr.BackgroundTransparency=1;self.widgets.cross.rim.Enabled=false;self.crossH=U.frame(cr,"H",UDim2.fromScale(0,.46),UDim2.fromScale(1,.08));self.crossV=U.frame(cr,"V",UDim2.fromScale(.46,0),UDim2.fromScale(.08,1))
+ return self
+end
+function H:clearMarkers() for _,m in self.markers do m.root:Destroy() end;table.clear(self.markers) end
+function H:setStyle(s)
+ local factor=if self.preview then math.clamp(self.view.AbsoluteSize.X/850,.43,.74) else math.clamp(self.view.AbsoluteSize.X/770,.66,1)
+ self.factor=factor;local accent=U.hex(s.accent);local a,b=U.hex(s.glassColor),Color3.fromRGB(17,16,30);local face=U.font(s)
+ for k,w in self.widgets do local x,y=s[k.."X"]/100,s[k.."Y"]/100;w.p.AnchorPoint=Vector2.new(x,y);w.p.Position=UDim2.fromScale(x,y);w.p.Rotation=s[k.."Turn"];w.scale.Scale=factor*s[k.."Scale"]/100;w.p.GroupTransparency=1-s[k.."Alpha"]/100;w.p.Visible=s[k];local custom=s[k.."Material"];local glow=if custom then s[k.."Glow"] else s.rim;w.rim.Color=if custom then U.hex(s[k.."First"]) else accent;w.rim.Transparency=1-glow/100;w.rim.Thickness=1+glow*.012;w.g.Color=if custom then ColorSequence.new(U.hex(s[k.."First"]),U.hex(s[k.."Second"])) else ColorSequence.new(a,b);w.g.Rotation=25;w.p.BackgroundTransparency=if k=="cross" then 1 else 1-s.glass/100 end
+ self.widgets.hp.p.Size=UDim2.fromOffset(180,if s.compact then 44 else 61);self.track.Visible=not s.compact;self.crossH.BackgroundColor3=accent;self.crossV.BackgroundColor3=accent
+ if s.crossMaterial then self.crossH.BackgroundColor3=U.hex(s.crossFirst);self.crossV.BackgroundColor3=U.hex(s.crossSecond);for _,line in {self.crossH,self.crossV} do local rim=line:FindFirstChildOfClass("UIStroke") or U.stroke(line,accent,1);rim.Color=line.BackgroundColor3;rim.Thickness=1+s.crossGlow*.02;rim.Transparency=1-s.crossGlow*.007 end else for _,line in {self.crossH,self.crossV} do local rim=line:FindFirstChildOfClass("UIStroke");if rim then rim.Transparency=1 end end end
+ for _,item in {{self.clock,16},{self.clockSub,9},{self.hpTitle,11},{self.value,14},{self.stateText,10},{self.name,12}} do local n=item[1];n.FontFace=face;n.TextSize=item[2]*s.fontSize/100;n.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA);n.TextStrokeColor3=U.hex(s.fontB);n.TextStrokeTransparency=1-s.fontOutline/100;local grad=n:FindFirstChildOfClass("UIGradient") or U.gradient(n,accent,b,0);grad.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB));grad.Enabled=s.fontGradient end
+ for _,n in {self.clock,self.value,self.name} do local glow=n:FindFirstChildOfClass("UIStroke") or U.stroke(n,accent,.9);glow.ApplyStrokeMode=Enum.ApplyStrokeMode.Contextual;glow.Color=U.hex(s.fontB);glow.Thickness=.5+s.fontGlow*.016;glow.Transparency=1-s.fontGlow*.006;glow.Enabled=s.fontGlow>0 end
+ self.settings=s;self.width=self.view.AbsoluteSize.X
+end
+function H:vitals(s,f,dt)
+ local hp,max=f.hp,f.max;local w=self.widgets.hp;w.p.Visible=s.hp and hp~=nil;if hp==nil then self.last=-1;self.phase=0;return end
+ local ratio=math.clamp(hp/math.max(.001,max),0,1);local dead=hp<=0;local band=if dead then "DEAD" elseif ratio<=.30 then "CRITICAL" elseif ratio<=.65 then "ALERT" else "CALM"
+ if self.last~=hp or self.gen~=f.gen or self.maximum~=max then
+  self.effect=if self.gen~=nil and (f.gen~=self.gen or self.last==0 and hp>0) then "Revive" elseif self.last>=0 and hp<self.last then "Damage" elseif self.last>=0 and hp>self.last then "Heal" else "None";self.age=0;self.from=self.shown or hp;self.fromRatio=self.bar or ratio;self.fromTrail=math.max(self.trailRatio or ratio,self.bar or ratio);self.last=hp;self.gen=f.gen;self.maximum=max;w.p:SetAttribute("Effect",self.effect);w.p:SetAttribute("Health",hp);w.p:SetAttribute("MaxHealth",max);w.p:SetAttribute("Life",band)
+ end
+ self.age+=dt;local dur=s.duration/1000*100/s.speed;local q=if dead or s.reduce then 1 else U.ease(self.age/dur,s.ease);self.shown=self.from+(hp-self.from)*q;self.bar=self.fromRatio+(ratio-self.fromRatio)*q
+ self.trailRatio=if self.effect=="Damage" and not s.reduce and not dead then self.fromTrail+(ratio-self.fromTrail)*U.ease((self.age-.20)/dur,s.ease) else self.bar
+ self.fill.Size=UDim2.fromScale(self.bar,1);self.trail.Size=UDim2.fromScale(self.trailRatio,1);self.value.Text=string.format("%d / %d HP",math.ceil(self.shown-.00001),math.ceil(max));self.stateText.Text=band
+ local a,b;if dead then a,b=Color3.fromRGB(91,85,102),Color3.fromRGB(104,98,115) elseif ratio<=.3 then a,b=Color3.fromRGB(245,46,78),Color3.fromRGB(255,109,169) elseif ratio<=.65 then a,b=Color3.fromRGB(255,225,99),Color3.fromRGB(255,144,60) else a,b=U.hex(s.accent),U.hex(s.secondary) end
+ if band=="CALM" and s.hpMaterial then a,b=U.hex(s.hpFirst),U.hex(s.hpSecond) end
+ local mix=if s.reduce or dead then 1 else 1-math.exp(-dt*12);self.tint=(self.tint or a):Lerp(a,mix);self.tint2=(self.tint2 or b):Lerp(b,mix);self.fillG.Color=ColorSequence.new(self.tint,self.tint2)
+ local beat=0;if not dead and not s.reduce then local period=if ratio<=.3 then .33+.5*ratio elseif ratio<=.65 then .62+.45*ratio else .91+.62*ratio;self.phase=(self.phase+dt*s.speed/100/period)%1;beat=math.max(0,1-math.abs(self.phase-.12)*9)+.6*math.max(0,1-math.abs(self.phase-.31)*13) else self.phase=0 end
+ local bump=if not s.reduce and not dead and (self.effect=="Heal" or self.effect=="Revive") then math.sin(math.pi*q)*(if self.effect=="Revive" then .22 else .09) else 0
+ local rim=if s.hpMaterial then s.hpGlow else s.rim;local side=30*(1+beat*(.12+.15*(1-ratio))+bump);self.heart.root.Size=UDim2.fromOffset(side,side);self.heart:paint(self.tint,self.tint2,if dead then 0 else math.clamp(rim+beat*25,0,100),8);self.heart.root.GroupTransparency=if dead then .55 else 0
+ local shake=if not s.reduce and not dead and self.effect=="Damage" and self.age<.28 then math.sin(self.age*100)*3*(1-self.age/.28) else 0;w.p.Position=UDim2.new(s.hpX/100,shake,s.hpY/100,0);w.rim.Color=self.tint;w.rim.Transparency=if dead then .9 else 1-math.min(1,(rim+beat*15)/100)
+end
+function H:marker(id)
+ local root=U.frame(self.layer,"Marker_"..id,nil,UDim2.fromOffset(40,40),nil,1);root.AnchorPoint=Vector2.new(.5,.5);local glyph=Symbol.new(root,"Soft Triangle",30)
+ local label=U.label(root,"",11,UDim2.new(.5,-65,1,-4),UDim2.fromOffset(130,15));label.TextXAlignment=Enum.TextXAlignment.Center;label.TextStrokeTransparency=.3
+ local m={root=root,glyph=glyph,label=label,fade=0};self.markers[id]=m;return m
+end
+function H:directions(s,f,dt,t,paint)
+ self.serial=(self.serial or 0)+1;local view=self.view.AbsoluteSize;local w,h=view.X,view.Y
+ if s.indicators and w>0 and h>0 then for _,p in f.targets do if p.visible or p.distance>s.reach then continue end;local id=p.id;local m=self.markers[id] or self:marker(id);m.serial=self.serial;local custom=s.players[id];m.glyph:shape(if custom then custom.shape else s.shape,s.corners)
+  local dir=Vector2.new(p.x*w,p.y*h);if dir.Magnitude<.001 then dir=Vector2.yAxis end;dir=dir.Unit;local sz=s.size*self.factor*math.clamp(1.35/(1+p.distance*.002),.65,1.35);local px=math.max(sz*.7,w*s.edge/100);local py=math.max(sz*.7+(if s.labels=="Off" then 0 else 12),h*s.edge/100);local d=math.max(0,math.min((w/2-px)/math.max(.0001,math.abs(dir.X)),(h/2-py)/math.max(.0001,math.abs(dir.Y))));local dest=view*.5+dir*d
+  local k=if s.reduce or s.turn==0 then 1 else 1-math.exp(-dt*4500/s.turn);local angle=math.deg(math.atan2(dir.X,-dir.Y));m.pos=(m.pos or dest):Lerp(dest,k);m.angle=m.angle or angle;m.angle+=((angle-m.angle+180)%360-180)*k;m.root.Position=UDim2.fromOffset(m.pos.X,m.pos.Y);m.glyph.root.Rotation=m.angle
+  local pulse=if s.pulse and not s.reduce then 1+.075*math.sin(t*4*s.arrowSpeed/100) else 1;m.root.Size=UDim2.fromOffset(sz*pulse,sz*pulse);m.fade=if s.reduce then 1 else math.min(1,m.fade+dt*6)
+  if paint or m.style~=s then local time=if s.reduce then 0 else t;local c=if custom then U.hex(custom.color) elseif s.arrowRainbow then Color3.fromHSV((time*.14*s.arrowSpeed/100)%1,.68,1) else U.hex(s.arrowA);local b=if s.arrowRainbow then Color3.fromHSV((time*.14*s.arrowSpeed/100+.29)%1,.62,1) else U.hex(s.arrowB);m.glyph:paint(c,b,s.ink,s.spread);m.label.FontFace=U.font(s);m.style=s end
+  local title=if custom and custom.label~="" then custom.label else p.label;local dist=math.round(p.distance).."m";m.label.Visible=s.labels~="Off";m.label.Text=if s.labels=="Both" then title.." · "..math.round(p.distance).." st" elseif s.labels=="Distance" then math.round(p.distance).." st" else title
+ end end
+ for id,m in self.markers do if m.serial~=self.serial then m.fade=if s.reduce then 0 else math.max(0,m.fade-dt*7) end;if m.fade<=0 then m.root:Destroy();self.markers[id]=nil else local alpha=1-m.fade*s.arrowAlpha/100;m.glyph.root.GroupTransparency=alpha;m.label.TextTransparency=alpha end end
+end
+function H:step(s,f,dt)
+ if self.settings~=s or self.width~=self.view.AbsoluteSize.X then self:setStyle(s) end;self.time+=dt;local t=self.time;local paint=t>=self.paintAt;if paint then self.paintAt=t+.075 end
+ self:vitals(s,f,dt);self:directions(s,f,dt,t,paint);self.name.Text=f.name;self.clock.Text=os.date("%H:%M");self.clockSub.Text=f.mode
+ if paint then for k,w in self.widgets do if w.p.Visible and s[k.."Material"] and s[k.."Flow"] and not s.reduce and (k~="hp" or (f.hp or 0)>0) then w.g.Rotation=(t*s[k.."FlowRate"])%360 end end end
+ if paint then for i,n in self.spark do n.Visible=s.sparkles;if s.sparkles then n.BackgroundColor3=U.hex(s.secondary);n.Position=UDim2.fromScale((i*.617)%1,(i*.349-(if s.reduce then 0 else t*.014))%1) end end end
+ for id,n in self.extras do if not f.widgets[id] then n:Destroy();self.extras[id]=nil end end
+ for id,w in f.widgets do local n=self.extras[id];if not n then n=U.label(self.view,"",14,nil,UDim2.fromOffset(150,25));n.Name="Cue_"..id;n.ZIndex=4;self.extras[id]=n end;n.Text=w.text;n.FontFace=U.font(s);n.TextColor3=U.hex(s.fontA);n.TextStrokeTransparency=.4;local wave=if s.reduce then 0 else math.sin(t*3);n.Position=UDim2.new(w.x/100,0,w.y/100,if w.animation=="float" then wave*5 else 0);n.TextTransparency=if w.animation=="pulse" then .17+wave*.16 else 0 end
+end
+return H
+
+end
+factories["Cues"]=function()
+-- Deliberately bounded HUD dialect. Parse data into an AST; never compile user strings as Roblox scripts.
+local S=use("Schema")
+local C={}
+local api={widget=4,animate=2,setGlow=2,indicator=1,theme=1,join=2}
+local precedence={['or']=1,['and']=2,['==']=3,['~=']=3,['<']=3,['>']=3,['<=']=3,['>=']=3,['..']=4,['+']=5,['-']=5,['*']=6,['/']=6,['%']=6}
+local function lex(source)
+ assert(type(source)=="string" and #source<=8192,"Source limit: 8192 bytes");local t={};local i,line=1,1
+ while i<=#source do local c=source:sub(i,i);local rest=source:sub(i);local val,kind,n
+  if c:match("%s") then if c=="\n" then line+=1 end;i+=1;continue elseif rest:sub(1,2)=="--" then i=source:find("\n",i,true) or #source+1;continue
+  elseif c=='"' or c=="'" then local s="";local j=i+1;while j<=#source and source:sub(j,j)~=c do local ch=source:sub(j,j);if ch=="\\" then j+=1;ch=source:sub(j,j);ch=({n="\n",t="\t",r="\r"})[ch] or ch end;s..=ch;j+=1 end;assert(j<=#source,"Line "..line..": unterminated string");assert(#s<=256,"Literal exceeds 256 bytes");val,kind,n=s,"lit",j-i+1
+  elseif c:match("[%a_]") then val=rest:match("^[%a_][%w_]*");kind="id";n=#val
+  elseif c:match("%d") then local s=rest:match("^%d+%.%d+") or rest:match("^%d+");val,kind,n=tonumber(s),"lit",#s
+  else val=rest:sub(1,2);if not precedence[val] then val=c end;assert(precedence[val] or string.find("().,=;",val,1,true),"Line "..line..": unsupported token "..val);kind="op";n=#val end
+  table.insert(t,{v=val,k=kind,line=line});assert(#t<2048,"Program too large");i+=n
+ end;table.insert(t,{v="<eof>",k="end",line=line});return t
+end
+function C.compile(source)
+ local tok=lex(source);local at=1;local depth=0;local handlers={};local expr,block
+ local function enter() depth+=1;assert(depth<=36,"Nesting limit") end
+ local function err(msg) error("Line "..tok[at].line..": "..msg,0) end
+ local function is(s) return tok[at].k~="lit" and tok[at].v==s end
+ local function take(s) if is(s) then at+=1;return true end;return false end
+ local function want(s) if not take(s) then err("expected "..s) end end
+ local function ident() local t=tok[at];if t.k~="id" then err("expected a name") end;at+=1;return t.v end
+ local function call() want(".");local k=ident();if not api[k] then err("unknown hud."..k) end;want("(");local args={};if not is(")") then repeat table.insert(args,expr(1)) until not take(",") end;want(")");if #args~=api[k] then err("wrong argument count for hud."..k) end;return {"call",k,args} end
+ expr=function(min)
+  enter();local t=tok[at];local n;if t.k=="lit" then at+=1;n={"lit",t.v} elseif take("true") then n={"lit",true} elseif take("false") then n={"lit",false} elseif take("(") then n=expr(1);want(")") elseif take("-") then n={"neg",expr(7)} elseif take("not") then n={"not",expr(7)} else local k=ident();n=if k=="hud" then call() else {"var",k} end
+  while true do local op=tok[at];local rank=if op.k~="lit" then precedence[op.v] else nil;if not rank or rank<min then break end;at+=1;n={"bin",op.v,n,expr(rank+1)} end;depth-=1;return n
+ end
+ block=function(top)
+  enter();local body={};while not(is("<eof>") or is("end") or is("else") or is("elseif")) do
+   if take(";") then continue elseif take("function") then local k=ident();if not top or handlers[k] or (k~="onHealthChanged" and k~="onEvent") then err("invalid event handler") end;want("(");local a=ident();want(",");local b=ident();want(")");handlers[k]={a,b,block(false)};want("end")
+   elseif take("if") then local branches={};repeat local test=expr(1);want("then");table.insert(branches,{test,block(false)}) until not take("elseif");local fallback=if take("else") then block(false) else {};want("end");table.insert(body,{"if",branches,fallback})
+   else local loc=take("local");local k=ident();if k=="hud" and not loc then table.insert(body,call()) else want("=");table.insert(body,{"assign",k,expr(1)}) end end
+  end;depth-=1;return body
+ end
+ local main=block(true);want("<eof>");return {main=main,events=handlers}
+end
+function C.start(source,grants)
+ local program=C.compile(source);local vm={widgets={},overrides={},running=true};local base={};local steps=0;local eval,exec
+ local function tick() steps+=1;assert(steps<=1500,"Callback operation budget exceeded") end
+ local function text(v,n) assert(type(v)=="string" or type(v)=="number","Expected text");v=tostring(v);assert(#v<=n,"Text limit exceeded");return v end
+ local function num(n,lo,hi) assert(type(n)=="number" and n>=lo and n<=hi,"Numeric value out of range");return n end
+ local function invoke(k,a)
+  if k=="join" then return text(text(a[1],128)..text(a[2],128),128) end
+  if k=="widget" or k=="animate" then assert(grants.widgets,"Grant Widgets permission");local id=text(a[1],32);assert(#id>0,"Empty widget ID");if k=="widget" then local n=0;for _ in vm.widgets do n+=1 end;assert(vm.widgets[id] or n<8,"Widget limit: 8");vm.widgets[id]={text=text(a[2],128),x=num(a[3],0,100),y=num(a[4],0,100),animation=if vm.widgets[id] then vm.widgets[id].animation else "none"}
+   else assert(vm.widgets[id] and table.find({"none","pulse","float"},a[2]),"Expected widget and motion name");vm.widgets[id].animation=a[2] end
+  else assert(grants.appearance,"Grant Appearance permission");if k=="setGlow" then assert(a[1]=="heart","Expected heart");vm.overrides.rim=math.round(num(a[2],0,100)) elseif k=="indicator" then local target=text(a[1],32):lower();local found;for _,s in S.shapes do if s:lower()==target then found=s;break end end;assert(found,"Unknown indicator");vm.overrides.shape=found elseif k=="theme" then local label=text(a[1],16);local theme=S.presets.Theme[label:sub(1,1):upper()..label:sub(2):lower()];assert(theme,"Unknown theme");for key,v in theme do vm.overrides[key]=v end end end;return true
+ end
+ eval=function(n,env) tick();local k=n[1];if k=="lit" then return n[2] elseif k=="var" then local v=env[n[2]];assert(v~=nil,"Unknown variable: "..n[2]);return v elseif k=="neg" then return -eval(n[2],env) elseif k=="not" then return not eval(n[2],env) elseif k=="call" then local args={};for i,e in n[3] do args[i]=eval(e,env) end;return invoke(n[2],args) end
+  local op=n[2];local a=eval(n[3],env);if op=="and" then return a and eval(n[4],env) elseif op=="or" then return a or eval(n[4],env) end;local b=eval(n[4],env)
+  if op=="==" then return a==b elseif op=="~=" then return a~=b elseif op=="<" then return a<b elseif op==">" then return a>b elseif op=="<=" then return a<=b elseif op==">=" then return a>=b elseif op==".." then return invoke("join",{a,b}) end
+  local v=if op=="+" then a+b elseif op=="-" then a-b elseif op=="*" then a*b elseif op=="/" then a/b else a%b;return num(v,-1e12,1e12)
+ end
+ exec=function(body,env) for _,n in body do tick();if n[1]=="assign" then env[n[2]]=eval(n[3],env) elseif n[1]=="call" then eval(n,env) else local branch=n[3];for _,pair in n[2] do if eval(pair[1],env) then branch=pair[2];break end end;exec(branch,env) end end end
+ exec(program.main,base)
+ function vm:event(action,hp,max,changed)
+  if not self.running or not grants.events then return end;steps=0;local function run(k,a,b) local h=program.events[k];if h then local e=table.clone(base);e[h[1]]=a;e[h[2]]=b;exec(h[3],e) end end;if changed then run("onHealthChanged",hp,max) end;run("onEvent",action,hp)
+ end
+ function vm:stop() self.running=false;table.clear(self.widgets);table.clear(self.overrides) end
+ return vm
+end
+return C
+
+end
+factories["Controls"]=function()
+local Input=game:GetService("UserInputService");local Tween=game:GetService("TweenService");local U=use("Util");local S=use("Schema")
+local UI={};UI.__index=UI
+local bg=Color3.fromRGB(19,16,32);local dim=Color3.fromRGB(173,163,197);local soft=Color3.fromRGB(43,35,60)
+function UI.new(app,gui,scope)
+ local self=setmetatable({app=app,gui=gui,scope=scope,syncs={},tab="Dashboard",opened=true,seq=0},UI)
+ self.stage=U.frame(gui,"StudioArea",nil,nil,nil,1);self.panel=U.frame(self.stage,"Studio",nil,nil,bg,.035);self.panel.Active=true;U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3);U.gradient(self.panel,Color3.new(1,1,1),Color3.fromRGB(192,180,215),82)
+ self.header=U.frame(self.panel,"Titlebar",nil,UDim2.new(1,0,0,46),nil,1);self.header.Active=true;self.brand=U.label(self.header,"A E T H E R",18,UDim2.fromOffset(16,2),UDim2.fromOffset(135,40));self.tag=U.label(self.header,"",11,UDim2.fromOffset(147,3),UDim2.new(1,-211,0,40));self.tag.TextColor3=dim
+ self.close=U.button(self.header,"×");self.close.Modal=true;self.close.Size=UDim2.fromOffset(33,29);self.close.Position=UDim2.new(1,-43,0,8);scope:on(self.close.Activated,function() self:show(false) end)
+ self.reopen=U.button(self.stage,"A  /  STUDIO");self.reopen.Size=UDim2.fromOffset(99,31);self.reopen.Position=UDim2.fromOffset(12,10);self.reopen.Visible=false;scope:on(self.reopen.Activated,function() self:show(true) end)
+ self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
+ self.pageBox=U.frame(self.panel,"PageArea",nil,nil,nil,1);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
+ self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Fonts","Simulator","Scripts","Workshop","Profiles","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;scope:on(b.Activated,function() self:open(name) end) end
+ function self:layout()
+  local sz=self.stage.AbsoluteSize;if sz.X<2 or sz.Y<2 then return end;local w,h=math.min(776,sz.X-16),math.min(526,sz.Y-24);local narrow=w<560;local p=self.panel;p.Size=UDim2.fromOffset(w,h);local xy=self.xy or Vector2.new((sz.X-w)*.5,(sz.Y-h)*.47);self.xy=Vector2.new(math.clamp(xy.X,0,sz.X-w),math.clamp(xy.Y,0,sz.Y-h));p.Position=UDim2.fromOffset(self.xy.X,self.xy.Y)
+  self.nav.Position=UDim2.fromOffset(10,49);self.nav.Size=if narrow then UDim2.new(1,-20,0,35) else UDim2.new(0,122,1,-85);self.navList.FillDirection=if narrow then Enum.FillDirection.Horizontal else Enum.FillDirection.Vertical;self.nav.AutomaticCanvasSize=if narrow then Enum.AutomaticSize.X else Enum.AutomaticSize.Y;self.nav.ScrollingDirection=if narrow then Enum.ScrollingDirection.X else Enum.ScrollingDirection.Y
+  for _,b in self.buttons do b.Size=if narrow then UDim2.fromOffset(91,30) else UDim2.new(1,-5,0,32) end;self.pageBox.Position=UDim2.fromOffset(if narrow then 12 else 145,if narrow then 90 else 50);self.pageBox.Size=if narrow then UDim2.new(1,-24,1,-126) else UDim2.new(1,-158,1,-88)
+ end
+ scope:on(self.stage:GetPropertyChangedSignal("AbsoluteSize"),function() self:layout() end);self:layout()
+ scope:on(self.header.InputBegan,function(i) self:begin(i,function(point,start,origin) self.xy=origin+point-start;self:layout() end,self.xy) end)
+ scope:on(Input.InputChanged,function(i) local d=self.drag;if d and (i==d.i or d.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseMovement) then d.fn(Vector2.new(i.Position.X,i.Position.Y),d.start,d.origin) end end)
+ scope:on(Input.InputEnded,function(i) if self.drag and (self.drag.i==i or self.drag.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseButton1) then self.drag=nil end end)
+ scope:on(Input.WindowFocusReleased,function() self.drag=nil end);scope:add(function() if self.page then self.page:clear() end end);return self
+end
+function UI:begin(i,fn,origin) if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end;local v=Vector2.new(i.Position.X,i.Position.Y);self.drag={i=i,start=v,fn=fn,origin=origin};fn(v,v,origin) end
+function UI:show(on) self.opened=on;self.panel.Visible=on;self.reopen.Visible=not on;self.drag=nil;if self.app.onMenu then self.app:onMenu(on) end end
+function UI:message(s) self.status.Text=s end
+function UI:open(tab)
+ if not self.buttons[tab] then return end;self:show(true);self.drag=nil;if self.page then self.page:clear() end;self.app.preview=nil;self.page=U.scope();self.syncs={};self.seq=0;self.tab=tab
+ for k,b in self.buttons do b.BackgroundColor3=if k==tab then Color3.fromRGB(93,67,138) else soft end
+ local sc=self.page:add(U.new("ScrollingFrame",{Name="Page_"..tab,Size=UDim2.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=4,ScrollBarImageColor3=dim,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y},self.pageBox));U.new("UIListLayout",{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder},sc);self.sc=sc
+ self:title(tab:upper().."   /   AETHER STUDIO");self.app:page(tab,self);self:sync()
+ if not self.app.s.reduce then local fade=Tween:Create(self.titleLabel,TweenInfo.new(.18),{TextTransparency=0});self.titleLabel.TextTransparency=.6;self.page:add(fade);fade:Play() end
+end
+function UI:row(h,name) self.seq+=1;local f=U.frame(self.sc,name or "Row",nil,UDim2.new(1,-8,0,h),soft,.47);f.LayoutOrder=self.seq;U.corner(f,8);return f end
+function UI:title(str) local f=self:row(26,"Heading");f.BackgroundTransparency=1;local n=U.label(f,str,13);n.TextColor3=U.hex(self.app.s.accent);self.titleLabel=n;return n end
+function UI:note(str,h) local f=self:row(h or 36,"Note");f.BackgroundTransparency=1;local l=U.label(f,str,12);l.TextWrapped=true;l.TextTruncate=Enum.TextTruncate.None;l.TextColor3=dim;return l end
+function UI:watch(fn) table.insert(self.syncs,fn);fn() end
+function UI:sync() if not self.panel.Parent then return end;self.brand.TextColor3=U.hex(self.app.s.accent);self.outline.Color=self.brand.TextColor3;self.tag.Text=self.app.mode.."   /   "..self.tab;for _,f in self.syncs do f() end end
+function UI:action(fn) local ok,err=pcall(fn);if not ok then self.app:log("Error",tostring(err));self:message(tostring(err):sub(-150)) end end
+function UI:chips(items,fn,cols,selected)
+ cols=cols or 3;for start=1,#items,cols do local row=self:row(33,"Actions");row.BackgroundTransparency=1;for j=0,math.min(cols-1,#items-start) do local item=items[start+j];local b=U.button(row,item);b.Name=item;b.Size=UDim2.new(1/cols,-4,1,0);b.Position=UDim2.fromScale(j/cols,0);self.page:on(b.Activated,function() self:action(function() fn(item) end) end);if selected then self:watch(function() b.BackgroundColor3=if selected()==item then Color3.fromRGB(98,68,150) else soft end) end end end
+end
+function UI:box(label,initial,h,commit)
+ self:title(label);local r=self:row(h or 34,"Field");local t=U.new("TextBox",{Name=label,Size=UDim2.new(1,-12,1,-4),Position=UDim2.fromOffset(6,2),ClearTextOnFocus=false,MultiLine=(h or 0)>45,TextWrapped=(h or 0)>45,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=if (h or 0)>45 then Enum.TextYAlignment.Top else Enum.TextYAlignment.Center,BackgroundTransparency=1,Text=initial or "",PlaceholderText=label,Font=Enum.Font.Code,TextSize=13,TextColor3=Color3.fromRGB(232,222,255)},r);if commit then self.page:on(t.FocusLost,function() self:action(function() commit(t.Text) end) end) end;return t
+end
+function UI:control(k)
+ local d=S.defs[k];local app=self.app;local a=d.kind;if a=="players" then return end
+ if a=="text" or a=="asset" then local box=self:box(d.label,tostring(app.s[k]),32,function(v) app:set(k,v) end);self:watch(function() if not box:IsFocused() then box.Text=tostring(app.s[k]) end end);return end
+ local row=self:row(if a=="number" then 48 else 34,k);local label=U.label(row,d.label,12,UDim2.fromOffset(9,0),UDim2.new(.57,0,0,30));label.TextColor3=Color3.fromRGB(219,210,234)
+ if a=="bool" or a=="choice" then local b=U.button(row,"");b.Name="Value";b.Position=UDim2.new(.58,0,0,3);b.Size=UDim2.new(.42,-6,1,-6);self.page:on(b.Activated,function() if a=="bool" then app:set(k,not app.s[k]) else app:set(k,d.min[(table.find(d.min,app.s[k]) or 0)%#d.min+1]) end end);self:watch(function() b.Text=if a=="bool" then (if app.s[k] then "ON" else "OFF") else tostring(app.s[k]).."  ›";b.BackgroundColor3=if a=="bool" and not app.s[k] then Color3.fromRGB(48,45,59) else Color3.fromRGB(84,61,118) end);return end
+ local box=U.new("TextBox",{Name="Value",Position=UDim2.new(.6,0,0,3),Size=UDim2.new(.4,-7,0,23),BackgroundColor3=bg,ClearTextOnFocus=false,TextColor3=Color3.new(1,1,1),Font=Enum.Font.Code,TextSize=12,Text="",BorderSizePixel=0},row);U.corner(box,6)
+ self.page:on(box.FocusLost,function() self:action(function() app:set(k,if a=="number" then math.clamp(math.round(assert(tonumber(box.Text),"Enter a number")),d.min,d.max) else (box.Text:gsub("^#",""))) end);self:sync() end)
+ if a=="color" then self:watch(function() if not box:IsFocused() then box.Text="#"..app.s[k] end;label.TextColor3=U.hex(app.s[k]) end);return end
+ local hit=U.new("TextButton",{Name="Slider",Position=UDim2.fromOffset(10,26),Size=UDim2.new(1,-20,0,21),BackgroundTransparency=1,Text="",AutoButtonColor=false},row);local track=U.frame(hit,"Track",UDim2.fromScale(0,.37),UDim2.new(1,0,0,5),bg);U.corner(track,4);local fill=U.frame(track,"Fill",nil,nil,U.hex(app.s.accent));U.corner(fill,4);local dot=U.frame(fill,"Thumb",UDim2.fromScale(1,.5),UDim2.fromOffset(11,11),Color3.fromRGB(237,225,255));dot.AnchorPoint=Vector2.new(.5,.5);U.corner(dot,9)
+ self.page:on(hit.InputBegan,function(i) self:begin(i,function(pos) local t=math.clamp((pos.X-hit.AbsolutePosition.X)/math.max(1,hit.AbsoluteSize.X),0,1);app:set(k,math.round(d.min+t*(d.max-d.min))) end) end)
+ self:watch(function() if not box:IsFocused() then box.Text=tostring(app.s[k]) end;fill.Size=UDim2.fromScale((app.s[k]-d.min)/(d.max-d.min),1);fill.BackgroundColor3=U.hex(app.s.accent) end)
+end
+function UI:group(g,skip) for _,k in S.order do if S.defs[k].group==g and not(skip and skip[k]) then self:control(k) end end end
+return UI
+
+end
+factories["Storage"]=function()
+local RS=game:GetService("ReplicatedStorage");local Http=game:GetService("HttpService");local S=use("Schema")
+local Store={};Store.__index=Store
+function Store.new(app,scope)
+ local self=setmetatable({app=app,revision=0,serial=0,dirty=false,id=Random.new():NextInteger(1,1000000000),lastEdit=0,lastWrite=-100,status="Local session · JSON available",ready=false},Store)
+ local function attach(r)
+  if self.remote or r.Name~="AetherFullStoreV1" or not r:IsA("RemoteEvent") then return end;self.remote=r
+  scope:on(r.OnClientEvent,function(id,ok,msg,rev,body)
+   local p=self.pending;if not p or id~=p.id then return end;self.pending=nil;self.status=msg
+   if not ok then
+    if msg=="Revision conflict · reload or export" or p.op=="read" then self.ready=false end
+    -- A fresh mount can read while its predecessor's write/read is still settling.
+    if msg=="Store busy · retry" and p.op=="read" and p.attempt<5 then self.retry={at=os.clock()+.4*2^p.attempt,attempt=p.attempt+1,force=p.force,serial=p.serial};self.status="Store busy · retrying read" end
+    app:log("Store",self.status);return
+   end
+   self.revision=rev;if p.op=="read" then local good,bank=pcall(function() return S.bank(Http:JSONDecode(body)) end);if not good then self.status="Unreadable bank · local edits retained";return end
+    if p.serial==self.serial and (p.force or not self.dirty) then app:restore(bank);self.dirty=false
+    elseif rev>0 then self.ready=false;self.status="Saved bank exists · export local edits, then reload";app:log("Store",self.status);return end;self.ready=true
+   elseif self.serial==p.serial then self.dirty=false end;app:log("Store",msg)
+  end);self:read(false)
+ end
+ scope:on(RS.ChildAdded,attach);local r=RS:FindFirstChild("AetherFullStoreV1");if r then attach(r) end;return self
+end
+function Store:edit() self.serial+=1;self.dirty=true;self.lastEdit=os.clock() end
+function Store:request(op,body,force,attempt,serial)
+ if not self.remote or not self.remote.Parent then self.status="Local session only · export a JSON bank";return false end
+ if self.pending then return false end;self.retry=nil;self.id+=1;self.pending={id=self.id,op=op,serial=serial or self.serial,attempt=attempt or 0,force=force,start=os.clock()};self.status=if op=="read" then "Reading bank…" else "Saving bank…";self.remote:FireServer(self.id,op,self.revision,body);return true
+end
+function Store:read(force) return self:request("read",nil,force) end
+function Store:save()
+ if not self.ready then self.status=if self.remote then "Read/reload before saving · export to keep local edits" else "Local session only · export a JSON bank";return false end
+ local data=Http:JSONEncode(self.app.bank);if #data>110000 then self.status="Bank exceeds 110 KB · remove or export assets";return false end;self.lastWrite=os.clock();return self:request("write",data,false)
+end
+function Store:tick(now)
+ if self.retry and not self.pending and now>=self.retry.at then local r=self.retry;self:request("read",nil,r.force,r.attempt,r.serial) end
+ if self.pending and now-self.pending.start>18 then self.pending=nil;self.ready=false;self.status="Store timeout · reload or export" end
+ if self.dirty and self.ready and not self.pending and now-self.lastEdit>2 and now-self.lastWrite>12 then self:save() end
+end
+return Store
+
+end
+factories["Pages"]=function()
+local U=use("Util");local S=use("Schema");local Symbol=use("Symbol");local Hud=use("Hud");local Avatar=use("Avatar");local Cues=use("Cues");local Http=game:GetService("HttpService")
+local E={}
+local function names(t) local a=U.keys(t);return a end
+local function preset(ui,a,group)
+ local p=S.presets[group];if p then ui:title("PRESETS");ui:chips(names(p),function(n) a:patch(p[n]);a:log("Preset",n) end,3) end
+end
+local function preview(ui,a)
+ local f=ui:row(149,"LivePreview");f.ClipsDescendants=true;f.BackgroundTransparency=0;U.gradient(f,Color3.fromRGB(105,87,145),Color3.fromRGB(49,46,94),36)
+ local h=Hud.new(ui.page,f,true,function(tab) ui:open(tab) end,function(i,k,n,v) a:drag(i,k,n,v) end);a.preview={hud=h}
+end
+local function avatarPreview(ui,a)
+ local f=ui:row(165,"RigPreview");local view=U.new("ViewportFrame",{Size=UDim2.fromScale(1,1),BorderSizePixel=0,BackgroundColor3=Color3.fromRGB(21,19,36),Ambient=Color3.fromRGB(155,145,175),LightColor=Color3.fromRGB(246,222,255),LightDirection=Vector3.new(-1,-1,-.6)},f);U.corner(view,10);local w=U.new("WorldModel",{},view);local rig=Avatar.mannequin(w);local cam=U.new("Camera",{FieldOfView=34,CFrame=CFrame.lookAt(Vector3.new(2.3,3.6,9.3),Vector3.new(0,2.1,0))},view);view.CurrentCamera=cam;local avatar=Avatar.new(w,true);a.preview={avatar=avatar,rig=rig};ui.page:add(function() avatar:clear() end)
+end
+local function gallery(ui,a)
+ ui:title("24 DIRECTION STYLES");for i=1,#S.shapes,4 do local r=ui:row(56,"ShapeGallery");for j=0,3 do local n=S.shapes[i+j];local b=U.button(r,"");b.Name=n;b.Position=UDim2.fromScale(j/4,0);b.Size=UDim2.new(.25,-3,1,0);local g=Symbol.new(b,n,30);g.root.Position=UDim2.fromScale(.5,.34);g.root.Size=UDim2.fromOffset(33,33);local l=U.label(b,n,10,UDim2.fromScale(0,.65),UDim2.fromScale(1,.3));l.TextXAlignment=Enum.TextXAlignment.Center;ui.page:on(b.Activated,function() a:set("shape",n) end);ui:watch(function() b.BackgroundColor3=if a.s.shape==n then U.hex("624785") else U.hex("30273E");g:paint(U.hex(a.s.arrowA),U.hex(a.s.arrowB),a.s.ink,a.s.spread) end) end end
+end
+local function simMap(ui,a)
+ local map=ui:row(132,"VirtualMap");map.ClipsDescendants=true;map.BackgroundColor3=U.hex("211E36");local center=U.label(map,"CAMERA ↑",11,UDim2.new(.5,-32,.5,-8),UDim2.fromOffset(70,18));center.TextColor3=U.hex(a.s.accent)
+ for _,p in a.sim.players do local b=U.button(map,tostring(p.id));b.AnchorPoint=Vector2.new(.5,.5);b.Size=UDim2.fromOffset(27,25);b.Position=UDim2.fromScale(.5+p.x*.45,.5+p.y*.45);ui.page:on(b.InputBegan,function(i) ui:begin(i,function(pos) local rel=pos-map.AbsolutePosition;p.x=math.clamp((rel.X/map.AbsoluteSize.X-.5)/.45,-1,1);p.y=math.clamp((rel.Y/map.AbsoluteSize.Y-.5)/.45,-1,1);b.Position=UDim2.fromScale(.5+p.x*.45,.5+p.y*.45) end) end) end
+end
+local function library(ui,a,profiles)
+ local list=if profiles then a.bank.profiles else a.bank.assets;local group=a.libraryKind or "Theme";local selected=a.selection or "";local built=not profiles and S.presets[group] or {}
+ if not profiles then ui:chips(S.kinds,function(k) a.libraryKind=k;a.selection=nil;ui:open("Workshop") end,4,function() return group end) end
+ local function selectItem(n) a.selection=n;ui:open(ui.tab) end
+ if not profiles then ui:title("BUNDLED · DUPLICATE TO EDIT");ui:chips(names(built),function(n) selectItem("@"..n) end,3,function() return selected:sub(1,1)=="@" and selected:sub(2) or "" end) end
+ local user={};for k,v in list do if profiles or v.kind==group then table.insert(user,k) end end;table.sort(user);ui:title(if profiles then "NAMED HUD / FX PROFILES" else "YOUR ASSETS");if #user>0 then ui:chips(user,selectItem,3,function() return selected end) else ui:note("No saved entries in this collection yet.",23) end
+ local box=ui:box("Name",a.libraryName or "",32);ui.page:on(box:GetPropertyChangedSignal("Text"),function() a.libraryName=box.Text end)
+ local function name() local n=box.Text:match("^%s*(.-)%s*$");assert(#n>0 and #n<=48 and not n:match("^@") and not n:find("%c"),"Enter a name (1–48 bytes; no @ prefix)");return n end
+ local function item() if not profiles and selected:sub(1,1)=="@" then local k=selected:sub(2);assert(built[k],"Select an asset");return {version=1,kind=group,name=k,data=S.copy(built[k])} end;assert(list[selected],"Select an entry first");return S.copy(list[selected]) end
+ local function put(n,v,remove,replace) assert(replace or not list[n],"Name already exists");local draft=S.copy(a.bank);local dest=if profiles then draft.profiles else draft.assets;if remove then dest[remove]=nil end;if not profiles then v.name=n end;dest[n]=v;a:library(draft);a.selection=n;ui:open(ui.tab);ui:message("Saved: "..n) end
+ ui:chips({"Save current","Apply","Duplicate","Rename","Delete"},function(action)
+  if action=="Save current" then local n=name();put(n,if profiles then S.copy(a.s) else {version=1,kind=group,name=n,data=S.capture(a.s,group)},nil,true)
+  elseif action=="Apply" then local v=item();if profiles then a:replace(v) else a:patch(v.data) end;ui:message("Applied: "..selected)
+  elseif action=="Duplicate" then put(name(),item()) elseif action=="Rename" then assert(list[selected],"Bundled entry is read-only");put(name(),item(),selected)
+  else assert(list[selected],"Choose a user entry");local draft=S.copy(a.bank);(if profiles then draft.profiles else draft.assets)[selected]=nil;a:library(draft);a.selection=nil;ui:open(ui.tab) end
+ end,3)
+ ui:note("JSON transfer: select and copy the text, or paste JSON and import. Nothing is executed on import.",36)
+ local transfer=ui:box("Transfer JSON",a.transfer or "",80);ui.page:on(transfer.FocusLost,function() a.transfer=transfer.Text end)
+ ui:chips({"Export JSON","Import JSON"},function(action)
+  if action=="Export JSON" then a.transfer=Http:JSONEncode(if profiles then {format="aether.bank/1",data=a.bank} else {format="aether.asset/1",data=item()});transfer.Text=a.transfer;transfer:CaptureFocus();transfer.CursorPosition=#transfer.Text+1;transfer.SelectionStart=1
+  else assert(#transfer.Text<=110100,"Import too large");local v=Http:JSONDecode(transfer.Text);if profiles then assert(v.format=="aether.bank/1","Expected full bank JSON");a:restore(S.bank(v.data));a:dirty();ui:open("Profiles");ui:message("Bank imported") else assert(v.format=="aether.asset/1","Expected asset JSON");local it=S.asset(v.data);assert(it.kind==group,"Select collection: "..it.kind);put(if box.Text~="" then name() else it.name,it) end end
+ end,2)
+ if profiles then ui:note("Save now waits for the server acknowledgement. Reload replaces the current bank. Studio defaults to session storage.",40);ui:chips({"Save now","Reload saved"},function(k) if k=="Save now" then a.store:save() else a.store:read(true) end;ui:message(a.store.status) end,2) end
+end
+local function scripts(ui,a)
+ local draft=a.scriptTab=="Luau draft";ui:chips({"AETHER Lua","Luau draft"},function(n) a:stopCue();a.scriptTab=n;ui:open("Scripts") end,2,function() return a.scriptTab or "AETHER Lua" end)
+ ui:note(if draft then "Author Studio source here. Copy it to a ModuleScript in Studio for compilation. In-game checks are lexical only." else "Bounded HUD language: local values, arithmetic, if/elseif/else, hud calls, onHealthChanged(hp,maxHP) and onEvent(name,hp).",42)
+ local k=if draft then "luau" else "cue";local box=ui:box("Source",a.s[k],125,function(v) if a.s[k]~=v then a:stopCue();a:set(k,v) end end);box.TextTruncate=Enum.TextTruncate.None
+ local function esc(v) return (v:gsub("&","&amp;"):gsub("<","&lt;"):gsub(">","&gt;")) end
+ local syntax=ui:note("",45);syntax.RichText=true;local function highlight() local code=esc(box.Text:sub(1,280));syntax.Text=code:gsub("[%a_][%w_]*",function(w) return if table.find({"local","function","if","then","else","end","return","and","or","nil","true","false"},w) then '<font color="#CF9BFF">'..w..'</font>' else w end) end;ui.page:on(box:GetPropertyChangedSignal("Text"),highlight);highlight()
+ ui:chips({"Template","Complete symbol","Select source","Check"},function(op)
+  if op=="Template" then a:set(k,S.defs[k].default);box.Text=a.s[k]
+  elseif op=="Select source" then box:CaptureFocus();box.CursorPosition=#box.Text+1;box.SelectionStart=1
+  elseif op=="Complete symbol" then local i=if box.CursorPosition>0 then box.CursorPosition else #box.Text+1;local left=box.Text:sub(1,i-1);local pre=left:match("([%w%.:_]+)$") or "";local opts=if draft then {"game:GetService","Players","Humanoid","HealthChanged","MaxHealth","CharacterAdded","workspace.CurrentCamera","Vector3.new","function","return"} else {"hud.widget","hud.animate","hud.setGlow","hud.indicator","hud.theme","hud.join","onHealthChanged","onEvent"};for _,w in opts do if w:lower():sub(1,#pre)==pre:lower() then box.Text=left:sub(1,#left-#pre)..w..box.Text:sub(i);a:set(k,box.Text);return end end;ui:message("No matching symbol")
+  else if draft then local depth={};local close={[")"]="(",["]"]="[",["}"]="{"};local clean=box.Text:gsub('"[^"\n]*"',''):gsub("'[^'\n]*'",''):gsub("%-%-[^\n]*",'');for ch in clean:gmatch("[%(%)%[%]{}]") do if close[ch] then assert(table.remove(depth)==close[ch],"Unbalanced delimiter") else table.insert(depth,ch) end end;assert(#depth==0,"Open delimiter");ui:message("Delimiters balanced · compile in Studio") else Cues.compile(box.Text);ui:message("HUD syntax OK") end end
+ end,2)
+ if not draft then ui:title("RUN PERMISSIONS · SESSION ONLY");ui:chips({"widgets","appearance","events"},function(p) a:stopCue();a.grants[p]=not a.grants[p];ui:sync() end,3);local report=ui:note("",26);ui:watch(function() local v={};for _,p in {"widgets","appearance","events"} do if a.grants[p] then table.insert(v,p) end end;report.Text="Granted: "..table.concat(v,", ").."   /   "..(if a.cue then "Running" else "Stopped") end)
+  ui:chips({"Run HUD script","Stop"},function(op) if op=="Stop" then a:stopCue();ui:message("Stopped") else a:set(k,box.Text);a:runCue() end;ui:sync() end,2)
+ end
+ ui:chips({"Save / browse script assets"},function() a.libraryKind="Scripts";a.selection=nil;ui:open("Workshop") end,1)
+end
+function E.render(a,tab,ui)
+ if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. RightShift opens Studio; LeftAlt toggles shoulder lock.",43);ui:chips({"Game","Simulator"},function(n) a:modeSet(n) end,2,function() return a.mode end);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme");ui:title("MOTION");ui:group("Motion")
+ elseif tab=="HUD" then preview(ui,a);preset(ui,a,"HUD");ui:control("locked");ui:control("compact");ui:note("Unlock layout and drag a widget in the preview, or edit its coordinates below.",29);ui:chips({"hp","clock","profile","dock","cross"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab;for _,suffix in {"","X","Y","Scale","Turn","Alpha","Material","First","Second","Glow","Flow","FlowRate"} do ui:control(k..suffix) end
+ elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then avatarPreview(ui,a);preset(ui,a,tab);ui:group(tab)
+ elseif tab=="Ambient" then local sky=ui:row(106,"SkyPreview");local grad=U.gradient(sky,Color3.new(),Color3.new(),90);local sun=U.frame(sky,"Sun",nil,UDim2.fromOffset(30,30));U.corner(sun,30);ui:watch(function() local s=a.s;sky.BackgroundColor3=Color3.new(1,1,1);grad.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,U.hex(s.skyA)),ColorSequenceKeypoint.new(.64,U.hex(s.skyB)),ColorSequenceKeypoint.new(1,U.hex(s.skyC))});sun.BackgroundColor3=U.hex(s.skyC);sun.Position=UDim2.fromScale(.7,.66-.45*math.sin(s.time/240*math.pi));sun.BackgroundTransparency=.04+s.fog*.004 end);preset(ui,a,tab);ui:group(tab)
+ elseif tab=="Indicators" then preview(ui,a);gallery(ui,a);ui:group(tab,{shape=true});ui:title("PER-PLAYER OVERRIDE");local id=ui:box("UserId or simulator ID","1");local label=ui:box("Label override","");local color=ui:box("Override hex",a.s.arrowA);ui:chips({"Assign current shape","Remove override"},function(k) local p=S.copy(a.s.players);if k=="Assign current shape" then p[id.Text]={label=label.Text,color=color.Text,shape=a.s.shape} else p[id.Text]=nil end;a:set("players",p);ui:message("Overrides updated") end,2)
+ elseif tab=="Cursor" then local f=ui:row(79,"CursorPreview");local glyph=Symbol.new(f,"Rounded Triangle",60);local img=U.new("ImageLabel",{BackgroundTransparency=1,AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5)},f);a.preview={cursor=glyph,image=img};preset(ui,a,tab);ui:group(tab);ui:note("Image import uses an image asset ID authorized for this experience. The pointer is local to this game.",38)
+ elseif tab=="Camera" then ui:note("Follow and Orbit use the current character. LeftAlt toggles shift-lock. Close Studio to capture the mouse; opening it releases the lock.",40);preset(ui,a,tab);ui:group(tab)
+ elseif tab=="Fonts" then local text=ui:note(a.s.sample,62);text.TextXAlignment=Enum.TextXAlignment.Center;local gradient=U.gradient(text,Color3.new(),Color3.new(),10);local glow=U.stroke(text,U.hex(a.s.fontB),.8);glow.ApplyStrokeMode=Enum.ApplyStrokeMode.Contextual;ui:watch(function() local s=a.s;text.Text=s.sample;text.FontFace=U.font(s);text.TextSize=s.fontSize*.23;text.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA);text.TextStrokeTransparency=1-s.fontOutline/100;gradient.Enabled=s.fontGradient;gradient.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB));glow.Color=U.hex(s.fontB);glow.Transparency=1-s.fontGlow*.008;glow.Thickness=1+s.fontGlow*.023 end);local query=ui:box("Search native typefaces",a.fontQuery or "",32,function(q) if q~=(a.fontQuery or "") then a.fontQuery=q;ui:open("Fonts") end end);local fonts={};for _,n in S.fonts do if n:lower():find((a.fontQuery or ""):lower(),1,true) then table.insert(fonts,n) end end;ui:chips(fonts,function(n) a:patch({font=n,fontAsset=""}) end,3,function() return a.s.font end);ui:group(tab,{font=true});preset(ui,a,tab)
+ elseif tab=="Simulator" then preview(ui,a);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
+ elseif tab=="Scripts" then scripts(ui,a)
+ elseif tab=="Workshop" or tab=="Profiles" then library(ui,a,tab=="Profiles")
+ elseif tab=="Diagnostics" then local info=ui:note("",54);local log=ui:box("Session events","",165);log.TextEditable=false;local function refresh() info.Text=string.format("%s  ·  HP %s / %s  ·  %d tracked\n%s",a.mode,tostring(a.frame.hp),tostring(a.frame.max),#a.frame.targets,a.store.status);log.Text=table.concat(a.logs,"\n") end;ui:chips({"Refresh","Clear log","Reset settings"},function(n) if n=="Clear log" then table.clear(a.logs) elseif n=="Reset settings" then a:replace(S.defaults()) end;refresh() end,3);refresh() end
+end
+return E
+
+end
+factories["Studio"]=function()
+local Players=game:GetService("Players")
+local Run=game:GetService("RunService")
+local Input=game:GetService("UserInputService")
+local Tags=game:GetService("CollectionService")
+local Http=game:GetService("HttpService") -- local JSON/UUID utilities only
+local U=use("Util");local S=use("Schema")
+local UI=use("Controls");local Pages=use("Pages")
+local Hud=use("Hud");local Avatar=use("Avatar")
+local View=use("View");local World=use("World")
+local Store=use("Storage");local Cues=use("Cues")
+local Studio={};Studio.__index=Studio
+local empty=table.freeze({})
+
+function Studio:log(kind,msg)
+ if #self.logs>=60 then table.remove(self.logs,1) end
+ table.insert(self.logs,os.date("%H:%M:%S").."  "..kind.."  "..tostring(msg):sub(1,190))
+ if self.ui then self.ui:message(tostring(msg):sub(1,150)) end
+end
+function Studio:dirty() if self.store then self.store:edit() end end
+function Studio:effective()
+ self.look=self.s
+ if self.cue and next(self.cue.overrides) then self.look=table.clone(self.s);for k,v in self.cue.overrides do self.look[k]=v end end
+ self.world:apply(self.look)
+end
+function Studio:patch(values)
+ local nextS=table.clone(self.s);local changed=false
+ for k,v in values do local clean=S.value(k,v);if self.s[k]~=clean then nextS[k]=clean;changed=true end end
+ if not changed then return end
+ if values.cue~=nil and self.cue then self:stopCue() end
+ self.s=nextS;self.bank.settings=nextS;self:effective();self:dirty();self.ui:sync()
+end
+function Studio:set(k,v) self:patch({[k]=v}) end
+function Studio:replace(settings)
+ local clean=S.settings(settings);self:stopCue();self.s=clean;self.bank.settings=clean;self:effective();self:dirty();self.ui:sync()
+end
+function Studio:library(bank)
+ local clean=S.bank(bank);assert(#Http:JSONEncode(clean)<=110000,"Bank exceeds 110 KB")
+ self.bank.profiles=clean.profiles;self.bank.assets=clean.assets;self:dirty()
+end
+function Studio:restore(bank)
+ local clean=S.bank(bank);self:stopCue();self.bank=clean;self.s=clean.settings;self.selection=nil;self:effective();self.ui:sync()
+ if self.ui.opened and (self.ui.tab=="Profiles" or self.ui.tab=="Workshop" or self.ui.tab=="Scripts") then self.ui:open(self.ui.tab) end
+end
+function Studio:page(tab,ui) Pages.render(self,tab,ui) end
+function Studio:drag(i,k,node,view)
+ if self.s.locked then return end
+ local ox,oy=self.s[k.."X"],self.s[k.."Y"];local travel=view.AbsoluteSize-node.AbsoluteSize
+ self.ui:begin(i,function(pos,start) local d=pos-start;self:patch({[k.."X"]=math.clamp(math.round(ox+d.X*100/math.max(1,travel.X)),0,100),[k.."Y"]=math.clamp(math.round(oy+d.Y*100/math.max(1,travel.Y)),0,100)}) end)
+end
+function Studio:stopCue()
+ if self.cue then self.cue:stop();self.cue=nil;self:effective() end
+ if self.frame then self.frame.widgets=empty end
+end
+function Studio:event(action,changed)
+ if not self.cue or not self.frame.hp then return end
+ local ok,err=pcall(self.cue.event,self.cue,action,self.frame.hp,self.frame.max,changed)
+ if not ok then self:stopCue();self:log("Script",err);self.ui:sync();return end
+ self:effective();self.frame.widgets=self.cue.widgets
+end
+function Studio:runCue()
+ self:stopCue();self.cue=Cues.start(self.s.cue,table.clone(self.grants));self:effective();self.frame.widgets=self.cue.widgets;self:event("start",true)
+ if self.cue then self:log("Script","HUD program running") end
+end
+function Studio:vitals(action)
+ local f=self.frame;local hp,mx,gen
+ if self.mode=="Game" then local h=self.hum;if h and h.Parent and h.MaxHealth>0 then hp=math.clamp(h.Health,0,h.MaxHealth);mx=h.MaxHealth end;gen="game:"..self.generation
+ else hp,mx,gen=self.sim.hp,self.sim.max,"sim:"..self.sim.gen end
+ local old=f.hp;local changed=f.gen~=gen or old~=hp or f.max~=mx;local respawn=(f.gen~=gen or old==0) and hp and hp>0
+ f.hp,f.max,f.gen,f.mode=hp,mx,gen,self.mode;f.name=if self.mode=="Game" then self.me.DisplayName else "Virtual player"
+ if changed then self:event(if respawn then "respawn" elseif old and hp and hp<old then "damage" elseif old and hp and hp>old then "heal" else action or "health",true)
+  if self.hud then self.hud:vitals(self.look,f,0);if self.preview and self.preview.hud then self.preview.hud:vitals(self.look,f,0) end end
+ end
+end
+function Studio:character(char)
+ if self.charScope then self.charScope:clear() end;if self.humScope then self.humScope:clear();self.humScope=nil end
+ self.avatar:clear();self.view:releaseCamera();self.char=char;self.hum=nil;self.generation+=1
+ local cs=U.scope();self.charScope=cs
+ local function bind()
+  if self.dead or self.char~=char then return end
+  local h=char and char:FindFirstChildOfClass("Humanoid");if h==self.hum then return end
+  if self.humScope then self.humScope:clear() end;self.hum=h;local hs=U.scope();self.humScope=hs
+  if h then local function change() if self.dead or self.hum~=h then return end;self:vitals();if h.Health<=0 then self.avatar:clear();self.view:releaseCamera() end end
+   hs:on(h.HealthChanged,change);hs:on(h:GetPropertyChangedSignal("MaxHealth"),change);hs:on(h.Died,change)
+  end;self:vitals()
+ end
+ if char then cs:on(char.ChildAdded,bind);cs:on(char.ChildRemoved,bind);bind() end;self:vitals()
+end
+function Studio:modeSet(mode)
+ assert(mode=="Game" or mode=="Simulator","Unknown source");if self.mode==mode then return end;self.mode=mode;self.nextScan=0;self.frame.targets={};self.hud:clearMarkers();if self.preview and self.preview.hud then self.preview.hud:clearMarkers() end
+ self:vitals("source");self.ui:sync();self:log("Source",mode)
+end
+function Studio:simVitals(hp,mx,action)
+ assert(type(mx)=="number" and mx>=1 and mx<=100000 and hp>=0 and hp<=mx,"Invalid vitals");self.sim.hp=hp;self.sim.max=mx;if action=="respawn" then self.sim.gen+=1 end;self:vitals(action)
+end
+function Studio:simulate(action)
+ self:modeSet("Simulator");local f=self.sim
+ if action=="Damage −25" then self:simVitals(math.max(0,f.hp-25),f.max,"damage") elseif action=="Heal +25" then if f.hp>0 then self:simVitals(math.min(f.max,f.hp+25),f.max,"heal") end
+ elseif action=="Respawn" then self:simVitals(f.max,f.max,"respawn") elseif action=="Clear players" then table.clear(f.players);self:event("clear",false)
+ elseif action=="Add player" then assert(#f.players<12,"12 virtual players maximum");local n=f.next;f.next+=1;table.insert(f.players,{id=n,x=self.rng:NextNumber(-1,1),y=self.rng:NextNumber(-1,1)});self:event("add",false)
+ elseif action=="Move players" then for _,p in f.players do p.x=self.rng:NextNumber(-1,1);p.y=self.rng:NextNumber(-1,1) end;self:event("move",false) end
+ self:log("Simulator",action)
+end
+function Studio:scan(camera)
+ local origin=if self.char and self.char:FindFirstChild("HumanoidRootPart") then self.char.HumanoidRootPart.Position else camera.CFrame.Position
+ local candidates={};local function add(id,label,part,head,player)
+  if not part or not part:IsA("BasePart") or not part:IsDescendantOf(workspace) then return end;local d=(part.Position-origin).Magnitude;if d>self.s.reach then return end
+  table.insert(candidates,{id=tostring(id),label=label,part=part,head=head,d=d,player=player})
+ end
+ for _,p in Players:GetPlayers() do local ch=p.Character;if p~=self.me and p:GetAttribute("AetherShareBearing")==true and ch then add(p.UserId,p.DisplayName,ch:FindFirstChild("HumanoidRootPart"),ch:FindFirstChild("Head"),p) end end
+ for _,part in Tags:GetTagged("AetherBeacon") do if part:IsA("BasePart") then local id=self.beaconIds[part];if not id then self.nextBeacon-=1;id=self.nextBeacon;self.beaconIds[part]=id end;add(id,part.Name,part,part,nil) end end
+ table.sort(candidates,function(a,b) return a.d<b.d end);self.candidates={};for i=1,math.min(12,#candidates) do self.candidates[i]=candidates[i] end
+end
+function Studio:targets(t)
+ local s=self.look;local out=self.frame.targets;table.clear(out);local seen={};local cam=workspace.CurrentCamera
+ if self.mode=="Simulator" then if s.indicators or s.nearby then for _,p in self.sim.players do local x,y=p.x,p.y;table.insert(out,{id=tostring(p.id),label="P"..p.id,x=x,y=y,visible=y<0 and math.abs(x)<-y,distance=math.sqrt(x*x+y*y)*180}) end end
+ elseif cam and (s.indicators or s.nearby) then
+  if t>=self.nextScan then self:scan(cam);self.nextScan=t+.4 end;local vs=cam.ViewportSize
+  for _,p in self.candidates do local part=p.part;if not part.Parent or p.player and (not p.player.Character or not part:IsDescendantOf(p.player.Character) or p.player:GetAttribute("AetherShareBearing")~=true) or not p.player and not Tags:HasTag(part,"AetherBeacon") then continue end
+   local localPos=cam.CFrame:PointToObjectSpace(part.Position);local projected,visible=cam:WorldToViewportPoint(part.Position);local x,y
+   if localPos.Z<-.001 then x=projected.X/math.max(1,vs.X)-.5;y=projected.Y/math.max(1,vs.Y)-.5 else x=localPos.X/math.max(1,vs.X);y=(math.abs(localPos.Z)-localPos.Y)/math.max(1,vs.Y) end
+   local dist=localPos.Magnitude;if dist>s.reach then continue end;table.insert(out,{id=p.id,label=p.label,x=x,y=y,visible=visible,distance=dist})
+   if s.nearby and p.head and p.head.Parent and dist<=125 then seen[p.id]=true;local bb=self.plates[p.id];if not bb then bb=U.new("BillboardGui",{Name="Nameplate",Size=UDim2.fromOffset(154,24),AlwaysOnTop=false,MaxDistance=125,StudsOffsetWorldSpace=Vector3.new(0,2.4,0)},self.namesFolder);U.label(bb,"",13).Name="Title";bb.Title.TextXAlignment=Enum.TextXAlignment.Center;self.plates[p.id]=bb end;bb.Adornee=p.head;local o=s.players[p.id];bb.Title.Text=if o and o.label~="" then o.label else p.label;bb.Title.TextColor3=U.hex(if o then o.color else s.arrowA);bb.Title.TextStrokeTransparency=.3 end
+  end
+ end
+ for id,bb in self.plates do if not seen[id] then bb:Destroy();self.plates[id]=nil end end
+end
+function Studio:step(dt)
+ local s=self.look;local t=os.clock();self.view:step(s,self.hum,self.ui.opened,dt,t);self.acc+=dt;if self.acc<1/30 then return end;local d=math.min(.2,self.acc);self.acc=0
+ self:targets(t);self.hud:step(s,self.frame,d);self.avatar:step(if self.hum and self.hum.Health>0 then self.char else nil,s,t)
+ if self.preview and self.ui.opened then local p=self.preview;if p.hud then p.hud:step(s,self.frame,d) elseif p.avatar then p.avatar:step(p.rig,s,t) elseif p.cursor then
+  local image=s.cursorShape=="Image";p.image.Visible=image and s.image~="";p.image.Image=if image and s.image~="" then "rbxassetid://"..s.image else "";p.cursor.root.Visible=not image;local size=UDim2.fromOffset(s.cursorSize,s.cursorSize);p.image.Size=size;p.cursor.root.Size=size
+  if not image then p.cursor:shape(s.cursorShape,60);local h=if s.reduce then 0 else (t*s.cursorSpeed*.001)%1;p.cursor:paint(if s.cursorRainbow then Color3.fromHSV(h,.6,1) else U.hex(s.cursorA),if s.cursorRainbow then Color3.fromHSV((h+.25)%1,.58,1) else U.hex(s.cursorB),s.cursorGlow,8) end
+ end end
+ if t>=self.nextStatus then self.nextStatus=t+.6;self.store:tick(t);if self.store.status~=self.lastStatus then self.lastStatus=self.store.status;self.ui:message(self.lastStatus) end end
+end
+function Studio:destroy()
+ if self.dead then return end;self.dead=true;Run:UnbindFromRenderStep(self.binding);if self.cue then self.cue:stop() end
+ if self.charScope then self.charScope:clear() end;if self.humScope then self.humScope:clear() end;self.scope:clear();self.preview=nil;self.candidates={};self.plates={}
+end
+function Studio.start(me)
+ assert(Run:IsClient(),"AETHER needs a client");me=me or Players.LocalPlayer;local pg=me:WaitForChild("PlayerGui",15);assert(pg,"PlayerGui unavailable");assert(not pg:FindFirstChild("AetherFullStudio"),"AETHER is already mounted")
+ local self=setmetatable({scope=U.scope(),me=me,bank=S.blank(),mode="Game",hudTab="hp",libraryKind="Theme",grants={},logs={},generation=0,nextStatus=0,nextScan=0,acc=0,plates={},candidates={},beaconIds=setmetatable({},{__mode="k"}),nextBeacon=-10000000,rng=Random.new(),binding="AetherFull_"..Http:GenerateGUID(false),frame={mode="Game",name=me.DisplayName,targets={},widgets=empty},sim={hp=100,max=100,gen=1,next=4,players={{id=1,x=-.9,y=.2},{id=2,x=.87,y=.54},{id=3,x=.2,y=.88}}}},Studio)
+ self.s=self.bank.settings;self.look=self.s
+ local ok,err=xpcall(function()
+  local function layer(name,order,inset) return self.scope:add(U.new("ScreenGui",{Name=name,ResetOnSpawn=false,DisplayOrder=order,IgnoreGuiInset=inset,ZIndexBehavior=Enum.ZIndexBehavior.Sibling},pg)) end
+  self.gui=layer("AetherFullStudio",40,false);local hudGui=layer("AetherFullHUD",30,true);local pointerGui=layer("AetherFullPointer",45,true)
+  self.surface=U.frame(hudGui,"Viewport",nil,nil,nil,1);self.surface.ClipsDescendants=true;local mouse=U.frame(pointerGui,"PointerArea",nil,nil,nil,1)
+  self.namesFolder=self.scope:add(U.new("Folder",{Name="AetherFullNameplates"},pg));self.avatar=Avatar.new(workspace,false);self.world=World.new();self.view=View.new(me,mouse);self.scope:add(function() self.avatar:clear();self.world:clear();self.view:destroy() end)
+  self.ui=UI.new(self,self.gui,self.scope);self.hud=Hud.new(self.scope,self.surface,false,function(tab) self.ui:open(tab) end,function(i,k,n,v) self:drag(i,k,n,v) end)
+  self.store=Store.new(self,self.scope);self.ui:open("Dashboard");self:character(me.Character);self.scope:on(me.CharacterAdded,function(c) self:character(c) end);self.scope:on(me.CharacterRemoving,function(c) if self.char==c then self:character(nil) end end)
+  self.scope:on(Input.InputBegan,function(i,used) if used or Input:GetFocusedTextBox() then return end;if i.KeyCode==Enum.KeyCode.RightShift then self.ui:show(not self.ui.opened) elseif i.KeyCode==Enum.KeyCode.LeftAlt then self:patch({camera=true,cameraMode="Follow",lock=not self.s.lock}) end end)
+  self.scope:on(self.gui.Destroying,function() self:destroy() end);self.scope:on(me.AncestryChanged,function(_,parent) if not parent then self:destroy() end end)
+  Run:BindToRenderStep(self.binding,Enum.RenderPriority.Camera.Value+2,function(dt) if self.dead then return end;local worked,why=xpcall(self.step,debug.traceback,self,dt);if not worked then warn("AETHER runtime: "..why);self:destroy() end end)
+  self:log("Startup","Game HUD ready · RightShift opens Studio")
+ end,debug.traceback)
+ if not ok then self:destroy();error(err,0) end;return self
+end
+return Studio
+
+end
+-- Modular Studio loader. The single-file distribution embeds these exact modules.
+local Studio=use("Studio")
+local app=Studio.start()
+app.scope:on(script.Destroying,function() app:destroy() end)
