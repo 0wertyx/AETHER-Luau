@@ -315,18 +315,18 @@ end
 
 -- BEGIN MODULE Controls
 __aether_factories["Controls"] = function()
-local Input=game:GetService("UserInputService");local Tween=game:GetService("TweenService");local U=__aether_require("Util");local S=__aether_require("Schema")
+local Input=game:GetService("UserInputService");local Tween=game:GetService("TweenService");local U=__aether_require("Util");local S=__aether_require("Schema");local Icons=__aether_require("Icons")
 local UI={};UI.__index=UI
 local bg=Color3.fromRGB(19,16,32);local dim=Color3.fromRGB(173,163,197);local soft=Color3.fromRGB(43,35,60)
 function UI.new(app,gui,scope)
- local self=setmetatable({app=app,gui=gui,scope=scope,syncs={},tab="Dashboard",opened=true,seq=0},UI)
+ local self=setmetatable({app=app,gui=gui,scope=scope,syncs={},icons={},tab="Dashboard",opened=true,seq=0},UI)
  self.stage=U.frame(gui,"StudioArea",nil,nil,nil,1);self.panel=U.frame(self.stage,"Studio",nil,nil,bg,.035);self.panel.Active=true;U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3);U.gradient(self.panel,Color3.new(1,1,1),Color3.fromRGB(192,180,215),82)
  self.header=U.frame(self.panel,"Titlebar",nil,UDim2.new(1,0,0,46),nil,1);self.header.Active=true;self.brand=U.label(self.header,"A E T H E R",18,UDim2.fromOffset(16,2),UDim2.fromOffset(135,40));self.tag=U.label(self.header,"",11,UDim2.fromOffset(147,3),UDim2.new(1,-211,0,40));self.tag.TextColor3=dim
  self.close=U.button(self.header,"×");self.close.Modal=true;self.close.Size=UDim2.fromOffset(33,29);self.close.Position=UDim2.new(1,-43,0,8);scope:on(self.close.Activated,function() self:show(false) end)
  self.reopen=U.button(self.stage,"A  /  STUDIO");self.reopen.Size=UDim2.fromOffset(99,31);self.reopen.Position=UDim2.fromOffset(12,10);self.reopen.Visible=false;scope:on(self.reopen.Activated,function() self:show(true) end)
  self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
  self.pageBox=U.frame(self.panel,"PageArea",nil,nil,nil,1);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
- self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Fonts","Simulator","Scripts","Workshop","Profiles","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;scope:on(b.Activated,function() self:open(name) end) end
+ self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Fonts","Simulator","Scripts","Workshop","Profiles","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end) end
  function self:layout()
   local sz=self.stage.AbsoluteSize;if sz.X<2 or sz.Y<2 then return end;local w,h=math.min(776,sz.X-16),math.min(526,sz.Y-24);local narrow=w<560;local p=self.panel;p.Size=UDim2.fromOffset(w,h);local xy=self.xy or Vector2.new((sz.X-w)*.5,(sz.Y-h)*.47);self.xy=Vector2.new(math.clamp(xy.X,0,sz.X-w),math.clamp(xy.Y,0,sz.Y-h));p.Position=UDim2.fromOffset(self.xy.X,self.xy.Y)
   self.nav.Position=UDim2.fromOffset(10,49);self.nav.Size=if narrow then UDim2.new(1,-20,0,35) else UDim2.new(0,122,1,-85);self.navList.FillDirection=if narrow then Enum.FillDirection.Horizontal else Enum.FillDirection.Vertical;self.nav.AutomaticCanvasSize=if narrow then Enum.AutomaticSize.X else Enum.AutomaticSize.Y;self.nav.ScrollingDirection=if narrow then Enum.ScrollingDirection.X else Enum.ScrollingDirection.Y
@@ -350,9 +350,48 @@ function UI:open(tab)
 end
 function UI:row(h,name) self.seq+=1;local f=U.frame(self.sc,name or "Row",nil,UDim2.new(1,-8,0,h),soft,.47);f.LayoutOrder=self.seq;U.corner(f,8);return f end
 function UI:title(str) local f=self:row(26,"Heading");f.BackgroundTransparency=1;local n=U.label(f,str,13);n.TextColor3=U.hex(self.app.s.accent);self.titleLabel=n;return n end
-function UI:note(str,h) local f=self:row(h or 36,"Note");f.BackgroundTransparency=1;local l=U.label(f,str,12);l.TextWrapped=true;l.TextTruncate=Enum.TextTruncate.None;l.TextColor3=dim;return l end
+function UI:note(str,h) local f=self:row(h or 36,"Note");f.BackgroundTransparency=1;local l=U.label(f,str,12);l.TextWrapped=true;l.TextTruncate=Enum.TextTruncate.None;l.TextColor3=dim;l:SetAttribute("AETHERMuted",true);return l end
 function UI:watch(fn) table.insert(self.syncs,fn);fn() end
-function UI:sync() if not self.panel.Parent then return end;self.brand.TextColor3=U.hex(self.app.s.accent);self.outline.Color=self.brand.TextColor3;self.tag.Text=self.app.mode.."   /   "..self.tab;for _,f in self.syncs do f() end end
+function UI:sync()
+ if not self.panel.Parent then return end
+ local st=self.app.s
+ local primary=U.hex(st.uiFontColor or "F1E6FF")
+ local muted=U.hex(st.uiMutedColor or "ADA3C5")
+ self.brand.TextColor3=U.hex(st.accent)
+ self.outline.Color=self.brand.TextColor3
+ self.tag.Text=self.app.mode.."   /   "..self.tab
+ self.tag.TextColor3=muted
+ self.status.TextColor3=muted
+ for _,asset in self.icons do asset:sync(st.iconAtlas) end
+ for _,f in self.syncs do f() end
+ -- Only recolor editor controls, not HUD/3D previews or their own palette.
+ for _,obj in self.panel:GetDescendants() do
+  if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+   if obj==self.brand or obj==self.tag or obj==self.status then continue end
+   if obj:GetAttribute("AETHERKeepFontColor") then continue end
+   local holder=obj.Parent
+   local skip=false
+   while holder and holder~=self.panel do
+    if holder.Name=="LivePreview" or holder.Name=="RigPreview"
+      or holder.Name=="CursorPreview" or holder.Name=="ShapeGallery" then
+     skip=true;break
+    end
+    if S.defs[holder.Name] and S.defs[holder.Name].kind=="color" and obj:IsA("TextLabel") then
+     skip=true;break
+    end
+    holder=holder.Parent
+   end
+   if skip then continue end
+   if obj:IsA("TextLabel") and obj.Parent and obj.Parent.Name=="Heading" then
+    obj.TextColor3=U.hex(st.accent)
+   elseif obj:GetAttribute("AETHERMuted") then
+    obj.TextColor3=muted
+   else
+    obj.TextColor3=primary
+   end
+  end
+ end
+end
 function UI:action(fn) local ok,err=pcall(fn);if not ok then self.app:log("Error",tostring(err));self:message(tostring(err):sub(-150)) end end
 function UI:chips(items,fn,cols,selected)
  cols=cols or 3;for start=1,#items,cols do local row=self:row(33,"Actions");row.BackgroundTransparency=1;for j=0,math.min(cols-1,#items-start) do local item=items[start+j];local b=U.button(row,item);b.Name=item;b.Size=UDim2.new(1/cols,-4,1,0);b.Position=UDim2.fromScale(j/cols,0);self.page:on(b.Activated,function() self:action(function() fn(item) end) end);if selected then self:watch(function() b.BackgroundColor3=if selected()==item then Color3.fromRGB(98,68,150) else soft end) end end end
