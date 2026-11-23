@@ -176,9 +176,8 @@ function A:step(char,s,t)
  local gait=math.sin(self.phase)*wingWalk
  local bob=math.abs(math.sin(self.phase))*haloWalk
  local mount=body.CFrame*CFrame.new(0,.17,body.Size.Z*.6+.08)
- local frames=self.frames;local idx=0
  local function submit(p,cf)
-  idx+=1;frames[idx]=cf
+  p.CFrame=cf
  end
  for _,f in self.feathers do
   local v=(f.index-1)/math.max(f.count-1,1)
@@ -259,7 +258,6 @@ function A:step(char,s,t)
    *CFrame.Angles(if style=="Lotus" then .66 else 0,0,a)
   submit(o.p,basis)
  end
- for i,p in self.parts do p.CFrame=frames[i] end
  if t-self.paintAt>=.09 or self.settings~=s then
   self.settings=s;self.paintAt=t
   local accent=U.hex(s.secondary)
