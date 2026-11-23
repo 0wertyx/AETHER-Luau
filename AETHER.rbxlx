@@ -771,10 +771,26 @@ end
 return Studio
 
 end
--- Modular Studio loader. The single-file distribution embeds these exact modules.
+-- Standalone AETHER: native LocalScript or loadstring-compatible client GUI.
 local Studio=use(&quot;Studio&quot;)
-local app=Studio.start()
-app.scope:on(script.Destroying,function() app:destroy() end)
+-- Reload safely: destroying the old studio triggers its own scope cleanup.
+local players=game:GetService(&quot;Players&quot;)
+local me=players.LocalPlayer
+assert(me,&quot;AETHER requires a client player&quot;)
+local pg=me:WaitForChild(&quot;PlayerGui&quot;,15)
+assert(pg,&quot;AETHER requires PlayerGui&quot;)
+local previous=pg:FindFirstChild(&quot;AetherFullStudio&quot;)
+if previous then previous:Destroy() end
+
+local app=Studio.start(me)
+-- A standalone loadstring may have no script Instance in its environment.
+-- In a native LocalScript, destroying the script also tears down the session.
+if typeof(script)==&quot;Instance&quot; then
+ local ok,signal=pcall(function() return script.Destroying end)
+ if ok and typeof(signal)==&quot;RBXScriptSignal&quot; then
+  app.scope:on(signal,function() app:destroy() end)
+ end
+end
 </ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script"><Properties><string name="Name">AetherProfiles</string><ProtectedString name="Source">-- Optional first-party Roblox persistence. No HTTP, no player-selected keys and no game commands.
 local Players=game:GetService(&quot;Players&quot;);local RS=game:GetService(&quot;ReplicatedStorage&quot;);local Run=game:GetService(&quot;RunService&quot;);local Http=game:GetService(&quot;HttpService&quot;);local S=require(script.Schema)
 if RS:FindFirstChild(&quot;AetherFullStoreV1&quot;) then warn(&quot;AETHER: store already installed&quot;);return end
