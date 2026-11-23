@@ -260,10 +260,7 @@ local function frame(dt, now)
     if app.preview then
         if app.preview.hud then app.preview.hud:step(styled, result, dt) end
         if app.preview.avatar then app.preview.avatar:step(app.preview.rig, styled, now) end
-        if app.preview.cursor then
-            app.preview.cursor:shape(styled.cursorShape,60)
-            app.preview.cursor:paint(U.hex(styled.cursorA),U.hex(styled.cursorB),styled.cursorGlow,6)
-        end
+        view:preview(app.preview.cursorHost,styled)
     end
     store:tick(now)
 end
