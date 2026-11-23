@@ -1,7 +1,7 @@
 -- Native vector masks. Scan-convert once per silhouette/softness, merge identical runs vertically.
 -- No image uploads, EditableImage permissions, or external texture dependencies for built-ins.
 local U=require(script.Parent.Util)
-local M={};local masks={};local N=28
+local M={};local masks={};local N=64
 local paths={
  ["Soft Triangle"]="16,1 30,29 16,22 2,29",Chevron="4,8 6,7 16,15 26,7 28,8 28,14 16,26 4,14",Diamond="16,2 18,4 30,16 18,29 16,30 14,29 2,16",
  ["Neon Pointer"]="16,1 27,30 16,21 5,30|16,8 19,19 13,19",["Double Chevron"]="3,16 16,3 29,16 25,20 16,11 7,20|3,26 16,13 29,26 25,30 16,21 7,30",
