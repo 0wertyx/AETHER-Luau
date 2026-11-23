@@ -14,6 +14,13 @@
           "$path": "src/shared/Schema.luau"
         }
       }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "AetherClient": {
+          "$path": "src/client/Aether.client.luau"
+        }
+      }
     }
   }
 }
