@@ -1,0 +1,19 @@
+{
+  "name": "AETHER",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Aether": {
+        "$path": "src/shared"
+      }
+    },
+    "ServerScriptService": {
+      "AetherProfiles": {
+        "$path": "src/server/Profiles.server.luau",
+        "Schema": {
+          "$path": "src/shared/Schema.luau"
+        }
+      }
+    }
+  }
+}
