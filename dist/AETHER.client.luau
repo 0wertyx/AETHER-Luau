@@ -1642,21 +1642,175 @@ function W:step(character,s,dt)
    swing*=.45
    rest-=.09
   end
+  -- UGC-inspired choreography. These are ORIGINAL and purposely subtle
+  -- additive poses; we do not download or replay creator animation clips.
+  local mode=pack.mode
+  local bodyShift=0
+  local headPitch=0
+  local headRoll=0
+  local hipPair=0
+  local hipSide=0
+  local armYaw=0
+  local elbowBend=0
+  local kneeBend=0
+  local rootRoll=0
+  local shoulderAsym=0
+  if mode=="angel" then
+   -- Open shoulders with feather-light landing and a hovering silhouette.
+   spread+=.13;rest-=.09;floatY+=math.sin(ph*.5)*.04
+   armYaw=math.sin(ph*.42)*.08;hipPair=.13;headPitch=-.045
+  elseif mode=="bat" then
+   -- Sweeping wings, low forward soar, pitched fall recovery.
+   spread+=math.sin(ph*1.1)*.16
+   rest-=.13*walk;pitch+=.11*walk
+   shoulderAsym=math.sin(ph*1.3)*.14
+   rootRoll=math.sin(ph*.4)*.055
+  elseif mode=="mermaid" then
+   -- Paired legs form a tail-like wave, without changing the avatar's rig.
+   swing*=.12;hipPair=.08+math.sin(ph*.76)*.21
+   kneeBend=-.16-.12*math.sin(ph*.8)
+   rootRoll=math.sin(ph*.5)*.12
+   armYaw=math.sin(ph*.7)*.13
+  elseif mode=="serpent" then
+   -- Smooth S-curves along torso and alternating shoulder/hip yaw.
+   swing*=.5;twist+=math.sin(ph*.5)*.17
+   rootRoll=math.sin(ph*.5+.6)*.085
+   bodyShift=math.sin(ph*.5)*.065
+   armYaw=math.sin(ph*.5+.9)*.17
+  elseif mode=="cartwheel" then
+   -- Suggestive rolling acrobatic pose; no physical tumbling.
+   rootRoll=math.sin(ph*.54)*.22*walk
+   spread+=.22
+   armYaw=math.sin(ph*.54)*.15
+   hipSide=.13*math.cos(ph*.54)*walk
+  elseif mode=="rubber" then
+   -- Rubber-hose, overshooting arms and exaggerated stretch-squash.
+   bounce*=1.4
+   rootRoll=math.sin(ph*.77)*.09
+   elbowBend=-.28+.16*math.sin(ph*1.4)
+   hipPair=math.abs(math.sin(ph))*.08*walk
+  elseif mode=="sleep" then
+   -- Drifting doze with tucked arms and gently dangling feet.
+   pitch-=.09;headPitch=.19;rest+=.18
+   spread-=.09;hipPair=.12;kneeBend=-.25
+   rootRoll=math.sin(ph*.3)*.09
+  elseif mode=="plush" then
+   -- Rounded plush-toy posture and tiny alternating feet.
+   swing*=.48;rest+=.18
+   elbowBend=-.35;hipPair=.09;headPitch=-.05
+   bounce*=1.15
+  elseif mode=="paws" then
+   -- Cat-paw elbows and quick foot-taps.
+   rest+=.14;elbowBend=-.42
+   armYaw=.12;headRoll=math.sin(ph*.6)*.07
+   swing*=.74;bounce*=1.09
+  elseif mode=="shy" then
+   -- Small crossed-in arms, inward-looking posture.
+   rest+=.20;spread-=.07;elbowBend=-.28
+   headPitch=.09;hipSide=-.09
+   bodyShift=math.sin(ph*.65)*.032
+  elseif mode=="gymnast" then
+   -- Open arms and controlled lateral balance.
+   spread+=.25;armYaw=.16*math.sin(ph*.8)
+   rootRoll=math.sin(ph*.6)*.13
+   hipSide=math.sin(ph*.6)*.13
+   kneeBend=-math.abs(math.sin(ph*.5))*.12
+  elseif mode=="skip" then
+   -- Distinct skipping rhythm: hop on alternate steps.
+   bounce+=math.max(0,math.sin(ph))*.095*walk
+   hipPair=math.max(0,math.sin(ph))*.11*walk
+   shoulderAsym=.13*math.sin(ph)
+  elseif mode=="prance" then
+   -- High light steps with upright neck and extra knee lift.
+   swing*=1.15;bounce*=1.17
+   kneeBend=-math.max(0,math.sin(ph))*.17*walk
+   headPitch=-.075;spread+=.09
+  elseif mode=="fighter" then
+   -- A balanced athletic guard and precise quick steps.
+   rest+=.13;elbowBend=-.42
+   spread+=.07;pitch+=.08*walk
+   kneeBend=-.08;rootRoll=math.sin(ph)*.045*walk
+  elseif mode=="harpy" then
+   -- Hovering upper arms resembling wings with descending swoop.
+   spread+=.21;floatY+=.045*math.sin(ph*.6)
+   rest-=.15;shoulderAsym=.13*math.sin(ph*1.1)
+   hipPair=.15
+  elseif mode=="aura" then
+   -- Centered ceremonial float with circling arms.
+   spread+=.21;armYaw=math.sin(ph*.4)*.22
+   rootRoll=math.sin(ph*.4)*.035
+   floatY+=.06*math.sin(ph*.45);headPitch=-.055
+  elseif mode=="wavy" then
+   -- Asymmetric hand and hip waves.
+   armYaw=math.sin(ph*.6)*.19
+   bodyShift=math.sin(ph*.7)*.055
+   rootRoll=math.sin(ph*.8)*.12
+   elbowBend=-.15+.08*math.sin(ph*.8)
+  elseif mode=="shuffle" then
+   -- Uneven shamble with heavy shoulder tilt.
+   swing*=.6;rest+=.12
+   headRoll=.08+math.sin(ph*.42)*.07
+   rootRoll=math.sin(ph*.64)*.10
+   hipSide=.06
+  elseif mode=="bashful" then
+   -- Expressive folded arms and shifting weight.
+   rest+=.14;elbowBend=-.33
+   armYaw=.09;headRoll=-.09+.06*math.sin(ph*.4)
+   bodyShift=math.sin(ph*.6)*.045
+  elseif mode=="doll" then
+   -- Doll-like posture with semi-stiff wrists and pointed step.
+   swing*=.67;rest+=.08
+   headPitch=-.045;elbowBend=-.16
+   hipSide=.055;rootRoll=math.sin(ph*.55)*.065
+  elseif mode=="skate" then
+   -- Push and glide alternating weight to the sides.
+   swing*=.50;bodyShift=math.sin(ph*.74)*.11*walk
+   rootRoll=-math.sin(ph*.74)*.07
+   hipSide=math.sin(ph*.74)*.15
+   spread+=.08;pitch+=.055*walk
+  elseif mode=="waddle" then
+   -- Side-by-side wobble with little flapping arms.
+   swing*=.60;rootRoll=math.sin(ph)*.13
+   spread+=.19;shoulderAsym=math.cos(ph)*.16
+   bounce*=1.12;hipSide=.10
+  elseif mode=="head" then
+   -- Floating presentation focused on head and shoulder gestures.
+   swing*=.18;hipPair=.16
+   headRoll=math.sin(ph*.42)*.16
+   headPitch=math.sin(ph*.56)*.06
+   spread+=.12
+  elseif mode=="dark" then
+   -- Cloak-like drawn-back arms, angled float.
+   rest-=.18;spread+=.13
+   armYaw=-.09;headPitch=.07
+   floatY+=math.sin(ph*.4)*.035
+  elseif mode=="anime" then
+   -- Forward heroic sprint, wind-swept arms and high steps.
+   pitch+=.16*walk;rest-=.18*walk
+   swing*=1.18;hipPair=.07
+   elbowBend=-.15;rootRoll=.035*math.sin(ph)
+  elseif mode=="ghost" then
+   -- Dissolving-looking drift represented with shoulder and head sways.
+   swing*=.10;hipPair=.12
+   bodyShift=math.sin(ph*.42)*.085
+   headRoll=math.sin(ph*.4+.7)*.13
+   rootRoll=math.sin(ph*.5)*.08
+  end
   local r6=hum.RigType==Enum.HumanoidRigType.R6
   local scale=if r6 then .78 else 1
-  local leftKnee=-(pack.knee or 0)*(.3+.7*math.max(0,-gait))*walk
-  local rightKnee=-(pack.knee or 0)*(.3+.7*math.max(0,gait))*walk
+  local leftKnee=-(pack.knee or 0)*(.3+.7*math.max(0,-gait))*walk+kneeBend
+  local rightKnee=-(pack.knee or 0)*(.3+.7*math.max(0,gait))*walk+kneeBend
   if airborne then rightKnee-=.13;leftKnee-=.13 end
-  add(j.Root,CFrame.new(0,(floatY+bounce)*weight,0)
-    *CFrame.Angles((pitch+jumpAngle)*weight,twist*.38*weight,roll*.5*weight))
-  add(j.Waist,CFrame.Angles((-pitch*.34+idleWave*.3)*weight,twist*weight,roll*weight))
-  add(j.Neck,CFrame.Angles((-pitch*.25+idleWave)*weight,-twist*.4*weight,-roll*.35*weight))
-  add(j.RightHip,CFrame.Angles((swing+jumpAngle*.45)*weight*scale,0,(-spread*.14+roll*.25)*weight))
-  add(j.LeftHip,CFrame.Angles((-swing+jumpAngle*.45)*weight*scale,0,(spread*.14+roll*.25)*weight))
-  add(j.RightShoulder,CFrame.Angles((rest-armCycle+idleWave)*weight*scale,0,(-spread+roll*.14)*weight))
-  add(j.LeftShoulder,CFrame.Angles((rest+armCycle-idleWave)*weight*scale,0,(spread+roll*.14)*weight))
-  add(j.RightElbow,CFrame.Angles((-.055-(pack.knee or 0)*.33)*weight,0,0))
-  add(j.LeftElbow,CFrame.Angles((-.055-(pack.knee or 0)*.33)*weight,0,0))
+  add(j.Root,CFrame.new(bodyShift*weight,(floatY+bounce)*weight,0)
+    *CFrame.Angles((pitch+jumpAngle)*weight,twist*.38*weight,(roll*.5+rootRoll)*weight))
+  add(j.Waist,CFrame.Angles((-pitch*.34+idleWave*.3)*weight,twist*weight,(roll+rootRoll*.45)*weight))
+  add(j.Neck,CFrame.Angles((-pitch*.25+idleWave+headPitch)*weight,-twist*.4*weight,(-roll*.35+headRoll)*weight))
+  add(j.RightHip,CFrame.Angles((swing+jumpAngle*.45+hipPair)*weight*scale,0,(-spread*.14+roll*.25+hipSide)*weight))
+  add(j.LeftHip,CFrame.Angles((-swing+jumpAngle*.45+hipPair)*weight*scale,0,(spread*.14+roll*.25-hipSide)*weight))
+  add(j.RightShoulder,CFrame.Angles((rest-armCycle+idleWave+shoulderAsym)*weight*scale,armYaw*weight,(-spread+roll*.14)*weight))
+  add(j.LeftShoulder,CFrame.Angles((rest+armCycle-idleWave-shoulderAsym)*weight*scale,-armYaw*weight,(spread+roll*.14)*weight))
+  add(j.RightElbow,CFrame.Angles((-.055-(pack.knee or 0)*.33+elbowBend)*weight,0,0))
+  add(j.LeftElbow,CFrame.Angles((-.055-(pack.knee or 0)*.33+elbowBend)*weight,0,0))
   add(j.RightKnee,CFrame.Angles(rightKnee*weight,0,0))
   add(j.LeftKnee,CFrame.Angles(leftKnee*weight,0,0))
   add(j.RightAnkle,CFrame.Angles(((pack.ankle or 0)*gait*walk)*weight,0,0))
