@@ -109,9 +109,15 @@ GitHub Actions пересобирает `dist` при изменениях мо�
 из GitHub не становятся Roblox-изображениями автоматически — для обычного
 `ImageLabel.Image` требуется импорт PNG в Roblox и разрешённый asset ID.
 
-Слой `AETHER_Pointer` использует `IgnoreGuiInset=true`. Поэтому позиция
-из `UserInputService:GetMouseLocation()` применяется без повторного вычитания
-`GuiService:GetGuiInset()`. Точка привязки (hotspot) настраивается в Cursor.
+Слой `AETHER_Pointer` использует **`ScreenInsets=Enum.ScreenInsets.None`**
+в дополнение к `IgnoreGuiInset=true`. Это важно: в новых версиях Roblox
+один `IgnoreGuiInset=true` выбирает `DeviceSafeInsets`, а не полный экран.
+Координаты `UserInputService:GetMouseLocation()` соответствуют полному экрану;
+`GuiService:GetGuiInset()` отдельно не вычитается. Позиция курсора обновляется
+в отдельном `BindToRenderStep` с `Enum.RenderPriority.Last`, независимо
+от SVG/HUD. SVG-маска строится только при изменении контура/свечения;
+градиент анимируется с помощью `UIGradient.Rotation` без записей пикселей каждый кадр.
+Точка привязки (hotspot) настраивается в Cursor.
 
 Проверка графики, курсорных координат и ограничений API непосредственно в Roblox
 Studio / опубликованном плейсе ещё нужна: автосборка не заменяет runtime-тест.
