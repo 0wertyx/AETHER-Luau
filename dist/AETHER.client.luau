@@ -586,7 +586,7 @@ __aether_factories["Symbol"] = function()
 -- Native vector masks. Scan-convert once per silhouette/softness, merge identical runs vertically.
 -- No image uploads, EditableImage permissions, or external texture dependencies for built-ins.
 local U=__aether_require("Util")
-local M={};local masks={};local N=28
+local M={};local masks={};local N=64
 local paths={
  ["Soft Triangle"]="16,1 30,29 16,22 2,29",Chevron="4,8 6,7 16,15 26,7 28,8 28,14 16,26 4,14",Diamond="16,2 18,4 30,16 18,29 16,30 14,29 2,16",
  ["Neon Pointer"]="16,1 27,30 16,21 5,30|16,8 19,19 13,19",["Double Chevron"]="3,16 16,3 29,16 25,20 16,11 7,20|3,26 16,13 29,26 25,30 16,21 7,30",
@@ -702,7 +702,7 @@ function V:step(s,hum,menu,dt,t)
  end
  local image=s.cursorShape=="Image";local show=s.cursor and Input.MouseEnabled and not Gui.MenuIsOpen and (not image or s.image~="") and Input:GetLastInputType()~=Enum.UserInputType.Touch
  if show then if self.icon==nil then self.icon=Input.MouseIconEnabled end;Input.MouseIconEnabled=false elseif self.icon~=nil then Input.MouseIconEnabled=self.icon;self.icon=nil end
- self.pointer.Visible=show;if show then local pos=Input:GetMouseLocation();local layer=self.pointer.Parent;local inset=Gui:GetGuiInset();local origin=layer.AbsolutePosition;self.pointer.Position=UDim2.fromOffset(pos.X-origin.X,pos.Y-origin.Y);self.pointer.AnchorPoint=Vector2.new(s.hotX/100,s.hotY/100);self.pointer.Size=UDim2.fromOffset(s.cursorSize,s.cursorSize);self.glyph.root.Visible=not image;self.image.Visible=image
+ self.pointer.Visible=show;if show then local pos=Input:GetMouseLocation();local layer=self.pointer.Parent;local inset=Gui:GetGuiInset();local origin=layer.AbsolutePosition;self.pointer.Position=UDim2.fromOffset(pos.X-origin.X-inset.X,pos.Y-origin.Y-inset.Y);self.pointer.AnchorPoint=Vector2.new(s.hotX/100,s.hotY/100);self.pointer.Size=UDim2.fromOffset(s.cursorSize,s.cursorSize);self.glyph.root.Visible=not image;self.image.Visible=image
   if image then self.image.Image="rbxassetid://"..s.image else self.glyph:shape(s.cursorShape,60);if t>=self.clock or self.settings~=s then self.clock=t+.06;local h=if s.reduce then 0 else t*s.cursorSpeed*.001;local palettes={Aurora={"B78AFF","FC82D6"},Sunset={"FFBD7D","FF6AAF"},Ocean={"57E9D6","6CA5FF"},Rainbow={"FF6F91","74AAFF"},Mono={"E9DCFF","B18DFF"}};local palette=palettes[s.cursorPalette];local a=palette and U.hex(palette[1]) or U.hex(s.cursorA);local b=palette and U.hex(palette[2]) or U.hex(s.cursorB);if s.cursorRainbow and s.cursorPalette=="Rainbow" then a=Color3.fromHSV(h%1,.75,1);b=Color3.fromHSV((h+.25)%1,.65,1) end;self.glyph:paint(a,b,s.cursorGlow,8) end end
  end;self.settings=s
 end
