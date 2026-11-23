@@ -771,10 +771,11 @@ end
 return Studio
 
 end
--- Standalone AETHER: native LocalScript or loadstring-compatible client GUI.
+-- Modular Studio loader; also usable in the standalone bundle.
 local Studio=use("Studio")
 -- Reload safely: destroying the old studio triggers its own scope cleanup.
 local players=game:GetService("Players")
+if not game:IsLoaded() then game.Loaded:Wait() end
 local me=players.LocalPlayer
 assert(me,"AETHER requires a client player")
 local pg=me:WaitForChild("PlayerGui",15)
