@@ -1,7 +1,7 @@
-local Input=game:GetService("UserInputService");local Gui=game:GetService("GuiService");local U=require(script.Parent.Util);local Symbol=require(script.Parent.Symbol)
+local Input=game:GetService("UserInputService");local Gui=game:GetService("GuiService");local U=require(script.Parent.Util);local VectorCursor=require(script.Parent.VectorCursor)
 local V={};V.__index=V
 function V.new(player,layer)
- local self=setmetatable({player=player,angle=0,clock=0},V);self.pointer=U.frame(layer,"Pointer",nil,UDim2.fromOffset(32,32),nil,1);self.pointer.Visible=false;self.pointer.Active=false;self.glyph=Symbol.new(self.pointer,"Rounded Triangle",65);self.image=U.new("ImageLabel",{Name="Asset",BackgroundTransparency=1,Active=false,Size=UDim2.fromScale(1,1),ScaleType=Enum.ScaleType.Fit,ZIndex=10},self.pointer);return self
+ local self=setmetatable({player=player,angle=0,clock=0},V);self.pointer=U.frame(layer,"Pointer",nil,UDim2.fromOffset(32,32),nil,1);self.pointer.Visible=false;self.pointer.Active=false;self.glyph=VectorCursor.new(self.pointer);self.image=U.new("ImageLabel",{Name="Asset",BackgroundTransparency=1,Active=false,Size=UDim2.fromScale(1,1),ScaleType=Enum.ScaleType.Fit,ZIndex=10},self.pointer);return self
 end
 function V:releaseLock()
  if self.mouse then Input.MouseBehavior=self.mouse;self.mouse=nil end;if self.lockHum then if self.lockHum.Parent then self.lockHum.AutoRotate=self.auto end;self.lockHum=nil end
@@ -10,7 +10,28 @@ function V:releaseCamera()
  self:releaseLock();if self.cam then local c=self.cam;local b=self.before;if c.Parent then c.FieldOfView=b.fov;c.CameraType=b.kind;if b.subject and b.subject.Parent then c.CameraSubject=b.subject end;if b.kind==Enum.CameraType.Scriptable then c.CFrame=b.cf;c.Focus=b.focus end end;self.player.CameraMode=b.mode;self.cam=nil end
  if self.hum then if self.hum.Parent then self.hum.CameraOffset=self.offset end;self.hum=nil end;self.orbitPos=nil
 end
-function V:destroy() self:releaseCamera();if self.icon~=nil then Input.MouseIconEnabled=self.icon;self.icon=nil end;self.pointer:Destroy() end
+function V:preview(host,s)
+ if self.previewHost~=host then
+  self.glyph:preview(host)
+  if self.previewImage then self.previewImage:Destroy();self.previewImage=nil end
+  self.previewHost=host
+  if host then
+   self.previewImage=U.new("ImageLabel",{Name="ImportedCursorPreview",BackgroundTransparency=1,Active=false,Selectable=false,Size=UDim2.fromScale(1,1),ScaleType=Enum.ScaleType.Fit},host)
+  end
+ end
+ if self.previewImage then
+  local image=s.cursorShape=="Image" and s.image~=""
+  self.previewImage.Visible=image
+  if image then self.previewImage.Image="rbxassetid://"..s.image end
+ end
+end
+function V:destroy()
+ self:releaseCamera()
+ if self.icon~=nil then Input.MouseIconEnabled=self.icon;self.icon=nil end
+ if self.previewImage then self.previewImage:Destroy();self.previewImage=nil end
+ self.glyph:destroy()
+ self.pointer:Destroy()
+end
 function V:step(s,hum,menu,dt,t)
  local camera=workspace.CurrentCamera;local hrp=hum and hum.Parent and hum.Parent:FindFirstChild("HumanoidRootPart");local enabled=s.camera and hrp and hum.Health>0 and camera
  if self.cam and (not enabled or self.cam~=camera or self.hum~=hum) then self:releaseCamera() end
@@ -31,8 +52,25 @@ function V:step(s,hum,menu,dt,t)
  end
  local image=s.cursorShape=="Image";local show=s.cursor and Input.MouseEnabled and not Gui.MenuIsOpen and (not image or s.image~="") and Input:GetLastInputType()~=Enum.UserInputType.Touch
  if show then if self.icon==nil then self.icon=Input.MouseIconEnabled end;Input.MouseIconEnabled=false elseif self.icon~=nil then Input.MouseIconEnabled=self.icon;self.icon=nil end
- self.pointer.Visible=show;if show then local pos=Input:GetMouseLocation();local layer=self.pointer.Parent;local inset=Gui:GetGuiInset();local origin=layer.AbsolutePosition;self.pointer.Position=UDim2.fromOffset(pos.X-origin.X-inset.X,pos.Y-origin.Y-inset.Y);self.pointer.AnchorPoint=Vector2.new(s.hotX/100,s.hotY/100);self.pointer.Size=UDim2.fromOffset(s.cursorSize,s.cursorSize);self.glyph.root.Visible=not image;self.image.Visible=image
-  if image then self.image.Image="rbxassetid://"..s.image else self.glyph:shape(s.cursorShape,60);if t>=self.clock or self.settings~=s then self.clock=t+.06;local h=if s.reduce then 0 else t*s.cursorSpeed*.001;local palettes={Aurora={"B78AFF","FC82D6"},Sunset={"FFBD7D","FF6AAF"},Ocean={"57E9D6","6CA5FF"},Rainbow={"FF6F91","74AAFF"},Mono={"E9DCFF","B18DFF"}};local palette=palettes[s.cursorPalette];local a=palette and U.hex(palette[1]) or U.hex(s.cursorA);local b=palette and U.hex(palette[2]) or U.hex(s.cursorB);if s.cursorRainbow and s.cursorPalette=="Rainbow" then a=Color3.fromHSV(h%1,.75,1);b=Color3.fromHSV((h+.25)%1,.65,1) end;self.glyph:paint(a,b,s.cursorGlow,8) end end
- end;self.settings=s
+ self.pointer.Visible=show
+ if show or self.previewHost then self.glyph:step(s,t) end
+ if show then
+  -- PointerLayer's ScreenGui uses IgnoreGuiInset=true: GetMouseLocation() is
+  -- already in its screen space, so subtracting GuiInset adds an erroneous offset.
+  local pos=Input:GetMouseLocation()
+  local origin=self.pointer.Parent.AbsolutePosition
+  self.pointer.Position=UDim2.fromOffset(pos.X-origin.X,pos.Y-origin.Y)
+  local hx,hy=s.hotX/100,s.hotY/100
+  if s.hotX==19 and s.hotY==8 then
+   local tip={["Rounded Triangle"]={.188,.094},["Soft Arrow"]={.188,.125},Diamond={.5,.0625},Orbit={.5,.0625},Spark={.5,.0625},Chevron={.125,.25}}
+   local p=tip[s.cursorShape]
+   if p then hx,hy=p[1],p[2] end
+  end
+  self.pointer.AnchorPoint=Vector2.new(hx,hy)
+  self.pointer.Size=UDim2.fromOffset(s.cursorSize,s.cursorSize)
+  self.image.Visible=image
+  if image then self.image.Image="rbxassetid://"..s.image end
+ end
+ self.settings=s
 end
 return V
