@@ -657,7 +657,7 @@ function UI.new(app,gui,scope)
  self.place=U.label(self.panel,"PLACE  /  "..tostring(game.PlaceId),10,nil,nil);self.place.TextColor3=dim
  self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
  self.pageBox=U.new("CanvasGroup",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,GroupTransparency=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
- self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Interaction","Fonts","Simulator","Scripts","Workshop","Profiles","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
+ self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Interaction","Fonts","Simulator","Scripts","Workshop","Profiles","Updates","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
  function self:layout()
   local sz=self.stage.AbsoluteSize
   if sz.X<2 or sz.Y<2 then return end
@@ -936,7 +936,7 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.." / UNLOAD GUARD"
+ self.tag.Text=self.app.mode.." / "..(self.app.liveUpdate and self.app.liveUpdate.version or "LIVE 1.0")
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  for key,item in self.quickButtons do item.button.Text=item.label..(if st[key] then "  ON" else "  OFF");item.button.BackgroundColor3=if st[key] then U.hex(st.accent):Lerp(bg,.52) else soft end
@@ -2615,6 +2615,23 @@ function E.render(a,tab,ui)
   ui:note("INTERACT — Separate Shift-Lock settings and input visualization.",42)
   ui:note("WING6 — Six sketch-inspired wings and counter-rotating diamonds.",42)
   ui:note("SKETCH — HD outline icons and ECG heart.",36)
+ elseif tab=="Updates" then
+  ui:title("LIVE UPDATE CENTER")
+  local state=a.liveUpdate
+  local version=ui:note("",36)
+  local status=ui:note("",48)
+  local notes=ui:note("",52)
+  local function sync()
+   version.Text="RUNNING VERSION  /  "..state.version
+   status.Text=state.status
+   notes.Text=state.notes or "No update applied. Your HUD, configs and menu stay active during an update."
+  end
+  ui:watch(sync)
+  ui:chips({"Test update","Check updates","Rollback"},function(n)
+   if n=="Test update" then a:testLiveUpdate() elseif n=="Check updates" then a:checkLiveUpdate() else a:rollbackLiveUpdate() end
+  end,3)
+  ui:note("Test update swaps preloaded data in place. Published packages arrive through an optional first-party server relay. No remote executable code is loaded.",54)
+  ui:chips({"Browse new presets"},function() a.libraryKind="Theme";a.selection=nil;ui:open("Workshop") end,1)
  elseif tab=="Diagnostics" then local info=ui:note("",54);local log=ui:box("Session events","",165);log.TextEditable=false;local function refresh() info.Text=string.format("%s  ·  HP %s / %s  ·  %d tracked\n%s",a.mode,tostring(a.frame.hp),tostring(a.frame.max),#a.frame.targets,a.store.status);log.Text=table.concat(a.logs,"\n") end;ui:chips({"Refresh","Clear log","Reset settings"},function(n) if n=="Clear log" then table.clear(a.logs) elseif n=="Reset settings" then a:replace(S.defaults()) end;refresh() end,3);refresh();ui:title("SESSION");ui:note("Unload stops AETHER, removes its HUD and effects, and releases its camera and mouse controls. Export a bank first to retain local-only settings.",52);-- Allocate one confirmation row, once per Diagnostics page. Never append rows from clicks.
   local page=ui.page
   local row=ui:row(40,"UnloadConfirmation")
@@ -4187,6 +4204,86 @@ function app:runCue()
     if ok then self.cues = vm; self:log("Scripts", "HUD script started")
     else self:log("Scripts", vm); error(vm, 0) end
 end
+-- Live updates are bounded data packages, never downloaded executable Luau.
+local updateHttp=game:GetService("HttpService")
+local updateState={version="1.0.0",revision=0,status="Ready",busy=false,history={},generation=0}
+app.liveUpdate=updateState
+local function validateUpdate(raw)
+    assert(type(raw)=="table" and raw.format=="aether.live/1","Invalid update format")
+    assert(type(raw.revision)=="number" and raw.revision%1==0 and raw.revision>=1 and raw.revision<=1000000,"Invalid revision")
+    assert(type(raw.version)=="string" and #raw.version<=20 and raw.version:match("^%d+%.%d+%.%d+$"),"Invalid version")
+    assert(type(raw.notes)=="string" and #raw.notes<=240,"Invalid release notes")
+    assert(type(raw.presets)=="table","Missing preset data")
+    local presets={};local count=0
+    for group,items in raw.presets do
+        assert(table.find({"Theme","Wings","Halos","Character","Neon","Ambient","Motion","HUD","Cursor","Camera","Fonts"},group) and type(items)=="table","Invalid preset group")
+        presets[group]={}
+        for name,values in items do
+            count+=1
+            assert(count<=24 and type(name)=="string" and #name>=1 and #name<=40 and not name:find("%c"),"Invalid preset name/count")
+            presets[group][name]=S.settings(values,group)
+        end
+    end
+    return {revision=raw.revision,version=raw.version,notes=raw.notes,presets=presets}
+end
+function app:updateStatus(message)
+    updateState.status=message
+    self:log("Update",message)
+    if self.ui then self.ui:sync() end
+end
+function app:applyLiveUpdate(raw,force)
+    if updateState.busy or self.stopping then return end
+    updateState.busy=true;updateState.generation+=1
+    local gen=updateState.generation
+    self:updateStatus("Validating update...")
+    task.delay(.35,function()
+        if self.stopping or gen~=updateState.generation then return end
+        local ok,pack=pcall(validateUpdate,raw)
+        if not ok then updateState.busy=false;self:updateStatus("Rejected: "..tostring(pack):sub(-100));return end
+        if not force and pack.revision<=updateState.revision then updateState.busy=false;self:updateStatus("Already up to date");return end
+        local before={version=updateState.version,revision=updateState.revision,notes=updateState.notes,presets=S.copy(S.presets)}
+        local staged=S.copy(S.presets)
+        for group,items in pack.presets do
+            staged[group]=staged[group] or {}
+            for name,values in items do staged[group][name]=values end
+        end
+        -- Swap one validated data table. Preserve all settings, profile bank,
+        -- current page, HUD, avatar, render callbacks and the session itself.
+        S.presets=staged
+        updateState.version=pack.version;updateState.revision=pack.revision;updateState.notes=pack.notes
+        local applied,err=pcall(function() self:updateStatus("Updated live to "..pack.version) end)
+        if not applied then
+            S.presets=before.presets;updateState.version=before.version;updateState.revision=before.revision;updateState.notes=before.notes
+            updateState.status="Update rolled back: "..tostring(err):sub(-100)
+        else
+            table.insert(updateState.history,before)
+            while #updateState.history>5 do table.remove(updateState.history,1) end
+        end
+        updateState.busy=false
+        if self.ui then self.ui:sync() end
+    end)
+end
+function app:testLiveUpdate()
+    local revision=updateState.revision+1
+    self:applyLiveUpdate({format="aether.live/1",revision=revision,version="1.0."..tostring(revision),notes="Live test: new Aurora glass theme and Lunar halo preset. Existing settings remain intact.",presets={Theme={["Live Aurora"]={accent="8DEBFF",secondary="D8ACFF",glassColor="22243E"}},Halos={["Live Lunar"]={halo=true,haloStyle="Lunar",haloColor="C4B5FF"}}}},true)
+end
+function app:checkLiveUpdate()
+    if updateState.busy then return end
+    local manifest=game:GetService("ReplicatedStorage"):FindFirstChild("AetherLiveManifestV1")
+    if not manifest or not manifest:IsA("StringValue") or manifest.Value=="" then self:updateStatus("No update manifest available. Use Test update or enable the server relay.");return end
+    if #manifest.Value>32000 then self:updateStatus("Manifest too large");return end
+    local ok,raw=pcall(function() return updateHttp:JSONDecode(manifest.Value) end)
+    if not ok then self:updateStatus("Invalid manifest JSON");return end
+    self:applyLiveUpdate(raw,false)
+end
+function app:rollbackLiveUpdate()
+    if updateState.busy then return end
+    local before=table.remove(updateState.history)
+    if not before then self:updateStatus("No previous update");return end
+    S.presets=before.presets;updateState.version=before.version;updateState.revision=before.revision;updateState.notes=before.notes
+    self:updateStatus("Rolled back to "..before.version)
+end
+
 function app:page(tab, ui)
     Pages.render(self, tab, ui)
 end
