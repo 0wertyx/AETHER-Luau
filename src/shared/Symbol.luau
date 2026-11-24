@@ -2,6 +2,7 @@
 -- No image uploads, EditableImage permissions, or external texture dependencies for built-ins.
 local AssetService=game:GetService("AssetService")
 local U=require(script.Parent.Util)
+local Icons=require(script.Parent.Icons)
 local M={};local masks={};local N=64
 local paths={
  ["Soft Triangle"]="16,1 30,29 16,22 2,29",Chevron="4,8 6,7 16,15 26,7 28,8 28,14 16,26 4,14",Diamond="16,2 18,4 30,16 18,29 16,30 14,29 2,16",
@@ -23,6 +24,32 @@ local function smooth(poly,r)
  end;return out
 end
 local function build(name,round)
+ if name=="Heart" then
+  -- Native frame fallback uses the same outline, not the old solid silhouette.
+  local segments={}
+  for _,path in Icons.drawing("Health") do
+   for j=1,#path-2,2 do
+    local a=Vector2.new(path[j],path[j+1]);local d=Vector2.new(path[j+2],path[j+3])-a
+    if d.Magnitude>0 then table.insert(segments,{a=a,d=d,len=d:Dot(d)}) end
+   end
+  end
+  local rows={}
+  for y=0,N-1 do
+   local start=nil
+   for x=0,N do
+    local hit=false
+    if x<N then
+     local p=Vector2.new((x+.5)*24/N,(y+.5)*24/N)
+     for _,seg in segments do
+      local v=p-seg.a;local q=math.clamp(v:Dot(seg.d)/seg.len,0,1)
+      if (v-seg.d*q).Magnitude<=.75 then hit=true;break end
+     end
+    end
+    if hit and not start then start=x elseif not hit and start then table.insert(rows,{x=start,y=y,w=x-start,h=1});start=nil end
+   end
+  end
+  return rows
+ end
  local polys={};for sub in string.gmatch(paths[name] or paths.Diamond,"[^|]+") do local a={};for x,y in sub:gmatch("(%d+),(%d+)") do table.insert(a,Vector2.new(tonumber(x),tonumber(y))) end;table.insert(polys,smooth(a,round*.055)) end
  local rows={};local last={}
  for y=0,N-1 do local yy=(y+.5)*32/N;local inter={};for _,p in polys do for i,a in p do local b=p[i%#p+1];if (a.Y>yy)~=(b.Y>yy) then table.insert(inter,a.X+(yy-a.Y)*(b.X-a.X)/(b.Y-a.Y)) end end end;table.sort(inter)
@@ -33,54 +60,38 @@ local function build(name,round)
   local x=0;local nextRow={};while x<N do if not pixel(x) then x+=1;continue end;local l=x;repeat x+=1 until x==N or not pixel(x);local id=l*64+x;local b=last[id];if b then b.h+=1 else b={x=l,y=y,w=x-l,h=1};table.insert(rows,b) end;nextRow[id]=b end;last=nextRow
  end;return rows
 end
--- Smooth heart silhouette, with a real 128x128 alpha texture rather than GUI scanline rectangles.
+-- Share the exact outline / ECG geometry with the Health navigation icon.
 local function heartImage(parent)
- local edit
- local ok,label,gradient=pcall(function()
-  local n=128
-  edit=AssetService:CreateEditableImage({Size=Vector2.new(n,n)})
-  assert(edit,"EditableImage unavailable")
-  local data=buffer.create(n*n*4)
-  -- Four-by-four coverage sampling of a smooth algebraic heart.
-  for y=0,n-1 do
-   for x=0,n-1 do
-    local hits=0
-    for sy=0,3 do
-     local py=1.45-(y+(sy+.5)/4)*2.65/n
-     for sx=0,3 do
-      local px=-1.35+(x+(sx+.5)/4)*2.70/n
-      local q=px*px+py*py-1
-      if q*q*q-px*px*py*py*py<=0 then hits+=1 end
-     end
-    end
-    if hits>0 then
-     local offset=(y*n+x)*4
-     buffer.writeu32(data,offset,0x00FFFFFF)
-     buffer.writeu8(data,offset+3,math.round(hits*255/16))
-    end
-   end
-  end
-  edit:WritePixelsBuffer(Vector2.zero,Vector2.new(n,n),data)
+ local edit=Icons.texture("Health")
+ if not edit then return nil,nil,nil end
+ local ok,label,gradient,halo=pcall(function()
   local image=U.new("ImageLabel",{Name="HeartHD128",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,
    Active=false,Selectable=false,Interactable=false,ScaleType=Enum.ScaleType.Fit,
-   ImageContent=Content.fromObject(edit),ResampleMode=Enum.ResamplerMode.Default,ZIndex=parent.ZIndex+1},parent)
+   ImageContent=Content.fromObject(edit),ResampleMode=Enum.ResamplerMode.Default,ZIndex=parent.ZIndex+2},parent)
   local grad=U.new("UIGradient",{Rotation=90},image)
-  return image,grad
+  local glow=Icons.texture("Health",true)
+  local aura=nil
+  if glow then
+   aura=U.new("ImageLabel",{Name="HeartNeon",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Active=false,
+    Selectable=false,Interactable=false,ScaleType=Enum.ScaleType.Fit,ImageContent=Content.fromObject(glow),
+    ImageTransparency=.5,ZIndex=parent.ZIndex+1},parent)
+  end
+  return image,grad,aura
  end)
- if not ok then if edit then edit:Destroy() end;return nil,nil end
- label.Destroying:Once(function() edit:Destroy() end)
- return label,gradient
+ if not ok then return nil,nil,nil end
+ return label,gradient,halo
 end
 function M.new(parent,name,round)
  local root=U.new("CanvasGroup",{Name="Glyph",BackgroundTransparency=1,AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromScale(1,1)},parent)
  local outer=U.frame(root,"OuterGlow",nil,nil,nil,.89);U.corner(outer,999);local inner=U.frame(root,"InnerGlow",nil,nil,nil,.80);U.corner(inner,999)
  local ink=U.frame(root,"Ink",nil,nil,nil,1);for _,f in {outer,inner,ink} do f.AnchorPoint=Vector2.new(.5,.5);f.Position=UDim2.fromScale(.5,.5) end
  local self={root=root,ink=ink,parts={},key=""}
- if name=="Heart" then self.hd,self.hdGradient=heartImage(ink) end
+ if name=="Heart" then self.hd,self.hdGradient,self.hdGlow=heartImage(ink) end
  function self:shape(n,r)
   r=math.round(r/10)*10;local key=n..r;if self.key==key then return end;self.key=key
   if self.hd then
    self.hd.Visible=n=="Heart"
+   if self.hdGlow then self.hdGlow.Visible=n=="Heart" end
    if n=="Heart" then for _,part in self.parts do part.Visible=false end;self.mask={};self.a=nil;return end
   end
   local mask=masks[key];if not mask then mask=build(n,r);masks[key]=mask end
@@ -103,9 +114,10 @@ function M.new(parent,name,round)
     local q=math.clamp(.5+(x*dx+y*dy)/math.max(.001,span),0,1)
     self.parts[i].BackgroundColor3=if middle then (if q<.5 then a:Lerp(middle,q*2) else middle:Lerp(b,q*2-1)) else a:Lerp(b,q)
    end
+   if self.hdGlow then self.hdGlow.ImageColor3=middle or a:Lerp(b,.5) end
    outer.BackgroundColor3=b;inner.BackgroundColor3=a;self.a=a;self.b=b;self.mid=middle;self.angle=angle
   end
-  if self.glow~=glow or self.spread~=spread then outer.BackgroundTransparency=1-glow*.0016;inner.BackgroundTransparency=1-glow*.0024;outer.Visible=glow>0;inner.Visible=glow>0;local k=.69+spread*.016;outer.Size=UDim2.fromScale(k,k);inner.Size=UDim2.fromScale(k*.77,k*.77);ink.Size=if self.hd and self.hd.Visible then UDim2.fromScale(.94,.94) else UDim2.fromScale(.73,.73);self.glow=glow;self.spread=spread end
+  if self.glow~=glow or self.spread~=spread then outer.BackgroundTransparency=1-glow*.0016;inner.BackgroundTransparency=1-glow*.0024;outer.Visible=glow>0 and not (self.hd and self.hd.Visible);inner.Visible=outer.Visible;if self.hdGlow then self.hdGlow.ImageTransparency=1-glow*.008 end;local k=.69+spread*.016;outer.Size=UDim2.fromScale(k,k);inner.Size=UDim2.fromScale(k*.77,k*.77);ink.Size=if self.hd and self.hd.Visible then UDim2.fromScale(.94,.94) else UDim2.fromScale(.73,.73);self.glow=glow;self.spread=spread end
  end
  self:shape(name,round or 30);self:paint(Color3.fromRGB(185,150,255),Color3.fromRGB(255,165,220),50,8);return self
 end
