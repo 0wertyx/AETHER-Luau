@@ -35,18 +35,19 @@ if priorPointer then priorPointer:Destroy() end
 local scope = U.scope()
 local gui = scope:add(U.new("ScreenGui", {
     Name = "AETHER_Studio", ResetOnSpawn = false, IgnoreGuiInset = true,
-    ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 50,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 100000,
 }, pg))
 local overlay = U.frame(gui, "HUDLayer", nil, nil, nil, 1)
 local pointerGui = scope:add(U.new("ScreenGui", {
     Name = "AETHER_Pointer", ResetOnSpawn = false,
     IgnoreGuiInset = true, ScreenInsets = Enum.ScreenInsets.None,
-    ClipToDeviceSafeArea = false, DisplayOrder = 10000,
+    ClipToDeviceSafeArea = false, DisplayOrder = 100001,
     ZIndexBehavior = Enum.ZIndexBehavior.Global,
 }, pg))
 local pointer = U.frame(pointerGui, "PointerLayer", nil, nil, nil, 1)
 pointer.Active=false;pointer.Interactable=false
 local studioLayer = U.frame(gui, "StudioLayer", nil, nil, nil, 1)
+studioLayer.ZIndex=2
 
 local app = {
     bank = S.blank(), mode = "Game", logs = {}, preview = nil,

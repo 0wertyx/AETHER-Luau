@@ -496,6 +496,13 @@ function UI.new(app,gui,scope)
  end
  self.header=U.frame(self.panel,"Titlebar",nil,UDim2.new(1,0,0,46),nil,1);self.header.Active=true;self.brand=U.label(self.header,"A E T H E R",18,UDim2.fromOffset(16,2),UDim2.fromOffset(135,40));self.tag=U.label(self.header,"",10,UDim2.fromOffset(147,3),UDim2.new(1,-190,0,40));self.tag.TextColor3=dim
  self.close=U.button(self.header,"×");self.close.Modal=true;self.close.Size=UDim2.fromOffset(33,29);self.close.Position=UDim2.new(1,-43,0,8);scope:on(self.close.Activated,function() self:show(false) end)
+ self.dockPicker=U.button(self.header,"←");self.dockPicker.Size=UDim2.fromOffset(32,29);self.dockPicker.Position=UDim2.new(1,-79,0,8);self.dockPicker.TextSize=18
+ local sides={"Left","Right","Top","Bottom","Floating"}
+ scope:on(self.dockPicker.Activated,function()
+  self.app:set("menuDock",sides[(table.find(sides,self.app.s.menuDock) or 0)%#sides+1])
+ end)
+ self.grip=U.button(self.panel,"◢");self.grip.Name="ResizeGrip";self.grip.Size=UDim2.fromOffset(26,26);self.grip.TextSize=18;self.grip.ZIndex=6;self.grip.BackgroundTransparency=.42
+ self.tag.Size=UDim2.new(1,-231,0,40)
  self.quick=U.frame(self.panel,"QuickEffects",nil,nil,nil,1)
  self.quickButtons={}
  for index,item in {{"HALO","halo"},{"WINGS","wings"},{"PARTICLES","aura"}} do
@@ -510,12 +517,38 @@ function UI.new(app,gui,scope)
  function self:layout()
   local sz=self.stage.AbsoluteSize
   if sz.X<2 or sz.Y<2 then return end
+  local s=self.app.s;local draft=self.menuDraft
+  local side=if draft then draft.side else s.menuDock
   local narrow=sz.X<740
-  local w=math.min(if narrow then 368 else 438,sz.X-(if narrow then 32 else 92))
-  local h=math.max(160,math.min(600,sz.Y-(if narrow then 118 else 196)))
-  local x=sz.X-w-16;local y=if narrow then 58 else 104
-  self.panel.Size=UDim2.fromOffset(w,h);self.xy=Vector2.new(x,y)
-  self.panel.Position=UDim2.fromOffset(x,y)
+  local left=if s.robloxRail and not narrow then 78 else 12
+  local top=if narrow then 92 else 62
+  local bottom=if narrow then 126 else 76
+  if sz.Y<420 then top=12;bottom=12 end
+  local maxW=math.max(1,math.min(1600,sz.X-left-14))
+  local maxH=math.max(1,math.min(1200,sz.Y-top-bottom))
+  local w=math.clamp(if draft then draft.w else s.menuWidth,math.min(280,maxW),maxW)
+  local h=math.clamp(if draft then draft.h else s.menuHeight,math.min(260,maxH),maxH)
+  local x,y
+  if draft and draft.xy then
+   x=draft.xy.X;y=draft.xy.Y
+  elseif side=="Left" then
+   x=left;y=top+math.max(0,maxH-h)*.5
+  elseif side=="Right" then
+   x=sz.X-w-14;y=top+math.max(0,maxH-h)*.5
+  elseif side=="Top" then
+   x=(sz.X-w)*.5;y=top
+  elseif side=="Bottom" then
+   x=(sz.X-w)*.5;y=sz.Y-h-bottom
+  else
+   x=(sz.X-w)*s.menuFloatX/100;y=(sz.Y-h)*s.menuFloatY/100
+  end
+  self.xy=Vector2.new(math.clamp(x,0,math.max(0,sz.X-w)),math.clamp(y,0,math.max(0,sz.Y-h)))
+  self.panel.Size=UDim2.fromOffset(w,h);self.panel.Position=UDim2.fromOffset(self.xy.X,self.xy.Y)
+  self.layoutSide=side;self.panelExtent=Vector2.new(w,h)
+  self.dockPicker.Text=({Left="←",Right="→",Top="↑",Bottom="↓",Floating="◇"})[side] or "◇"
+  self.grip.Visible=s.menuResize
+  self.grip.Position=if side=="Right" then UDim2.new(0,4,1,-30) elseif side=="Bottom" then UDim2.new(1,-30,0,4) else UDim2.new(1,-30,1,-30)
+  self.grip.Text=if side=="Right" then "◣" elseif side=="Bottom" then "◥" else "◢"
   self.top.Size=UDim2.fromOffset(math.min(345,math.max(156,sz.X-(if narrow then 120 else 510))),38)
   self.top.Position=UDim2.new(.5,0,0,if narrow then 48 else 12)
   self.rail.Position=UDim2.new(0,12,.46,0)
@@ -530,11 +563,71 @@ function UI.new(app,gui,scope)
   self.nav.AutomaticCanvasSize=Enum.AutomaticSize.X;self.nav.ScrollingDirection=Enum.ScrollingDirection.X
   for _,b in self.buttons do b.Size=UDim2.fromOffset(106,32) end
   self.pageBox.Position=UDim2.fromOffset(10,149);self.pageBox.Size=UDim2.new(1,-20,1,-180)
+  self.layoutKey=table.concat({s.menuDock,s.menuWidth,s.menuHeight,s.menuFloatX,s.menuFloatY,tostring(s.menuResize),tostring(s.robloxRail)},":")
  end
+ function self:finishMenuDrag(point,resize)
+  local s=self.app.s;local d=self.menuDraft
+  if not d then return end
+  local sz=self.stage.AbsoluteSize;local size=self.panelExtent;local xy=self.xy
+  self.menuDraft=nil
+  local patch={}
+  if resize then
+   patch.menuWidth=math.clamp(math.round(size.X),280,1600)
+   patch.menuHeight=math.clamp(math.round(size.Y),260,1200)
+  else
+   local side="Floating"
+   local distances={Left=point.X-self.stage.AbsolutePosition.X,Right=sz.X-(point.X-self.stage.AbsolutePosition.X),Top=point.Y-self.stage.AbsolutePosition.Y,Bottom=sz.Y-(point.Y-self.stage.AbsolutePosition.Y)}
+   local best=65
+   for _,edge in {"Left","Right","Top","Bottom"} do
+    if distances[edge]<best then best=distances[edge];side=edge end
+   end
+   if side=="Floating" then
+    local left=if s.robloxRail and sz.X>=740 then 78 else 12
+    local margins={Left=math.abs(xy.X-left),Right=math.abs(sz.X-size.X-14-xy.X),Top=math.abs(xy.Y-(if sz.X<740 then 92 else 62)),Bottom=math.abs(sz.Y-size.Y-(if sz.X<740 then 126 else 76)-xy.Y)}
+    best=26
+    for _,edge in {"Left","Right","Top","Bottom"} do
+     if margins[edge]<best then best=margins[edge];side=edge end
+    end
+   end
+   patch.menuDock=side
+   patch.menuFloatX=math.clamp(math.round(100*xy.X/math.max(1,sz.X-size.X)),0,100)
+   patch.menuFloatY=math.clamp(math.round(100*xy.Y/math.max(1,sz.Y-size.Y)),0,100)
+  end
+  self.app:patch(patch);self:layout()
+ end
+ local function moveStart(input)
+  if not self.app.s.menuDrag or self.drag or not self.opened then return end
+  if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
+  if input.Position.X>self.header.AbsolutePosition.X+self.header.AbsoluteSize.X-84 then return end
+  if not self.xy or not self.panelExtent then return end
+  local origin=self.xy;local size=self.panelExtent
+  self:begin(input,function(point,start)
+   self.menuDraft={side="Floating",w=size.X,h=size.Y,xy=origin+point-start}
+   self:layout()
+  end,origin)
+  if self.drag then self.drag.finish=function(point) self:finishMenuDrag(point,false) end end
+ end
+ scope:on(self.header.InputBegan,moveStart)
+ self.brand.Active=true;self.tag.Active=true
+ scope:on(self.brand.InputBegan,moveStart);scope:on(self.tag.InputBegan,moveStart)
+ scope:on(self.grip.InputBegan,function(input)
+  if not self.app.s.menuResize or self.drag or not self.opened then return end
+  if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
+  if not self.xy or not self.panelExtent then return end
+  local side=self.app.s.menuDock;local size=self.panelExtent;local origin=self.xy
+  self:begin(input,function(point,start)
+   local delta=point-start
+   local w=math.max(280,size.X+delta.X*(if side=="Right" then -1 else 1))
+   local h=math.max(260,size.Y+delta.Y*(if side=="Bottom" then -1 else 1))
+   self.menuDraft={side=side,w=w,h=h,xy=if side=="Floating" then origin else nil}
+   self:layout()
+  end,origin)
+  if self.drag then self.drag.finish=function(point) self:finishMenuDrag(point,true) end end
+ end)
  scope:on(self.stage:GetPropertyChangedSignal("AbsoluteSize"),function() self:layout() end);self:layout()
  scope:on(Input.InputChanged,function(i) local d=self.drag;if d and (i==d.i or d.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseMovement) then d.fn(Vector2.new(i.Position.X,i.Position.Y),d.start,d.origin) end end)
- scope:on(Input.InputEnded,function(i) if self.drag and (self.drag.i==i or self.drag.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseButton1) then self.drag=nil end end)
- scope:on(Input.WindowFocusReleased,function() self.drag=nil end);scope:add(function() if self.page then self.page:clear() end;Icons.clear() end);return self
+ scope:on(Input.InputEnded,function(i) if self.drag and (self.drag.i==i or self.drag.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseButton1) then local d=self.drag;self.drag=nil;if d.finish then d.finish(Vector2.new(i.Position.X,i.Position.Y)) end end end)
+ scope:on(Input.WindowFocusReleased,function() self.drag=nil;if self.menuDraft then self.menuDraft=nil;self:layout() end end);scope:add(function() if self.page then self.page:clear() end;Icons.clear() end);return self
 end
 function UI:animateBackground(t)
  local s=self.app.s
@@ -550,8 +643,20 @@ function UI:animateBackground(t)
  local q=U.ease(self.menuProgress,s.ease)
  self.panel.GroupTransparency=1-q
  local strength=s.menuAnimStrength/100
- local offset=if immediate or s.menuTransition=="Fade" then 0 elseif s.menuTransition=="Slide" then (1-q)*48*strength else (1-q)*18*strength
- if self.xy then self.panel.Position=UDim2.fromOffset(self.xy.X+offset,self.xy.Y) end
+ if self.xy then
+  local dx,dy=0,0
+  local side=self.layoutSide or s.menuDock
+  local distance=(1-q)*(.65+.35*strength)
+  if not immediate and s.menuTransition~="Fade" and not self.menuDraft then
+   local extent=self.panelExtent or self.panel.AbsoluteSize;local sz=self.stage.AbsoluteSize
+   if side=="Left" then dx=-(self.xy.X+extent.X+8)*distance
+   elseif side=="Right" then dx=(sz.X-self.xy.X+8)*distance
+   elseif side=="Top" then dy=-(self.xy.Y+extent.Y+8)*distance
+   elseif side=="Bottom" then dy=(sz.Y-self.xy.Y+8)*distance
+   else dy=18*strength*(1-q) end
+  end
+  self.panel.Position=UDim2.fromOffset(self.xy.X+dx,self.xy.Y+dy)
+ end
  local accent=U.hex(s.accent)
  local secondary=U.hex(s.secondary)
  self.top.Visible=s.topCapsule;self.rail.Visible=s.robloxRail
@@ -647,6 +752,7 @@ function UI:show(on)
  self.panel.Interactable=on
  if on then self.panel.Visible=true end
  self.drag=nil
+ if self.menuDraft then self.menuDraft=nil;self:layout() end
  if self.app.s.reduce or self.app.s.menuTransition=="Off" then
   self.menuProgress=if on then 1 else 0
   self.panel.GroupTransparency=if on then 0 else 1
@@ -669,11 +775,13 @@ function UI:watch(fn) table.insert(self.syncs,fn);fn() end
 function UI:sync()
  if not self.panel.Parent then return end
  local st=self.app.s
+ local layoutKey=table.concat({st.menuDock,st.menuWidth,st.menuHeight,st.menuFloatX,st.menuFloatY,tostring(st.menuResize),tostring(st.robloxRail)},":")
+ if self.layoutKey~=layoutKey and not self.menuDraft then self:layout() end
  local primary=U.hex(st.uiFontColor or "F1E6FF")
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.." / EDGE"
+ self.tag.Text=self.app.mode.." / DOCK2"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  for key,item in self.quickButtons do item.button.Text=item.label..(if st[key] then "  ON" else "  OFF");item.button.BackgroundColor3=if st[key] then U.hex(st.accent):Lerp(bg,.52) else soft end
@@ -1655,6 +1763,7 @@ color("Theme","accent","Accent","A68AFF");color("Theme","secondary","Second neon
 range("Theme","glass","Glass opacity %",81,10,100);range("Theme","rim","Neon rim %",55,0,100);toggle("Theme","sparkles","Floating sparkles",true)
 toggle("Motion","reduce","Reduce motion",false);range("Motion","speed","Animation speed %",100,40,200);range("Motion","duration","Transition (ms)",380,80,1400);choice("Motion","ease","Interpolation","Smooth",{"Smooth","Linear","Sine"});choice("Motion","menuTransition","Menu transition","Glass",{"Glass","Slide","Fade","Off"});range("Motion","menuAnimStrength","Menu motion intensity %",75,0,100);toggle("Motion","tabTransition","Animated page transitions",true);toggle("Motion","navGlow","Animated navigation glow",true)
 toggle("Theme","menuGeometry","Animated geometric background",true);choice("Theme","menuShape","Background style","Mixed",{"Mixed","Rings","Crystals","Triangles","Hexagons"});range("Theme","menuDensity","Background density",12,4,20);range("Theme","menuMotion","Background speed %",65,0,180);range("Theme","menuOpacity","Background intensity %",55,0,100);toggle("Theme","screenParticles","Menu screen particles",true);choice("Theme","screenParticleStyle","Screen particle style","Mixed",{"Mixed","Stars","Dust","Diamonds"});range("Theme","screenParticleCount","Screen particle count",24,8,48);range("Theme","screenParticleOpacity","Screen particle intensity %",55,0,100);toggle("Theme","robloxRail","Roblox shortcuts rail",true);toggle("Theme","topCapsule","Interactive top capsule",true)
+choice("Theme","menuDock","Menu docking side","Left",{"Left","Right","Top","Bottom","Floating"});range("Theme","menuWidth","Menu width (px)",438,280,1600);range("Theme","menuHeight","Menu height (px)",600,260,1200);toggle("Theme","menuDrag","Drag / snap menu",true);toggle("Theme","menuResize","Resize with corner grip",true);range("Theme","menuFloatX","Floating horizontal %",35,0,100);range("Theme","menuFloatY","Floating vertical %",40,0,100)
 toggle("HUD","locked","Lock widget positions",true);toggle("HUD","compact","Compact health panel",true);choice("HUD","layoutMode","HUD layout","Sketch",{"Sketch","Custom"});choice("HUD","hudMotion","Widget animation","Glass",{"Glass","Float","Pulse","Off"});range("HUD","hudMotionStrength","Widget motion intensity %",65,0,100);toggle("HUD","hudShine","Health bar shimmer",true);toggle("HUD","hudReaction","Damage and healing glow",true);range("HUD","hudSmoothness","HUD smoothing (ms)",320,100,900)
 choice("HUD","heartPalette","Heart gradient","Adaptive",{"Adaptive","Aurora","Amethyst","Ocean","Sakura","Sunset","Ember","Mint","Ice","Galaxy","Rainbow","Custom"});choice("HUD","heartDirection","Heart gradient direction","Vertical",{"Vertical","Horizontal","Diagonal","Reverse","Orbit"});range("HUD","heartGradientSpeed","Heart gradient speed %",60,0,150);color("HUD","heartA","Heart custom start","BA99FF");color("HUD","heartMid","Heart custom middle","F8CCFF");color("HUD","heartB","Heart custom end","69D9FA");range("HUD","heartGlow","Heart glow %",65,0,100)
 for _,row in {{"hp","Health",3,9},{"clock","Clock",3,96},{"profile","Player card",97,9},{"dock","Studio dock",50,96},{"cross","Reticle",50,50}} do
@@ -2843,18 +2952,19 @@ if priorPointer then priorPointer:Destroy() end
 local scope = U.scope()
 local gui = scope:add(U.new("ScreenGui", {
     Name = "AETHER_Studio", ResetOnSpawn = false, IgnoreGuiInset = true,
-    ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 50,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 100000,
 }, pg))
 local overlay = U.frame(gui, "HUDLayer", nil, nil, nil, 1)
 local pointerGui = scope:add(U.new("ScreenGui", {
     Name = "AETHER_Pointer", ResetOnSpawn = false,
     IgnoreGuiInset = true, ScreenInsets = Enum.ScreenInsets.None,
-    ClipToDeviceSafeArea = false, DisplayOrder = 10000,
+    ClipToDeviceSafeArea = false, DisplayOrder = 100001,
     ZIndexBehavior = Enum.ZIndexBehavior.Global,
 }, pg))
 local pointer = U.frame(pointerGui, "PointerLayer", nil, nil, nil, 1)
 pointer.Active=false;pointer.Interactable=false
 local studioLayer = U.frame(gui, "StudioLayer", nil, nil, nil, 1)
+studioLayer.ZIndex=2
 
 local app = {
     bank = S.blank(), mode = "Game", logs = {}, preview = nil,
