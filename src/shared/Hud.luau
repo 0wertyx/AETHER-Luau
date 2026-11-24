@@ -41,6 +41,16 @@ function H.new(scope,parent,preview,go,drag)
  self.fill=U.frame(self.track,"Fill",nil,UDim2.fromScale(1,1),Color3.new(1,1,1))
  U.corner(self.fill,6)
  self.fillG=U.gradient(self.fill,Color3.fromRGB(167,130,249),Color3.fromRGB(241,147,213),0)
+ self.fill.ClipsDescendants=true
+ self.shine=U.frame(self.fill,"HealthShimmer",nil,nil,Color3.new(1,1,1),.32)
+ self.shine.ZIndex=5;self.shine.Active=false
+ self.shineGradient=U.gradient(self.shine,Color3.new(1,1,1),Color3.new(1,1,1),0)
+ self.shineGradient.Transparency=NumberSequence.new({
+  NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.38,1),
+  NumberSequenceKeypoint.new(.5,.08),NumberSequenceKeypoint.new(.62,1),NumberSequenceKeypoint.new(1,1)})
+ self.shine.Visible=false
+ self.reactionStroke=U.stroke(hp,Color3.fromRGB(195,150,255),1,2.5)
+ self.reactionStroke.Enabled=false
  local clock=self.widgets.clock.p
  self.clock=U.label(clock,"--:--",21,UDim2.fromOffset(13,6),UDim2.new(1,-24,0,29))
  self.clockSub=U.label(clock,"AETHER · TIME",9,UDim2.fromOffset(13,34),UDim2.new(1,-23,0,15))
@@ -96,6 +106,10 @@ function H:setStyle(s)
  self.widgets.hp.p.Size=UDim2.fromOffset(264,if s.compact then 72 else 94)
  self.track.Visible=true
  self.track.Position=UDim2.fromOffset(16,if s.compact then 60 else 77)
+ self.hpTitle.Position=UDim2.fromOffset(77,if s.compact then 7 else 14)
+ self.stateText.Position=UDim2.fromOffset(192,if s.compact then 7 else 14)
+ self.value.Position=UDim2.fromOffset(76,if s.compact then 25 else 35)
+ self.heart.root.Position=UDim2.fromOffset(40,if s.compact then 32 else 44)
  self.reticleKey=nil
  self.hpAccent.BackgroundColor3=accent
  self.profileDot.BackgroundColor3=U.hex(s.secondary)
@@ -168,7 +182,7 @@ function H:reticle(s,f,t)
  end
 end
 function H:vitals(s,f,dt)
- local hp,max=f.hp,f.max;local w=self.widgets.hp;w.p.Visible=s.hp and hp~=nil;if hp==nil then self.last=-1;self.phase=0;return end
+ local hp,max=f.hp,f.max;local w=self.widgets.hp;w.p.Visible=s.hp and hp~=nil;if hp==nil then self.last=-1;self.phase=0;self.hpShake=0;self.shine.Visible=false;self.reactionStroke.Enabled=false;return end
  local ratio=math.clamp(hp/math.max(.001,max),0,1);local dead=hp<=0;local band=if dead then "DEAD" elseif ratio<=.30 then "CRITICAL" elseif ratio<=.65 then "ALERT" else "CALM"
  if self.last~=hp or self.gen~=f.gen or self.maximum~=max then
   self.effect=if self.gen~=nil and (f.gen~=self.gen or self.last==0 and hp>0) then "Revive" elseif self.last>=0 and hp<self.last then "Damage" elseif self.last>=0 and hp>self.last then "Heal" else "None";self.age=0;self.from=self.shown or hp;self.fromRatio=self.bar or ratio;self.fromTrail=math.max(self.trailRatio or ratio,self.bar or ratio);self.last=hp;self.gen=f.gen;self.maximum=max;w.p:SetAttribute("Effect",self.effect);w.p:SetAttribute("Health",hp);w.p:SetAttribute("MaxHealth",max);w.p:SetAttribute("Life",band)
@@ -181,7 +195,54 @@ function H:vitals(s,f,dt)
  local beat=0;if not dead and not s.reduce then local period=if ratio<=.3 then .33+.5*ratio elseif ratio<=.65 then .62+.45*ratio else .91+.62*ratio;self.phase=(self.phase+dt*s.speed/100/period)%1;beat=math.max(0,1-math.abs(self.phase-.12)*9)+.6*math.max(0,1-math.abs(self.phase-.31)*13) else self.phase=0 end
  local bump=if not s.reduce and not dead and (self.effect=="Heal" or self.effect=="Revive") then math.sin(math.pi*q)*(if self.effect=="Revive" then .22 else .09) else 0
  local side=30*(1+beat*(.12+.15*(1-ratio))+bump);self.heart.root.Size=UDim2.fromOffset(side,side);self.heart:paint(self.tint,self.tint2,if dead then 0 else math.clamp(s.rim+beat*25,0,100),8);self.heart.root.GroupTransparency=if dead then .55 else 0
- local shake=if not s.reduce and not dead and self.effect=="Damage" and self.age<.28 then math.sin(self.age*100)*3*(1-self.age/.28) else 0;w.p.Position=UDim2.new(s.hpX/100,shake,s.hpY/100,0);w.rim.Color=self.tint;w.rim.Transparency=if dead then .9 else 1-math.min(1,(s.rim+beat*15)/100)
+ local shake=if not s.reduce and not dead and self.effect=="Damage" and self.age<.28 then math.sin(self.age*100)*3*(1-self.age/.28) else 0;self.hpShake=shake;w.p.Position=UDim2.new(s.hpX/100,shake,s.hpY/100,0);w.rim.Color=self.tint;w.rim.Transparency=if dead then .9 else 1-math.min(1,(s.rim+beat*15)/100)
+ self.shine.Visible=s.hudShine and not dead and not s.reduce and self.bar>.02 and s.hudMotion~="Off"
+ if self.shine.Visible then
+  local progress=(self.time*s.speed/100*.42)%1
+  self.shineGradient.Offset=Vector2.new(-.82+progress*1.64,0)
+ end
+ local reaction=if s.hudReaction and not s.reduce and s.hudMotion~="Off" and self.effect~="None" and not dead then math.exp(-self.age*5)*s.hudMotionStrength/100 else 0
+ self.reactionStroke.Enabled=reaction>.01
+ if self.reactionStroke.Enabled then
+  self.reactionStroke.Color=if self.effect=="Damage" then Color3.fromRGB(255,100,145) elseif self.effect=="Heal" then Color3.fromRGB(123,234,193) else U.hex(s.secondary)
+  self.reactionStroke.Transparency=1-reaction*.7
+  self.reactionStroke.Thickness=1.5+reaction*2
+ end
+end
+function H:animateWidgets(s,f,dt,t)
+ local enabled=not s.reduce and s.hudMotion~="Off"
+ local strength=s.hudMotionStrength/100
+ local dur=math.max(.08,s.duration/1000*100/s.speed)
+ local time=t*s.speed/100
+ for index,key in {"hp","clock","profile","dock"} do
+  local w=self.widgets[key]
+  local want=s[key] and (key~="hp" or f.hp~=nil)
+  local target=if want then 1 else 0
+  local progress=w.motion or 0
+  if not enabled then progress=target
+  else progress=math.clamp(progress+dt/dur*(if want then 1 else -1),0,1) end
+  w.motion=progress
+  local q=U.ease(progress,s.ease)
+  w.p.Visible=want or progress>0
+  w.p.GroupTransparency=1-q*s[key.."Alpha"]/100
+  local x,y=s[key.."X"]/100,s[key.."Y"]/100
+  local alive=key~="hp" or (f.hp~=nil and f.hp>0)
+  local idle=enabled and alive and want and not self.preview
+  local phase=time*1.8+index*.8
+  local bob=if idle and s.hudMotion=="Float" then math.sin(phase)*3*strength else 0
+  local pulse=if idle and s.hudMotion=="Pulse" then math.sin(phase)*.025*strength else 0
+  local entry=if enabled then (1-q)*strength else 0
+  local shake=if key=="hp" then (self.hpShake or 0) else 0
+  w.p.Position=UDim2.new(x,shake,y,bob+(if y>.5 then 1 else -1)*entry*14)
+  w.scale.Scale=self.factor*s[key.."Scale"]/100*(1-entry*.08+pulse)
+  if key~="hp" then
+   local glow=if idle and s.hudMotion~="Off" then (.5+.5*math.sin(phase))*.18*strength else 0
+   w.rim.Transparency=1-math.clamp(s.rim/100+glow,0,1)
+   w.rim.Color=U.hex(s.accent):Lerp(U.hex(s.secondary),glow*2)
+  end
+  w.g.Rotation=if idle and s.hudMotion=="Glass" then 90+math.sin(phase*.5)*18*strength else 90
+ end
+ self.profileDot.BackgroundTransparency=if enabled then .12+.16*(1-math.sin(time*1.7)) else 0
 end
 function H:marker(id)
  local root=U.frame(self.layer,"Marker_"..id,nil,UDim2.fromOffset(40,40),nil,1);root.AnchorPoint=Vector2.new(.5,.5);local glyph=Symbol.new(root,"Soft Triangle",30)
@@ -201,7 +262,7 @@ function H:directions(s,f,dt,t,paint)
 end
 function H:step(s,f,dt)
  if self.settings~=s or self.width~=self.view.AbsoluteSize.X then self:setStyle(s) end;self.time+=dt;local t=self.time;local paint=t>=self.paintAt;if paint then self.paintAt=t+.075 end
- self:reticle(s,f,t);self:vitals(s,f,dt);self:directions(s,f,dt,t,paint);self.name.Text=f.name;self.clock.Text=os.date("%H:%M");self.clockSub.Text=f.mode
+ self:reticle(s,f,t);self:vitals(s,f,dt);self:animateWidgets(s,f,dt,t);self:directions(s,f,dt,t,paint);self.name.Text=f.name;self.clock.Text=os.date("%H:%M");self.clockSub.Text=f.mode
  if paint then for i,n in self.spark do n.Visible=s.sparkles;if s.sparkles then n.BackgroundColor3=U.hex(s.secondary);n.Position=UDim2.fromScale((i*.617)%1,(i*.349-(if s.reduce then 0 else t*.014))%1) end end end
  for id,n in self.extras do if not f.widgets[id] then n:Destroy();self.extras[id]=nil end end
  for id,w in f.widgets do local n=self.extras[id];if not n then n=U.label(self.view,"",14,nil,UDim2.fromOffset(150,25));n.Name="Cue_"..id;n.ZIndex=4;self.extras[id]=n end;n.Text=w.text;n.FontFace=U.font(s);n.TextColor3=U.hex(s.fontA);n.TextStrokeTransparency=.4;local wave=if s.reduce then 0 else math.sin(t*3);n.Position=UDim2.new(w.x/100,0,w.y/100,if w.animation=="float" then wave*5 else 0);n.TextTransparency=if w.animation=="pulse" then .17+wave*.16 else 0 end

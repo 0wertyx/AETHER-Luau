@@ -42,7 +42,7 @@ function A.new(parent,preview)
 end
 function A:clear()
  if self.scope then self.scope:clear();self.scope=nil end
- self.root=nil;self.highlight=nil;self.emitter=nil;self.trail=nil;self.light=nil
+ self.root=nil;self.highlight=nil;self.emitter=nil;self.trail=nil;self.light=nil;self.neonEnergy=0;self.neonHP=nil
  self.key="";self.char=nil;self.lastAt=nil;self.walk=0;self.phase=0
  table.clear(self.feathers);table.clear(self.trims);table.clear(self.beads)
  table.clear(self.ornaments);table.clear(self.parts);table.clear(self.frames);table.clear(self.geoWings);table.clear(self.geoHalos)
@@ -333,13 +333,7 @@ function A:step(char,s,t)
    o.p.Color=if s.haloRainbow then Color3.fromHSV((time*.1+o.index/o.count)%1,.5,1)
     else accent:Lerp(haloColor,.53)
   end
-  if self.highlight then
-   local c=if s.neonRainbow then Color3.fromHSV(time*.12%1,.66,1) else U.hex(s.neonColor)
-   self.highlight.OutlineColor=c;self.highlight.FillColor=c
-   self.highlight.FillTransparency=1-s.neonFill/100;self.highlight.OutlineTransparency=.12
-   if self.light then self.light.Color=c;self.light.Brightness=s.neonLight*.035 end
-  end
-  if self.emitter then
+   if self.emitter then
    self.emitter.Color=ColorSequence.new(U.hex(s.auraColor),accent)
    self.emitter.Rate=if s.reduce then 0 else s.auraRate
   end
@@ -347,6 +341,43 @@ function A:step(char,s,t)
    self.trail.Enabled=not s.reduce
    self.trail.Color=ColorSequence.new(U.hex(s.auraColor),accent)
    self.trail.Lifetime=s.trailLife/1000
+  end
+ end
+ if self.highlight then
+  local style=s.neonMotion
+  local strength=if s.reduce or style=="Solid" then 0 else s.neonMotionStrength/100
+  local speed=s.neonMotionSpeed/100
+  local phase=time*speed
+  local hp=if hum then hum.Health else nil
+  if hp~=nil and self.neonHP~=nil and hp~=self.neonHP then
+   self.neonEnergy=math.min(1,(self.neonEnergy or 0)+.65)
+  end
+  self.neonHP=hp
+  self.neonEnergy=(self.neonEnergy or 0)*math.exp(-dt*3)
+  local wave=.5+.5*math.sin(phase*2)
+  local glow=if style=="Breathe" then wave
+   elseif style=="Aurora" then .5+.5*math.sin(phase*1.4)
+   elseif style=="Heartbeat" then (math.sin(phase*math.pi*2)*.5+.5)^3
+   elseif style=="Flow" then .5+.5*math.sin(phase*2.8)
+   elseif style=="Reactive" then math.clamp(walk*.65+self.neonEnergy,0,1)
+   else 0
+  local base=U.hex(s.neonColor)
+  local accent=U.hex(s.secondary)
+  local color=base
+  if not s.reduce and s.neonRainbow then
+   color=Color3.fromHSV((phase*.11)%1,.58,1)
+  elseif style=="Aurora" or style=="Flow" then
+   color=base:Lerp(accent,glow*strength*.8)
+  end
+  local energy=glow*strength
+  self.highlight.OutlineColor=color
+  self.highlight.FillColor=color:Lerp(accent,energy*.18)
+  self.highlight.FillTransparency=1-math.clamp(s.neonFill/100*(.85+energy*.55),0,.85)
+  self.highlight.OutlineTransparency=math.clamp(.12-energy*.10,0,1)
+  if self.light then
+   self.light.Color=color
+   self.light.Range=s.neonRange
+   self.light.Brightness=s.neonLight*.035*(1+energy*.45)
   end
  end
 end
