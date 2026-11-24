@@ -23,6 +23,7 @@ end
 -- BEGIN MODULE Avatar
 __aether_factories["Avatar"] = function()
 local U=__aether_require("Util")
+local S=__aether_require("Schema")
 local A={};A.__index=A
 
 -- Cosmetic, anchored geometry. The character's own joints, collision and animations
@@ -103,10 +104,52 @@ local function config(detail)
  elseif detail=="Ultra" then return 15,9,48,32
  else return 11,7,36,24 end
 end
+-- Original outlined geometry, independently layered over the legacy halo.
+local function haloV2Paths(index,count)
+ local paths={}
+ local function ring(x,z,r,y,segments)
+  local pts={}
+  for i=0,segments do local t=i/segments*math.pi*2;pts[#pts+1]=Vector3.new(x+math.cos(t)*r,y,z+math.sin(t)*r) end
+  paths[#paths+1]=pts
+ end
+ local function triangle(x,z,r,rot,y)
+  local pts={}
+  for i=0,3 do local t=rot+i/3*math.pi*2;pts[#pts+1]=Vector3.new(x+math.cos(t)*r,y,z+math.sin(t)*r) end
+  paths[#paths+1]=pts
+ end
+ if index==1 or index==6 then
+  for n=1,count do
+   local t=(n-1)/count*math.pi*2
+   local r=if n%2==0 then .65 else 1.03
+   local size=if n%2==0 then .24 else .43
+   triangle(math.cos(t)*r,math.sin(t)*r,size,t+math.pi*.4,if index==6 then (n%3-1)*.16 else 0)
+  end
+ elseif index==2 or index==3 then
+  ring(0,0,1.02,0,32);ring(0,0,.78,0,32)
+  if index==3 then ring(0,0,.84,.28,28);ring(0,0,.65,.28,28) end
+ elseif index==4 or index==5 then
+  local n=if index==5 then count-1 else count
+  if index==5 then ring(0,0,.29,0,16);ring(0,0,.19,0,16) end
+  for j=1,n do
+   local t=(j-1)/n*math.pi*2
+   local orbit=if index==5 then .68 else .96
+   local x,z=math.cos(t)*orbit,math.sin(t)*orbit
+   local y=if index==4 then math.sin(t*2)*.13 else 0
+   ring(x,z,.30,y,16);ring(x,z,.20,y,16)
+  end
+ else
+  ring(0,0,1,0,32)
+  for n=1,count do
+   local t=(n-1)/count*math.pi*2;local delta=math.pi/count
+   paths[#paths+1]={Vector3.new(math.cos(t-delta),0,math.sin(t-delta)),Vector3.new(math.cos(t)*1.10,.45,math.sin(t)*1.10),Vector3.new(math.cos(t+delta),0,math.sin(t+delta))}
+  end
+ end
+ return paths
+end
 function A.new(parent,preview)
  return setmetatable({
   parent=parent,preview=preview,feathers={},trims={},beads={},ornaments={},
-  parts={},frames={},geoWings={},geoHalos={},sketchEdges={},diamonds={},diamondTime={},key="",paintAt=-1,walk=0,phase=0,lastAt=nil
+  parts={},frames={},geoWings={},geoHalos={},haloV2={},sketchEdges={},diamonds={},diamondTime={},key="",paintAt=-1,walk=0,phase=0,lastAt=nil
  },A)
 end
 function A:clear()
@@ -114,7 +157,7 @@ function A:clear()
  self.root=nil;self.highlight=nil;self.emitter=nil;self.trail=nil;self.light=nil;self.neonEnergy=0;self.neonHP=nil
  self.key="";self.char=nil;self.lastAt=nil;self.walk=0;self.phase=0
  table.clear(self.feathers);table.clear(self.trims);table.clear(self.beads)
- table.clear(self.ornaments);table.clear(self.parts);table.clear(self.frames);table.clear(self.geoWings);table.clear(self.geoHalos);table.clear(self.sketchEdges);table.clear(self.diamonds);table.clear(self.diamondTime)
+ table.clear(self.ornaments);table.clear(self.parts);table.clear(self.frames);table.clear(self.geoWings);table.clear(self.geoHalos);table.clear(self.haloV2);table.clear(self.sketchEdges);table.clear(self.diamonds);table.clear(self.diamondTime)
 end
 function A:add(partInstance)
  table.insert(self.parts,partInstance)
@@ -122,9 +165,13 @@ function A:add(partInstance)
 end
 function A:bind(char,body,head,s)
  local wdetail=s.wingDetail or "High";local hdetail=s.haloDetail or "High"
+ local v2Key={};local hasV2=false
+ for i in S.haloV2Styles do local k="haloV2"..i
+  if s[k.."Enabled"] then hasV2=true;table.insert(v2Key,k..":"..tostring(s[k.."Count"])) end
+ end
  local key=table.concat({tostring(s.wings),s.wingStyle,wdetail,
-  tostring(s.halo),s.haloStyle,hdetail,tostring(s.neon),tostring(s.aura),tostring(s.trail)},"/")
- if not (char and body and head) or not(s.wings or s.halo or s.neon or s.aura or s.trail or s.redDiamond or s.blueDiamond) then
+  tostring(s.halo),s.haloStyle,hdetail,tostring(s.neon),tostring(s.aura),tostring(s.trail),table.concat(v2Key,",")},"/")
+ if not (char and body and head) or not(s.wings or s.halo or hasV2 or s.neon or s.aura or s.trail or s.redDiamond or s.blueDiamond) then
   if self.root then self:clear() end;return
  end
  if self.key==key and self.char==char then return end
@@ -208,6 +255,18 @@ function A:bind(char,body,head,s)
    local style=s.haloStyle
    local p=self:add(part(self.root,"HaloGem",Vector3.one,if is(style,"Starfall","Lotus","Comet") then Enum.PartType.Ball else Enum.PartType.Block,true))
    table.insert(self.ornaments,{p=p,index=i,count=ornaments})
+  end
+ end
+ for index in S.haloV2Styles do
+  local k="haloV2"..index
+  if s[k.."Enabled"] then
+   local layer={index=index,paths={}}
+   for _,points in haloV2Paths(index,s[k.."Count"]) do
+    local edges={}
+    for i=1,#points-1 do edges[i]=self:add(part(self.root,"HaloV2Outline",Vector3.one,Enum.PartType.Block,true)) end
+    table.insert(layer.paths,{points=points,edges=edges})
+   end
+   table.insert(self.haloV2,layer)
   end
  end
  if s.neon then self.highlight=U.new("Highlight",{Name="Neon",Adornee=char,DepthMode=Enum.HighlightDepthMode.Occluded},self.root) end
@@ -407,6 +466,29 @@ function A:step(char,s,t)
  local haloY=s.haloHeight/100+.07
   +math.sin(time*1.8)*.045
   +bob*.11
+ for _,layer in self.haloV2 do
+  local k="haloV2"..layer.index
+  local radius=s[k.."Radius"]/100
+  local phase=time*s[k.."Spin"]*.012
+  local height=s[k.."Height"]/100+(layer.index-1)*.08+math.sin(time*1.8+layer.index)*.035
+  local basis=head.CFrame*CFrame.new(0,height,0)*CFrame.Angles(math.rad(s[k.."Tilt"]),phase,0)
+  local primary,secondary=U.hex(s[k.."Color"]),U.hex(s[k.."Secondary"])
+  local opacity=s[k.."Opacity"]/100
+  local glow=s[k.."Glow"]/100
+  local thick=.045*s[k.."Thickness"]/100
+  for j,path in layer.paths do
+   local col=primary:Lerp(secondary,(j-1)/math.max(1,#layer.paths-1))
+   for i,edge in path.edges do
+    local x=basis:PointToWorldSpace(path.points[i]*radius)
+    local y=basis:PointToWorldSpace(path.points[i+1]*radius)
+    segment(edge,x,y,thick)
+    edge.Color=col
+    edge.Transparency=1-opacity
+    edge.Material=if glow>.15 then Enum.Material.Neon else Enum.Material.SmoothPlastic
+    if glow>.15 then edge.Color=col:Lerp(Color3.new(1,1,1),glow*.23) end
+   end
+  end
+ end
  local hRadius=s.haloRadius/100
  for _,g in self.geoHalos do
   local spin=time*s.haloSpin*.012*(if g.ring==2 then -1 else 1)
@@ -1009,6 +1091,41 @@ function UI:control(k)
  local hit=U.new("TextButton",{Name="Slider",Position=UDim2.fromOffset(10,26),Size=UDim2.new(1,-20,0,21),BackgroundTransparency=1,Text="",AutoButtonColor=false},row);local track=U.frame(hit,"Track",UDim2.fromScale(0,.37),UDim2.new(1,0,0,5),bg);U.corner(track,4);local fill=U.frame(track,"Fill",nil,nil,U.hex(app.s.accent));U.corner(fill,4);local dot=U.frame(fill,"Thumb",UDim2.fromScale(1,.5),UDim2.fromOffset(11,11),Color3.fromRGB(237,225,255));dot.AnchorPoint=Vector2.new(.5,.5);U.corner(dot,9)
  self.page:on(hit.InputBegan,function(i) self:begin(i,function(pos) local t=math.clamp((pos.X-hit.AbsolutePosition.X)/math.max(1,hit.AbsoluteSize.X),0,1);app:set(k,math.round(d.min+t*(d.max-d.min))) end) end)
  self:watch(function() if not box:IsFocused() then box.Text=tostring(app.s[k]) end;fill.Size=UDim2.fromScale((app.s[k]-d.min)/(d.max-d.min),1);fill.BackgroundColor3=U.hex(app.s.accent) end)
+end
+function UI:colorPicker(k)
+ local app=self.app
+ self:control(k)
+ local row=self:row(188,"SquareColorPicker")
+ local field=U.new("TextButton",{Name="SaturationValue",Position=UDim2.fromOffset(9,8),Size=UDim2.fromOffset(170,170),BackgroundColor3=Color3.new(1,0,0),Text="",AutoButtonColor=false,BorderSizePixel=0},row)
+ U.corner(field,8)
+ local white=U.frame(field,"Saturation",nil,nil,Color3.new(1,1,1),0);white.Active=false
+ U.corner(white,8);U.new("UIGradient",{Transparency=NumberSequence.new(0,1)},white)
+ local black=U.frame(field,"Value",nil,nil,Color3.new(),0);black.Active=false
+ U.corner(black,8);U.new("UIGradient",{Rotation=90,Transparency=NumberSequence.new(1,0)},black)
+ local marker=U.frame(field,"Marker",nil,UDim2.fromOffset(12,12),Color3.new(1,1,1),1);marker.AnchorPoint=Vector2.new(.5,.5);U.corner(marker,10);U.stroke(marker,Color3.new(1,1,1),0)
+ local hue=U.new("TextButton",{Name="Hue",Position=UDim2.fromOffset(190,8),Size=UDim2.fromOffset(22,170),BackgroundColor3=Color3.new(1,1,1),Text="",AutoButtonColor=false,BorderSizePixel=0},row)
+ U.corner(hue,8)
+ local keys={}
+ for i=0,6 do keys[#keys+1]=ColorSequenceKeypoint.new(i/6,Color3.fromHSV(i/6,1,1)) end
+ U.new("UIGradient",{Rotation=90,Color=ColorSequence.new(keys)},hue)
+ local hm=U.frame(hue,"HueMarker",nil,UDim2.new(1,6,0,3),Color3.new(1,1,1));hm.AnchorPoint=Vector2.new(.5,.5);U.stroke(hm,Color3.new(),.3)
+ local h,s,v=U.hex(app.s[k]):ToHSV();local last=app.s[k]
+ local function commit()
+  local next=Color3.fromHSV(h,s,v):ToHex():upper()
+  last=next
+  if app.s[k]~=next then app:set(k,next) else self:sync() end
+ end
+ self.page:on(field.InputBegan,function(i) self:begin(i,function(pos)
+  s=math.clamp((pos.X-field.AbsolutePosition.X)/math.max(1,field.AbsoluteSize.X),0,1)
+  v=1-math.clamp((pos.Y-field.AbsolutePosition.Y)/math.max(1,field.AbsoluteSize.Y),0,1);commit()
+ end) end)
+ self.page:on(hue.InputBegan,function(i) self:begin(i,function(pos)
+  h=math.clamp((pos.Y-hue.AbsolutePosition.Y)/math.max(1,hue.AbsoluteSize.Y),0,1);commit()
+ end) end)
+ self:watch(function()
+  if last~=app.s[k] then last=app.s[k];h,s,v=U.hex(last):ToHSV() end
+  field.BackgroundColor3=Color3.fromHSV(h,1,1);marker.Position=UDim2.fromScale(s,1-v);hm.Position=UDim2.fromScale(.5,h)
+ end)
 end
 function UI:group(g,skip) for _,k in S.order do if S.defs[k].group==g and not(skip and skip[k]) then self:control(k) end end end
 return UI
@@ -2603,7 +2720,33 @@ function E.render(a,tab,ui)
    ui:chips(ugc,function(style) a:patch({walkAnimation=true,walkStyle=style}) end,4,
     function() return a.s.walkStyle end)
   end
-  preset(ui,a,tab);ui:group(tab)
+  if tab=="Halos" then
+   ui:title("HALO V2 / INDIVIDUAL LAYERS")
+   ui:note("Each layer has its own toggle. Combine styles or use them independently of the legacy halo.",36)
+   for i,style in S.haloV2Styles do
+    local k="haloV2"..i
+    local row=ui:row(42,"HaloV2Style")
+    local label=U.label(row,style,12,UDim2.fromOffset(9,0),UDim2.new(.47,0,1,0))
+    local edit=U.button(row,"EDIT");edit.Position=UDim2.new(.49,0,0,4);edit.Size=UDim2.new(.20,-4,1,-8)
+    local state=U.button(row,"");state.Position=UDim2.new(.70,0,0,4);state.Size=UDim2.new(.30,-6,1,-8);state.TextSize=10
+    ui.page:on(edit.Activated,function() a.haloV2Selected=i;ui:open("Halos") end)
+    ui.page:on(state.Activated,function() a:set(k.."Enabled",not a.s[k.."Enabled"]) end)
+    ui:watch(function()
+     state.Text=if a.s[k.."Enabled"] then "ENABLED" else "DISABLED"
+     state.BackgroundColor3=if a.s[k.."Enabled"] then Color3.fromRGB(75,54,112) else Color3.fromRGB(43,39,52)
+     label.TextColor3=if a.haloV2Selected==i then U.hex(a.s.accent) else Color3.fromRGB(229,220,242)
+    end)
+   end
+   local selected=a.haloV2Selected or 1;local k="haloV2"..selected
+   ui:title("CUSTOMIZE / "..string.upper(S.haloV2Styles[selected]))
+   ui:colorPicker(k.."Color");ui:colorPicker(k.."Secondary")
+   for _,suffix in {"Radius","Height","Spin","Opacity","Glow","Thickness","Count","Tilt"} do ui:control(k..suffix) end
+   ui:title("LEGACY HALOS")
+   preset(ui,a,tab)
+   local skip={}
+   for i in S.haloV2Styles do for _,suffix in S.haloV2Fields do skip["haloV2"..i..suffix]=true end end
+   ui:group(tab,skip)
+  else preset(ui,a,tab);ui:group(tab) end
  elseif tab=="Ambient" then local sky=ui:row(106,"SkyPreview");local grad=U.gradient(sky,Color3.new(),Color3.new(),90);local sun=U.frame(sky,"Sun",nil,UDim2.fromOffset(30,30));U.corner(sun,30);ui:watch(function() local s=a.s;sky.BackgroundColor3=Color3.new(1,1,1);grad.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,U.hex(s.skyA)),ColorSequenceKeypoint.new(.64,U.hex(s.skyB)),ColorSequenceKeypoint.new(1,U.hex(s.skyC))});sun.BackgroundColor3=U.hex(s.skyC);sun.Position=UDim2.fromScale(.7,.66-.45*math.sin(s.time/240*math.pi));sun.BackgroundTransparency=.04+s.fog*.004 end);preset(ui,a,tab);ui:group(tab)
  elseif tab=="Indicators" then preview(ui,a);gallery(ui,a);ui:group(tab,{shape=true});ui:title("PER-PLAYER OVERRIDE");local id=ui:box("UserId or simulator ID","1");local label=ui:box("Label override","");local color=ui:box("Override hex",a.s.arrowA);ui:chips({"Assign current shape","Remove override"},function(k) local p=S.copy(a.s.players);if k=="Assign current shape" then p[id.Text]={label=label.Text,color=color.Text,shape=a.s.shape} else p[id.Text]=nil end;a:set("players",p);ui:message("Overrides updated") end,2)
  elseif tab=="Cursor" then local f=ui:row(94,"CursorPreview");local host=U.frame(f,"OriginalCursorPreview",UDim2.fromScale(.5,.5),UDim2.fromOffset(60,60),nil,1);host.AnchorPoint=Vector2.new(.5,.5);a.preview={cursorHost=host};preset(ui,a,tab);ui:group(tab);ui:note("Cursor animation never moves its click hotspot. Enable Show hotspot marker to compare the real mouse position with the skin; use Pointer offset X/Y only for calibration. EditableImage renders desktop SVG; imports need an authorized asset ID.",57)
@@ -2764,6 +2907,22 @@ toggle("Character","walkAnimation","Custom walking animation",false);choice("Cha
  "Angel Glide","Bat Swoop","Mermaid Drift","Serpent Slither","Cartwheel Flow","Rubberhose","Dream Sleep","Plushie","Cat Paws","Shy Kawaii","Gymnast","Skip Hop","Reindeer Prance","Fighter","Harpy Glide","Godly Aura","Wavy Expressive","Retro Zombie","Tsundere","Doll Walk","Skater","Little Duck","Floating Head","Dark Aura","Anime Hero","Headless Float"});range("Character","walkIntensity","Walking intensity %",65,0,100);toggle("Character","aura","Aura particles",false);toggle("Character","trail","Motion trail",false);range("Character","auraRate","Emission / second",12,1,45);range("Character","trailLife","Trail lifetime (ms)",400,80,1300);color("Character","auraColor","Aura color","C4A3FF")
 toggle("Wings","wings","Show wings",false);choice("Wings","wingStyle","Silhouette","Seraph",{"Seraph","Blade","Sylph","Phoenix","Frost","Butterfly","Raven","Celestial","Crystal","Dusk","Petal","Storm","Royal","Eclipse","Prism Wings","Triad Wings","Hex Wings","Star Wings","Orbital Wings","Diamond Wings","Geo Bloom","Kagune","Seraphim","Burnt Fallen","Knife Wing","Crystal Wing"});range("Wings","wingSpan","Span %",100,50,175);range("Wings","wingSweep","Sweep (degrees)",24,-25,65);range("Wings","wingBeat","Flap speed %",90,0,200);color("Wings","wingColor","Feather color","B49BFF");toggle("Wings","wingRainbow","Prismatic feathers",false);choice("Wings","wingDetail","Feather detail","High",{"Balanced","High","Ultra"});toggle("Wings","wingWalk","Walking wing reaction",true);toggle("Wings","sketchColors","Original sketch palette",true);range("Wings","sketchGlow","Contour glow %",80,0,100);range("Wings","sketchMotion","Floating motion %",70,0,150);toggle("Wings","redDiamond","Red rotating diamond",false);toggle("Wings","blueDiamond","Blue rotating diamond",false);range("Wings","diamondSpeed","Diamond rotation %",100,0,200);range("Wings","diamondSize","Diamond size %",100,50,175);toggle("Wings","diamondEcho","Diamond rotation echoes",true)
 toggle("Halos","halo","Show halo",false);choice("Halos","haloStyle","Orbit form","Ring",{"Ring","Binary","Crown","Double Ring","Spiral","Starfall","Solar","Lunar","Orbitals","Thorns","Prism","Eclipse","Comet","Lotus","Triangle","Square","Pentagon","Hexagon","Octagon","Star","Double Diamond","Infinity"});range("Halos","haloRadius","Radius %",88,45,175);range("Halos","haloHeight","Height above head %",105,55,220);range("Halos","haloSpin","Orbit speed %",75,0,200);color("Halos","haloColor","Halo color","FFB4D6");toggle("Halos","haloRainbow","Prismatic halo",false);choice("Halos","haloDetail","Halo geometry detail","High",{"Balanced","High","Ultra"});toggle("Halos","haloWalk","Walking halo reaction",true)
+S.haloV2Styles={"Prism Shards","Classic Ring","Twin Ring","Orbit Rings","Cluster Halo","Fallen Fragments","Aether Crown"}
+S.haloV2Fields={"Enabled","Color","Secondary","Radius","Height","Spin","Opacity","Glow","Thickness","Count","Tilt"}
+for index,style in S.haloV2Styles do
+ local k="haloV2"..index
+ toggle("Halos",k.."Enabled",style,false)
+ color("Halos",k.."Color","Primary color","D6B7FF")
+ color("Halos",k.."Secondary","Secondary color","F5E5FF")
+ range("Halos",k.."Radius","Size %",100,40,200)
+ range("Halos",k.."Height","Height %",125,50,250)
+ range("Halos",k.."Spin","Rotation speed %",25,0,200)
+ range("Halos",k.."Opacity","Opacity %",100,0,100)
+ range("Halos",k.."Glow","Neon glow %",75,0,100)
+ range("Halos",k.."Thickness","Outline thickness %",100,30,250)
+ range("Halos",k.."Count","Shape count",if index==5 then 7 else 8,3,12)
+ range("Halos",k.."Tilt","Tilt degrees",0,-60,60)
+end
 toggle("Neon","neon","Character outline",true);range("Neon","neonFill","Body tint %",10,0,65);range("Neon","neonLight","Light intensity %",40,0,100);color("Neon","neonColor","Neon color","AB87FF");toggle("Neon","neonRainbow","Rainbow neon",false);choice("Neon","neonMotion","Neon animation","Breathe",{"Solid","Breathe","Aurora","Heartbeat","Flow","Reactive"});range("Neon","neonMotionSpeed","Neon animation speed %",90,0,180);range("Neon","neonMotionStrength","Neon animation intensity %",65,0,100);range("Neon","neonRange","Light radius (studs)",9,2,20)
 toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA","High sky","282057");color("Ambient","skyB","Horizon","8C70C2");color("Ambient","skyC","Ground light","EAB6CD");range("Ambient","fog","Fog density %",35,0,90);range("Ambient","bloom","Bloom %",40,0,100);range("Ambient","time","Time (tenths of an hour)",166,0,239);range("Ambient","light","Brightness %",105,25,180);range("Ambient","saturation","Saturation %",9,-85,85);range("Ambient","blur","Depth blur",0,0,16);range("Ambient","fade","Atmosphere fade (ms)",700,0,3500);range("Ambient","worldContrast","Contrast %",0,-80,80);range("Ambient","worldExposure","Exposure %",0,-100,100);range("Ambient","worldGlare","Atmospheric glare %",0,0,100);range("Ambient","worldRays","Sun rays %",0,0,100);range("Ambient","worldFocus","Depth of field %",0,0,100);range("Ambient","worldFocusDistance","Focus distance (studs)",60,8,250);range("Ambient","worldBloomSize","Bloom radius",26,0,56)
 toggle("Indicators","indicators","Directional indicators",true);choice("Indicators","shape","Indicator shape","Soft Triangle",S.shapes);range("Indicators","size","Size (px)",31,14,72);range("Indicators","corners","Corner softness %",30,0,100);range("Indicators","edge","Distance from edges %",11,4,30);range("Indicators","turn","Rotation smoothing (ms)",180,0,800);range("Indicators","ink","Neon intensity %",60,0,100);range("Indicators","spread","Neon spread (px)",6,0,18);range("Indicators","arrowAlpha","Opacity %",95,10,100);range("Indicators","arrowSpeed","Animation speed %",100,40,220);color("Indicators","arrowA","Gradient start","BFA2FF");color("Indicators","arrowB","Gradient end","FF9ECE");toggle("Indicators","arrowRainbow","Rainbow gradient",false);toggle("Indicators","pulse","Pulsation",true);choice("Indicators","labels","Arrow labels","Both",{"Off","Name","Distance","Both"});toggle("Indicators","nearby","Nearby nameplates",false);range("Indicators","reach","Tracking range (studs)",800,50,2500)
