@@ -631,6 +631,8 @@ function H.new(scope,parent,preview,go,drag)
  for i,item in {{"HUD","HUD"},{"FX","Character"},{"ASSETS","Workshop"}} do
   local b=U.button(dock,item[1])
   b.Name="Dock_"..item[2]
+  b:SetAttribute("AETHERIconOnly",true)
+  b:SetAttribute("AETHERText",item[1])
   b.Size=UDim2.fromOffset(64,35)
   b.Position=UDim2.fromOffset(8+(i-1)*71,7)
   b.TextSize=11
@@ -759,6 +761,8 @@ function I.new(button,tab)
   Size=UDim2.fromOffset(24,24),Position=UDim2.fromOffset(5,4),
   ScaleType=Enum.ScaleType.Crop,Visible=false,ZIndex=button.ZIndex+1
  },button)
+ local iconOnly=button:GetAttribute("AETHERIconOnly")==true
+ if iconOnly then visual.Position=UDim2.new(.5,-12,.5,-12) end
  local name=I.tabs[tab] or tab
  local index=lookup[name]
  if index then visual.ImageRectOffset=Vector2.new(index%8*I.TILE,math.floor(index/8)*I.TILE) end
@@ -771,8 +775,12 @@ function I.new(button,tab)
   local ready=asset~="" and index~=nil
   visual.Visible=ready
   visual.Image=if ready then "rbxassetid://"..asset else ""
-  button.TextXAlignment=if ready then Enum.TextXAlignment.Right else Enum.TextXAlignment.Center
-  button.TextSize=if ready then 11 else 13
+  if iconOnly then
+   button.Text=if ready then "" else tostring(button:GetAttribute("AETHERText") or "")
+  else
+   button.TextXAlignment=if ready then Enum.TextXAlignment.Right else Enum.TextXAlignment.Center
+   button.TextSize=if ready then 11 else 13
+  end
  end
  return self
 end

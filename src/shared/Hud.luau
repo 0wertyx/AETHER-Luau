@@ -53,6 +53,8 @@ function H.new(scope,parent,preview,go,drag)
  for i,item in {{"HUD","HUD"},{"FX","Character"},{"ASSETS","Workshop"}} do
   local b=U.button(dock,item[1])
   b.Name="Dock_"..item[2]
+  b:SetAttribute("AETHERIconOnly",true)
+  b:SetAttribute("AETHERText",item[1])
   b.Size=UDim2.fromOffset(64,35)
   b.Position=UDim2.fromOffset(8+(i-1)*71,7)
   b.TextSize=11
