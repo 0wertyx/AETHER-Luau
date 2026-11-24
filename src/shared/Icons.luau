@@ -77,8 +77,11 @@ function I.new(button,tab)
   else
    button.TextXAlignment=Enum.TextXAlignment.Right
    button.TextSize=11
+   local pad=button:FindFirstChild("IconTextPadding") or U.new("UIPadding",{Name="IconTextPadding",PaddingRight=UDim.new(0,7),PaddingLeft=UDim.new(0,29)},button)
+   pad.PaddingRight=UDim.new(0,7)
   end
   button.TextColor3=Color3.fromRGB(241,234,255)
+  button.TextTransparency=0
  end
  visual:GetPropertyChangedSignal("IsLoaded"):Connect(refresh)
  function self:sync(asset)

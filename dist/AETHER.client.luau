@@ -429,7 +429,7 @@ local bg=Color3.fromRGB(19,16,32);local dim=Color3.fromRGB(173,163,197);local so
 function UI.new(app,gui,scope)
  local self=setmetatable({app=app,gui=gui,scope=scope,syncs={},icons={},tab="Dashboard",opened=true,seq=0,menuProgress=0,pageProgress=0,navHover={},navAmount={}},UI)
  self.stage=U.frame(gui,"StudioArea",nil,nil,nil,1);self.panel=U.new("CanvasGroup",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=.035,BorderSizePixel=0,Size=UDim2.fromScale(1,1),GroupTransparency=1,Visible=false,Active=true},self.stage);U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3);self.panel.BackgroundTransparency=1;self.panel.GroupColor3=Color3.new(1,1,1)
- self.panelBackground=U.frame(self.panel,"GlassBackground",nil,nil,Color3.new(1,1,1),.035);self.panelBackground.Active=false;self.panelBackground.Interactable=false;U.corner(self.panelBackground,17)
+ self.panelBackground=U.frame(self.panel,"GlassBackground",nil,nil,Color3.new(1,1,1),.035);self.panelBackground.Active=false;self.panelBackground.Interactable=false;self.panelBackground.ZIndex=1;U.corner(self.panelBackground,17)
  U.gradient(self.panelBackground,bg,Color3.fromRGB(39,30,58),82)
  self.geoLayer=U.frame(self.panel,"GeometryBackground",UDim2.fromOffset(3,3),UDim2.new(1,-6,1,-6),nil,1)
  self.geoLayer.ClipsDescendants=true;self.geoLayer.Active=false;self.geoLayer.ZIndex=1
@@ -563,7 +563,7 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.."   /   "..self.tab
+ self.tag.Text=self.app.mode.."   /   "..self.tab.."   /   HUD FIX 02"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  for _,asset in self.icons do asset:sync(st.iconAtlas) end
@@ -837,6 +837,7 @@ function H.new(scope,parent,preview,go,drag)
   local background=U.frame(p,"GlassBackground",nil,nil,Color3.new(1,1,1),0)
   background.Active=false
   background.Interactable=false
+  background.ZIndex=1
   background.Visible=k~="cross"
   local g=U.gradient(background,Color3.fromRGB(53,40,75),Color3.fromRGB(22,21,36))
   U.corner(background,if k=="cross" then 0 else 15)
@@ -930,6 +931,8 @@ function H:setStyle(s)
   w.g.Color=ColorSequence.new(a,b)
   w.p.BackgroundTransparency=1
   w.p.GroupColor3=Color3.new(1,1,1)
+  local legacyGradient=w.p:FindFirstChildOfClass("UIGradient")
+  if legacyGradient then legacyGradient:Destroy() end
   w.background.BackgroundTransparency=1-s.glass/100
  end
  self.widgets.hp.p.Size=UDim2.fromOffset(264,if s.compact then 72 else 94)
@@ -1190,8 +1193,11 @@ function I.new(button,tab)
   else
    button.TextXAlignment=Enum.TextXAlignment.Right
    button.TextSize=11
+   local pad=button:FindFirstChild("IconTextPadding") or U.new("UIPadding",{Name="IconTextPadding",PaddingRight=UDim.new(0,7),PaddingLeft=UDim.new(0,29)},button)
+   pad.PaddingRight=UDim.new(0,7)
   end
   button.TextColor3=Color3.fromRGB(241,234,255)
+  button.TextTransparency=0
  end
  visual:GetPropertyChangedSignal("IsLoaded"):Connect(refresh)
  function self:sync(asset)

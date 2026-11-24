@@ -55,6 +55,7 @@ function H.new(scope,parent,preview,go,drag)
   local background=U.frame(p,"GlassBackground",nil,nil,Color3.new(1,1,1),0)
   background.Active=false
   background.Interactable=false
+  background.ZIndex=1
   background.Visible=k~="cross"
   local g=U.gradient(background,Color3.fromRGB(53,40,75),Color3.fromRGB(22,21,36))
   U.corner(background,if k=="cross" then 0 else 15)
@@ -148,6 +149,8 @@ function H:setStyle(s)
   w.g.Color=ColorSequence.new(a,b)
   w.p.BackgroundTransparency=1
   w.p.GroupColor3=Color3.new(1,1,1)
+  local legacyGradient=w.p:FindFirstChildOfClass("UIGradient")
+  if legacyGradient then legacyGradient:Destroy() end
   w.background.BackgroundTransparency=1-s.glass/100
  end
  self.widgets.hp.p.Size=UDim2.fromOffset(264,if s.compact then 72 else 94)
