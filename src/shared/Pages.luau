@@ -7,6 +7,11 @@ end
 local function preview(ui,a,showPanels)
  local f=ui:row(if showPanels then 210 else 149,"LivePreview");f.ClipsDescendants=true;f.BackgroundTransparency=0;U.gradient(f,Color3.fromRGB(105,87,145),Color3.fromRGB(49,46,94),36)
  local h=Hud.new(ui.page,f,true,function(tab) ui:open(tab) end,function(i,k,n,v,source) a:drag(i,k,n,v,source) end,nil,showPanels);a.preview={hud=h}
+ if showPanels then
+  h:layoutPreview(a.s)
+  ui.page:on(f:GetPropertyChangedSignal("AbsoluteSize"),function() h:layoutPreview(a.s) end)
+  ui:watch(function() h:layoutPreview(a.s) end)
+ end
 end
 local function avatarPreview(ui,a)
  local f=ui:row(165,"RigPreview");local view=U.new("ViewportFrame",{Size=UDim2.fromScale(1,1),BorderSizePixel=0,BackgroundColor3=Color3.fromRGB(21,19,36),Ambient=Color3.fromRGB(155,145,175),LightColor=Color3.fromRGB(246,222,255),LightDirection=Vector3.new(-1,-1,-.6)},f);U.corner(view,10);local w=U.new("WorldModel",{},view);local rig=Avatar.mannequin(w);local cam=U.new("Camera",{FieldOfView=34,CFrame=CFrame.lookAt(Vector3.new(2.3,3.6,9.3),Vector3.new(0,2.1,0))},view);view.CurrentCamera=cam;local avatar=Avatar.new(w,true);a.preview={avatar=avatar,rig=rig};ui.page:add(function() avatar:clear() end)

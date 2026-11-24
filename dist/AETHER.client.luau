@@ -946,7 +946,7 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.." / HUD PREVIEW"
+ self.tag.Text=self.app.mode.." / PREVIEW FIX 02"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  for key,item in self.quickButtons do item.button.Text=item.label..(if st[key] then "  ON" else "  OFF");item.button.BackgroundColor3=if st[key] then U.hex(st.accent):Lerp(bg,.52) else soft end
@@ -1336,7 +1336,8 @@ function H.new(scope,parent,preview,go,drag,close,showPanels)
   self.previewPanels={}
   self.previewHandles={}
   local function makePanel(key,labels,vertical)
-   local panel=U.frame(parent,"Preview_"..key,nil,UDim2.fromOffset(1,1),Color3.fromRGB(26,21,42),.08)
+   local panel=U.frame(parent,"Preview_"..key,if vertical then UDim2.new(0,5,.25,0) else UDim2.new(.5,-78,0,5),if vertical then UDim2.fromOffset(35,100) else UDim2.fromOffset(156,24),Color3.fromRGB(26,21,42),.08)
+   panel.Visible=true
    panel.ZIndex=7;U.corner(panel,6);local rim=U.stroke(panel,Color3.fromRGB(199,160,255),.3,1)
    for j,label in labels do
     local tile=U.frame(panel,"Tile"..j,if vertical then UDim2.new(0,2,(j-1)/#labels,2) else UDim2.new((j-1)/#labels,2,0,2),if vertical then UDim2.new(1,-4,1/#labels,-4) else UDim2.new(1/#labels,-4,1,-4),Color3.fromRGB(54,40,80),.16)
@@ -1356,6 +1357,41 @@ function H.new(scope,parent,preview,go,drag,close,showPanels)
   end
  end
  return self
+end
+function H:layoutPreview(s)
+ if not self.previewPanels then return end
+ local vp=self.view.AbsoluteSize
+ if vp.X<2 or vp.Y<2 then return end
+ for _,key in {"top","rail"} do
+  local item=self.previewPanels[key]
+  local panel=item.p
+  local w=if key=="top" then math.min(vp.X*.62,math.max(144, vp.X*.44)) else math.min(42,math.max(30,vp.X*.085))
+  local height=if key=="top" then 25 else math.min(108,vp.Y*.55)
+  local x,y
+  if s[key.."Custom"] then
+   x=math.max(0,vp.X-w)*s[key.."X"]/100;y=math.max(0,vp.Y-height)*s[key.."Y"]/100
+  elseif key=="top" then x=(vp.X-w)*.5;y=6
+  else x=6;y=vp.Y*.46-height*.5 end
+  panel.AnchorPoint=Vector2.zero
+  panel.Size=UDim2.fromOffset(w,height)
+  panel.Position=UDim2.fromOffset(math.clamp(x,0,math.max(0,vp.X-w)),math.clamp(y,0,math.max(0,vp.Y-height)))
+  panel.Visible=if key=="top" then s.topCapsule else s.robloxRail
+  item.rim.Color=if s.movePanels then U.hex(s.accent) else Color3.fromRGB(153,143,180)
+  item.rim.Transparency=0
+  item.rim.Thickness=if s.movePanels then 2 else 1
+ end
+ for key,item in self.previewHandles do
+  local isPanel=key=="top" or key=="rail"
+  local allowed=if isPanel then s.movePanels else not s.locked
+  item.p.Visible=item.target.Visible and allowed
+  item.p.Active=allowed;item.p.Interactable=allowed
+  if item.p.Visible then
+   -- Panel positions are set directly, so the drag target can follow without waiting
+   -- for AbsolutePosition propagation during the current input event.
+   if isPanel then item.p.Position=item.target.Position;item.p.Size=item.target.Size
+   else local xy=item.target.AbsolutePosition-self.view.AbsolutePosition;item.p.Position=UDim2.fromOffset(xy.X,xy.Y);item.p.Size=UDim2.fromOffset(item.target.AbsoluteSize.X,item.target.AbsoluteSize.Y) end
+  end
+ end
 end
 function H:clearMarkers() for _,m in self.markers do m.root:Destroy() end;table.clear(self.markers) end
 function H:placement(s,k)
@@ -1654,33 +1690,6 @@ function H:step(s,f,dt)
    setText(self.wallhopDetail,"Space · manual camera turn")
   end
  else self.whStart=nil;self.whDown=false;self.whAngle=nil end
- if self.previewPanels then
-  local vp=self.view.AbsoluteSize
-  local factor=self.factor or .43
-  for _,key in {"top","rail"} do
-   local panel=self.previewPanels[key].p
-   local w,h=if key=="top" then math.min(vp.X*.58,345*factor) else 54*factor,if key=="top" then 38*factor else 176*factor
-   panel.Size=UDim2.fromOffset(w,h);panel.AnchorPoint=Vector2.zero
-   panel.Visible=if key=="top" then s.topCapsule else s.robloxRail
-   local x,y
-   if s[key.."Custom"] then
-    x=math.max(0,vp.X-w)*s[key.."X"]/100;y=math.max(0,vp.Y-h)*s[key.."Y"]/100
-   elseif key=="top" then x=(vp.X-w)/2;y=5
-   else x=5;y=vp.Y*.46-h/2 end
-   panel.Position=UDim2.fromOffset(math.clamp(x,0,math.max(0,vp.X-w)),math.clamp(y,0,math.max(0,vp.Y-h)))
-  end
-  for key,item in self.previewHandles do
-   local panel=key=="top" or key=="rail"
-   local allowed=if panel then s.movePanels else not s.locked
-   item.p.Visible=item.target.Visible and allowed
-   item.p.Active=allowed;item.p.Interactable=allowed
-   if item.p.Visible then
-    local xy=item.target.AbsolutePosition-self.view.AbsolutePosition
-    item.p.Position=UDim2.fromOffset(xy.X,xy.Y);item.p.Size=UDim2.fromOffset(item.target.AbsoluteSize.X,item.target.AbsoluteSize.Y)
-   end
-   if panel then self.previewPanels[key].rim.Color=if allowed then U.hex(s.accent) else Color3.fromRGB(125,116,148) end
-  end
- end
  if not self.fpsAt or t>=self.fpsAt then
   self.fpsAt=t+.25
   setText(self.name,if f.fps then string.format("%d FPS",math.floor(f.fps+.5)) else "— FPS")
@@ -2033,6 +2042,11 @@ end
 local function preview(ui,a,showPanels)
  local f=ui:row(if showPanels then 210 else 149,"LivePreview");f.ClipsDescendants=true;f.BackgroundTransparency=0;U.gradient(f,Color3.fromRGB(105,87,145),Color3.fromRGB(49,46,94),36)
  local h=Hud.new(ui.page,f,true,function(tab) ui:open(tab) end,function(i,k,n,v,source) a:drag(i,k,n,v,source) end,nil,showPanels);a.preview={hud=h}
+ if showPanels then
+  h:layoutPreview(a.s)
+  ui.page:on(f:GetPropertyChangedSignal("AbsoluteSize"),function() h:layoutPreview(a.s) end)
+  ui:watch(function() h:layoutPreview(a.s) end)
+ end
 end
 local function avatarPreview(ui,a)
  local f=ui:row(165,"RigPreview");local view=U.new("ViewportFrame",{Size=UDim2.fromScale(1,1),BorderSizePixel=0,BackgroundColor3=Color3.fromRGB(21,19,36),Ambient=Color3.fromRGB(155,145,175),LightColor=Color3.fromRGB(246,222,255),LightDirection=Vector3.new(-1,-1,-.6)},f);U.corner(view,10);local w=U.new("WorldModel",{},view);local rig=Avatar.mannequin(w);local cam=U.new("Camera",{FieldOfView=34,CFrame=CFrame.lookAt(Vector3.new(2.3,3.6,9.3),Vector3.new(0,2.1,0))},view);view.CurrentCamera=cam;local avatar=Avatar.new(w,true);a.preview={avatar=avatar,rig=rig};ui.page:add(function() avatar:clear() end)
@@ -3837,6 +3851,10 @@ scope:on(RunService.RenderStepped, function(dt)
     elapsed += math.min(dt, .1)
     local ok, err = pcall(frame, math.min(dt, .1), elapsed)
     -- Keep drag handles synchronized even if another cosmetic module faults.
+    if app.preview and app.preview.hud and app.preview.hud.previewPanels then
+        local good, problem=pcall(app.preview.hud.layoutPreview,app.preview.hud,app.s)
+        if not good and not app.previewLayoutError then app.previewLayoutError=true;warn("AETHER preview panels:",problem) end
+    end
     if app.editingHUD then
         local good, problem=pcall(app.updateEditor,app)
         if not good and not app.editorError then app.editorError=true;warn("AETHER HUD editor:",problem) end

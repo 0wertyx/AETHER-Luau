@@ -465,6 +465,10 @@ scope:on(RunService.RenderStepped, function(dt)
     elapsed += math.min(dt, .1)
     local ok, err = pcall(frame, math.min(dt, .1), elapsed)
     -- Keep drag handles synchronized even if another cosmetic module faults.
+    if app.preview and app.preview.hud and app.preview.hud.previewPanels then
+        local good, problem=pcall(app.preview.hud.layoutPreview,app.preview.hud,app.s)
+        if not good and not app.previewLayoutError then app.previewLayoutError=true;warn("AETHER preview panels:",problem) end
+    end
     if app.editingHUD then
         local good, problem=pcall(app.updateEditor,app)
         if not good and not app.editorError then app.editorError=true;warn("AETHER HUD editor:",problem) end
