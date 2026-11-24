@@ -2079,13 +2079,21 @@ local function avatarPreview(ui,a,worldMode)
  local floorOffset=2
  local centerOffset=Vector3.zero
  local moving=false
+ local velocity=Vector3.zero
+ local verticalSpeed=0
+ local grounded=true
+ local jumpRequested=false
  local startPosition=Vector3.zero
+ local orbitButton=nil
+ local shiftLock=false
+ local sceneParams=RaycastParams.new()
+ sceneParams.FilterType=Enum.RaycastFilterType.Include
  local fullGui,fullHost,fullStatus,fullPause,fullSpeed=nil,nil,nil,nil,nil
  local actionName="AETHER_Preview_"..Http:GenerateGUID(false)
  local CAS=game:GetService("ContextActionService")
  local keys={}
  local function endOrbit()
-  dragging=false;lastMouse=nil
+  dragging=false;lastMouse=nil;orbitButton=nil
   if sc.Parent then sc.ScrollingEnabled=not hovered end
  end
  local function applyCamera()
@@ -2093,9 +2101,15 @@ local function avatarPreview(ui,a,worldMode)
   local aspect=math.max(.1,view.AbsoluteSize.X/math.max(1,view.AbsoluteSize.Y))
   local half=math.rad(cam.FieldOfView*.5)
   local angle=math.min(half,math.atan(math.tan(half)*aspect))
-  local distance=radius/math.sin(angle)*1.12*zoom
+  local distance=if worldMode and full then 12*zoom else radius/math.sin(angle)*1.12*zoom
   local offset=Vector3.new(math.sin(yaw)*math.cos(pitch),math.sin(pitch),-math.cos(yaw)*math.cos(pitch))
-  cam.CFrame=CFrame.lookAt(center+offset*distance,center)
+  local pos=center+offset*distance
+  if worldMode and full and stage then
+   sceneParams.FilterDescendantsInstances={stage}
+   local hit=w:Raycast(center,pos-center,sceneParams)
+   if hit then pos=center+offset*math.max(.6,hit.Distance-.4) end
+  end
+  cam.CFrame=CFrame.lookAt(pos,center)
  end
  local function fit()
   local rig=previewState.rig
@@ -2218,37 +2232,46 @@ local function avatarPreview(ui,a,worldMode)
    previewState.effectTime=(previewState.effectTime or os.clock())+dt
    moving=false
    if full and ui.opened then
-    local x=(if keys[Enum.KeyCode.D] then 1 else 0)-(if keys[Enum.KeyCode.A] then 1 else 0)
-    local z=(if keys[Enum.KeyCode.W] then 1 else 0)-(if keys[Enum.KeyCode.S] then 1 else 0)
-    if x~=0 or z~=0 then
-     local forward=Vector3.new(cam.CFrame.LookVector.X,0,cam.CFrame.LookVector.Z)
-     forward=if forward.Magnitude>.01 then forward.Unit else Vector3.new(0,0,-1)
-     local right=forward:Cross(Vector3.yAxis)
-     local dir=(forward*z+right*x).Unit
-     local pos=rootPart.Position
-     local delta=dir*dt*8
-     local wall=w:Raycast(pos,delta+dir*.45)
-     if not wall then
-      local nextPos=pos+delta
-      local ground=w:Raycast(nextPos+Vector3.new(0,2,0),Vector3.new(0,-8,0))
-      if ground and ground.Normal.Y>.5 then
-       nextPos=Vector3.new(nextPos.X,ground.Position.Y+floorOffset,nextPos.Z)
-      else
-       nextPos=Vector3.new(nextPos.X,pos.Y,nextPos.Z)
-      end
-      if (nextPos-startPosition).Magnitude<=45 then
-       rootPart.CFrame=CFrame.lookAt(nextPos,nextPos+dir);moving=true
-      end
+    local x=(if keys[Enum.KeyCode.D] or keys[Enum.KeyCode.Right] then 1 else 0)-(if keys[Enum.KeyCode.A] or keys[Enum.KeyCode.Left] then 1 else 0)
+    local z=(if keys[Enum.KeyCode.W] or keys[Enum.KeyCode.Up] then 1 else 0)-(if keys[Enum.KeyCode.S] or keys[Enum.KeyCode.Down] then 1 else 0)
+    local forward=Vector3.new(-math.sin(yaw),0,math.cos(yaw))
+    local right=forward:Cross(Vector3.yAxis)
+    local dir=forward*z+right*x
+    if dir.Magnitude>1 then dir=dir.Unit end
+    velocity=velocity:Lerp(dir*16,1-math.exp(-dt*14))
+    local pos=rootPart.Position
+    local delta=velocity*dt
+    sceneParams.FilterDescendantsInstances=if stage then {stage} else {}
+    if delta.Magnitude>.001 then
+     local wall=w:Raycast(pos,delta+delta.Unit*.65,sceneParams)
+     if wall and math.abs(wall.Normal.Y)<.55 then
+      delta-=wall.Normal*delta:Dot(wall.Normal)
+      if delta.Magnitude>.001 and w:Raycast(pos,delta+delta.Unit*.4,sceneParams) then delta=Vector3.zero end
      end
     end
+    if jumpRequested and grounded then verticalSpeed=36;grounded=false end
+    jumpRequested=false
+    verticalSpeed-=workspace.Gravity*dt
+    local nextPos=pos+delta+Vector3.new(0,verticalSpeed*dt,0)
+    local ground=w:Raycast(nextPos+Vector3.new(0,1.8,0),Vector3.new(0,-(floorOffset+4+math.abs(verticalSpeed*dt)),0),sceneParams)
+    if verticalSpeed<=0 and ground and ground.Normal.Y>.5 and nextPos.Y<=ground.Position.Y+floorOffset then
+     nextPos=Vector3.new(nextPos.X,ground.Position.Y+floorOffset,nextPos.Z);verticalSpeed=0;grounded=true
+    else grounded=false end
+    if nextPos.Y<startPosition.Y-40 or (nextPos-startPosition).Magnitude>80 then
+     nextPos=startPosition;velocity=Vector3.zero;verticalSpeed=0;grounded=true
+    end
+    moving=velocity.Magnitude>.35
+    local facing=if shiftLock then forward elseif dir.Magnitude>.1 then dir else rootPart.CFrame.LookVector
+    rootPart.CFrame=rootPart.CFrame:Lerp(CFrame.lookAt(nextPos,nextPos+facing),1-math.exp(-dt*20))
+    rootPart.CFrame=CFrame.new(nextPos)*rootPart.CFrame.Rotation
    end
    center=rootPart.Position+centerOffset;applyCamera()
   end
   for _,motor in motors do motor.Transform=CFrame.identity end
-  if ((ui.tab=="Character" and settings.walkAnimation) or (worldMode and moving)) and not settings.reduce then
+  if ((ui.tab=="Character" and settings.walkAnimation) or (worldMode and (moving or not grounded))) and not settings.reduce then
    local demo=settings
    if worldMode and not settings.walkAnimation then demo=table.clone(settings);demo.walkAnimation=true end
-   motion:step(rig,demo,dt,true)
+   motion:step(rig,demo,dt,if worldMode then {movement=math.clamp(velocity.Magnitude/16,0,1),grounded=grounded,jumping=verticalSpeed>0} else true)
   else
    motion:bind(nil)
   end
@@ -2309,7 +2332,7 @@ local function avatarPreview(ui,a,worldMode)
  end
  local function closeFull()
   if not full then return end
-  full=false
+  full=false;velocity=Vector3.zero;shiftLock=false;jumpRequested=false
   CAS:UnbindAction(actionName);table.clear(keys)
   hovered=false;endOrbit()
   if not page.dead and f.Parent then view.Parent=f end
@@ -2343,15 +2366,18 @@ local function avatarPreview(ui,a,worldMode)
    fullPause=tool(if paused then "Resume" else "Pause",190,68,togglePause)
    tool("Capture",266,76,captureScene)
    fullHost=U.frame(shell,"Viewport",UDim2.fromOffset(12,68),UDim2.new(1,-24,1,-114),nil,1)
-   fullStatus=U.label(shell,"WASD · middle mouse orbit · scroll zoom · static local preview",13,UDim2.new(0,16,1,-42),UDim2.new(1,-32,0,30))
+   fullStatus=U.label(shell,"WASD / arrows · Space jump · RMB camera · Shift lock · scroll zoom",13,UDim2.new(0,16,1,-42),UDim2.new(1,-32,0,30))
   end
   full=true;fullGui.Enabled=true;view.Parent=fullHost
   if worldMode then
    CAS:BindActionAtPriority(actionName,function(_,state,input)
-    if state==Enum.UserInputState.Begin then keys[input.KeyCode]=true
+    if state==Enum.UserInputState.Begin then
+     keys[input.KeyCode]=true
+     if input.KeyCode==Enum.KeyCode.Space then jumpRequested=true end
+     if input.KeyCode==Enum.KeyCode.LeftShift then shiftLock=not shiftLock end
     elseif state==Enum.UserInputState.End or state==Enum.UserInputState.Cancel then keys[input.KeyCode]=nil end
     return Enum.ContextActionResult.Sink
-   end,false,Enum.ContextActionPriority.High.Value+100,Enum.KeyCode.W,Enum.KeyCode.A,Enum.KeyCode.S,Enum.KeyCode.D)
+   end,false,Enum.ContextActionPriority.High.Value+100,Enum.KeyCode.W,Enum.KeyCode.A,Enum.KeyCode.S,Enum.KeyCode.D,Enum.KeyCode.Up,Enum.KeyCode.Down,Enum.KeyCode.Left,Enum.KeyCode.Right,Enum.KeyCode.Space,Enum.KeyCode.LeftShift)
   end
   hovered=false;endOrbit();applyCamera()
  end
@@ -2361,8 +2387,8 @@ local function avatarPreview(ui,a,worldMode)
  -- Use global input rather than ViewportFrame.InputBegan, which can be
  -- swallowed by the surrounding ScrollingFrame or another GUI layer.
  page:on(Input.InputBegan,function(input)
-  if input.UserInputType==middle and hovered and ui.opened then
-   dragging=true;lastMouse=Input:GetMouseLocation();sc.ScrollingEnabled=false
+  if (input.UserInputType==middle or (full and input.UserInputType==Enum.UserInputType.MouseButton2)) and hovered and ui.opened then
+   dragging=true;orbitButton=input.UserInputType;lastMouse=Input:GetMouseLocation();sc.ScrollingEnabled=false
   end
  end)
  page:on(Input.InputChanged,function(input)
@@ -2371,7 +2397,7 @@ local function avatarPreview(ui,a,worldMode)
   end
  end)
  page:on(Input.InputEnded,function(input)
-  if input.UserInputType==middle then endOrbit() end
+  if input.UserInputType==orbitButton then endOrbit() end
  end)
  page:on(Input.WindowFocusReleased,function() table.clear(keys);hovered=false;endOrbit() end)
  page:on(game:GetService("RunService").RenderStepped,function(dt)
@@ -2381,7 +2407,7 @@ local function avatarPreview(ui,a,worldMode)
    return
   end
   if dragging then
-   if not Input:IsMouseButtonPressed(middle) then
+   if not orbitButton or not Input:IsMouseButtonPressed(orbitButton) then
     endOrbit()
    else
     local mouse=Input:GetMouseLocation()
@@ -2399,7 +2425,7 @@ local function avatarPreview(ui,a,worldMode)
    applyCamera()
   end
  end)
- ui:note(if worldMode then "Capture visible scene · Full screen for WASD · Middle mouse orbit · Scroll zoom" else "Hold middle mouse to orbit · Scroll to zoom · Walking preview",32)
+ ui:note(if worldMode then "Capture visible scene · Full screen: WASD, Space, RMB camera, Shift lock" else "Hold middle mouse to orbit · Scroll to zoom · Walking preview",32)
  if worldMode then
   ui:chips({"Capture visible scene","Full screen"},function(n) if n=="Full screen" then openFull() else captureScene() end end,2)
   ui:chips({"Demo stage","Pause / resume","Playback speed"},function(n) if n=="Demo stage" then resetScene() elseif n=="Pause / resume" then togglePause() else cycleSpeed() end end,3)
@@ -2427,6 +2453,70 @@ end
 local function simMap(ui,a)
  local map=ui:row(132,"VirtualMap");map.ClipsDescendants=true;map.BackgroundColor3=U.hex("211E36");local center=U.label(map,"CAMERA ↑",11,UDim2.new(.5,-32,.5,-8),UDim2.fromOffset(70,18));center.TextColor3=U.hex(a.s.accent)
  for _,p in a.sim.players do local b=U.button(map,tostring(p.id));b.AnchorPoint=Vector2.new(.5,.5);b.Size=UDim2.fromOffset(27,25);b.Position=UDim2.fromScale(.5+p.x*.45,.5+p.y*.45);ui.page:on(b.InputBegan,function(i) ui:begin(i,function(pos) local rel=pos-map.AbsolutePosition;p.x=math.clamp((rel.X/map.AbsoluteSize.X-.5)/.45,-1,1);p.y=math.clamp((rel.Y/map.AbsoluteSize.Y-.5)/.45,-1,1);b.Position=UDim2.fromScale(.5+p.x*.45,.5+p.y*.45) end) end) end
+end
+local function configs(ui,a)
+ local selected=a.configSelection
+ local current=a.bank.profiles
+ local status=ui:note("",38)
+ ui:watch(function() status.Text=a.store.status end)
+ ui:title("CONFIG MANAGER")
+ ui:note("Save your entire setup: HUD, wings, halos, animations, colors and all settings. No JSON editing required.",46)
+ local list=names(current)
+ if #list==0 then ui:note("No configurations yet. Enter a name and save.",28)
+ else ui:chips(list,function(n) a.configSelection=n;a.configName=n;a.confirmDelete=nil;ui:open("Profiles") end,2,function() return selected or "" end) end
+ local input=ui:box("Config name",a.configName or selected or "My setup",32)
+ ui.page:on(input:GetPropertyChangedSignal("Text"),function() a.configName=input.Text end)
+ local function validName()
+  local n=input.Text:match("^%s*(.-)%s*$")
+  assert(#n>0 and #n<=48 and not n:match("^@") and not n:find("%c"),"Enter a valid config name")
+  return n
+ end
+ local function commit(bank,n,message)
+  a:library(bank);a.configSelection=n;a.configName=n or ""
+  a.store:save();ui:open("Profiles");ui:message(message.." · "..a.store.status)
+ end
+ ui:chips({"Save new","Load","Update selected"},function(op)
+  local draft=S.copy(a.bank)
+  if op=="Load" then
+   assert(selected and current[selected],"Select a saved config")
+   a:replace(S.copy(current[selected]));a.store:save();ui:message("Loaded "..selected)
+  elseif op=="Update selected" then
+   assert(selected and current[selected],"Select a saved config")
+   draft.profiles[selected]=S.settings(a.s);commit(draft,selected,"Updated "..selected)
+  else
+   local n=validName();assert(not current[n],"Name exists; use Update selected")
+   draft.profiles[n]=S.settings(a.s);commit(draft,n,"Saved "..n)
+  end
+ end,3)
+ ui:chips({"Rename","Duplicate","Delete"},function(op)
+  assert(selected and current[selected],"Select a saved config")
+  local draft=S.copy(a.bank)
+  if op=="Delete" then
+   if a.confirmDelete~=selected then a.confirmDelete=selected;ui:message("Click Delete again to remove "..selected);return end
+   a.confirmDelete=nil;draft.profiles[selected]=nil;commit(draft,nil,"Deleted "..selected)
+  else
+   local n=validName();assert(not current[n],"Name already exists")
+   draft.profiles[n]=S.copy(current[selected]);if op=="Rename" then draft.profiles[selected]=nil end
+   commit(draft,n,"Saved "..n)
+  end
+ end,3)
+ ui:title("STORAGE")
+ ui:note(if a.store.remote then "Server storage available. Durable saving depends on the game's DataStore configuration." else "Auto-saves during this game session. For reuse after leaving, export a backup or install server storage in your own place.",54)
+ ui:chips({"Save now","Reload bank"},function(op) if op=="Save now" then a.store:save() else a.store:read(true) end;ui:message(a.store.status);if not ui.page.dead then ui:sync() end end,2)
+ ui:chips({if a.showConfigJSON then "Hide JSON tools" else "Advanced / JSON backup"},function() a.showConfigJSON=not a.showConfigJSON;ui:open("Profiles") end,1)
+ if a.showConfigJSON then
+  local transfer=ui:box("JSON backup",a.transfer or "",100)
+  ui.page:on(transfer.FocusLost,function() a.transfer=transfer.Text end)
+  ui:chips({"Export bank","Import bank"},function(op)
+   if op=="Export bank" then
+    a.transfer=Http:JSONEncode({format="aether.bank/1",data=a.bank});transfer.Text=a.transfer;transfer:CaptureFocus();transfer.CursorPosition=#transfer.Text+1;transfer.SelectionStart=1
+   else
+    assert(#transfer.Text<=110100,"Import too large")
+    local v=Http:JSONDecode(transfer.Text);assert(v.format=="aether.bank/1","Invalid bank format")
+    a:restore(S.bank(v.data));a:dirty();a.store:save();ui:message("Bank imported")
+   end
+  end,2)
+ end
 end
 local function library(ui,a,profiles)
  local list=if profiles then a.bank.profiles else a.bank.assets;local group=a.libraryKind or "Theme";local selected=a.selection or "";local built=not profiles and S.presets[group] or {}
@@ -2512,7 +2602,8 @@ function E.render(a,tab,ui)
  elseif tab=="Fonts" then local text=ui:note(a.s.sample,62);text:SetAttribute("AETHERKeepFontColor",true);text.TextXAlignment=Enum.TextXAlignment.Center;local gradient=U.gradient(text,Color3.new(),Color3.new(),10);local glow=U.stroke(text,U.hex(a.s.fontB),.8);glow.ApplyStrokeMode=Enum.ApplyStrokeMode.Contextual;ui:watch(function() local s=a.s;text.Text=s.sample;text.FontFace=U.font(s);text.TextSize=s.fontSize*.23;text.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA);text.TextStrokeTransparency=1-s.fontOutline/100;gradient.Enabled=s.fontGradient;gradient.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB));glow.Color=U.hex(s.fontB);glow.Transparency=1-s.fontGlow*.008;glow.Thickness=1+s.fontGlow*.023 end);local query=ui:box("Search native typefaces",a.fontQuery or "",32,function(q) if q~=(a.fontQuery or "") then a.fontQuery=q;ui:open("Fonts") end end);local fonts={};for _,n in S.fonts do if n:lower():find((a.fontQuery or ""):lower(),1,true) then table.insert(fonts,n) end end;ui:chips(fonts,function(n) a:patch({font=n,fontAsset=""}) end,3,function() return a.s.font end);ui:group(tab,{font=true});preset(ui,a,tab)
  elseif tab=="Simulator" then preview(ui,a);ui:title("WORLD PREVIEW");avatarPreview(ui,a,true);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
  elseif tab=="Scripts" then scripts(ui,a)
- elseif tab=="Workshop" or tab=="Profiles" then library(ui,a,tab=="Profiles")
+ elseif tab=="Profiles" then configs(ui,a)
+ elseif tab=="Workshop" then library(ui,a,false)
  elseif tab=="List" then
   ui:title("ROBLOX PLAYER LIST")
   ui:chips({"Toggle native player list"},function() ui:togglePlayerList() end,1)
@@ -2720,26 +2811,50 @@ local RS=game:GetService("ReplicatedStorage");local Http=game:GetService("HttpSe
 local Store={};Store.__index=Store
 function Store.new(app,scope)
  local self=setmetatable({app=app,revision=0,serial=0,dirty=false,id=0,lastEdit=0,lastWrite=-100,status="Local session · JSON available",ready=false},Store)
+ local pg=game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+ local cache=pg:FindFirstChild("AETHER_SessionBank")
+ if not cache then cache=Instance.new("StringValue");cache.Name="AETHER_SessionBank";cache.Parent=pg end
+ self.cache=cache
+ if cache:IsA("StringValue") and cache.Value~="" then
+  local ok,bank=pcall(function() return S.bank(Http:JSONDecode(cache.Value)) end)
+  if ok then app:restore(bank);self.status="Local session restored" end
+ end
  local function attach(r)
   if self.remote or r.Name~="AetherFullStoreV1" or not r:IsA("RemoteEvent") then return end;self.remote=r
   scope:on(r.OnClientEvent,function(id,ok,msg,rev,body)
    local p=self.pending;if not p or id~=p.id then return end;self.pending=nil;self.status=msg
    if not ok then if msg=="Revision conflict · reload or export" or p.op=="read" then self.ready=false end;app:log("Store",msg);return end
    self.revision=rev;if p.op=="read" then local good,bank=pcall(function() return S.bank(Http:JSONDecode(body)) end);if not good then self.status="Unreadable bank · local edits retained";return end
-    if p.serial==self.serial and (p.force or not self.dirty) then app:restore(bank);self.dirty=false end;self.ready=true
+    if p.serial==self.serial and (p.force or not self.dirty) then app:restore(bank);self.dirty=false;self:cacheBank() end;self.ready=true
    elseif self.serial==p.serial then self.dirty=false end;app:log("Store",msg)
   end);self:read(false)
  end
  scope:on(RS.ChildAdded,attach);local r=RS:FindFirstChild("AetherFullStoreV1");if r then attach(r) end;return self
 end
-function Store:edit() self.serial+=1;self.dirty=true;self.lastEdit=os.clock() end
+function Store:cacheBank()
+ local ok,data=pcall(function() return Http:JSONEncode(S.bank(self.app.bank)) end)
+ if not ok or #data>110000 then self.status="Bank invalid or too large";return false end
+ if self.cache and self.cache:IsA("StringValue") then self.cache.Value=data;return true end
+ return false
+end
+function Store:edit()
+ self.serial+=1;self.dirty=true;self.lastEdit=os.clock()
+ self:cacheBank()
+end
 function Store:request(op,body,force)
  if not self.remote or not self.remote.Parent then self.status="Local session only · export a JSON bank";return false end
  if self.pending then return false end;self.id+=1;self.pending={id=self.id,op=op,serial=self.serial,force=force,start=os.clock()};self.status=if op=="read" then "Reading bank…" else "Saving bank…";self.remote:FireServer(self.id,op,self.revision,body);return true
 end
-function Store:read(force) return self:request("read",nil,force) end
+function Store:read(force)
+ if self.remote then return self:request("read",nil,force) end
+ if force and self.cache and self.cache:IsA("StringValue") and self.cache.Value~="" then
+  local ok,bank=pcall(function() return S.bank(Http:JSONDecode(self.cache.Value)) end)
+  if ok then self.app:restore(bank);self.status="Session bank restored";return true end
+ end
+ self.status="No saved session bank";return false
+end
 function Store:save()
- if not self.ready then self.status=if self.remote then "Read/reload before saving · export to keep local edits" else "Local session only · export a JSON bank";return false end
+ if not self.ready then if self:cacheBank() then self.status="Saved for this game session";return true end;return false end
  local data=Http:JSONEncode(self.app.bank);if #data>110000 then self.status="Bank exceeds 110 KB · remove or export assets";return false end;self.lastWrite=os.clock();return self:request("write",data,false)
 end
 function Store:tick(now)
@@ -3596,14 +3711,15 @@ function W:step(character,s,dt,preview)
  local pack=MotionPacks.get(style)
  local floating=style=="Floating" or style=="Glide" or style=="Ethereal"
  local enabled=s.walkAnimation and not s.reduce and (preview or (hum.Health>0 and not hum.Sit))
- local state=if preview then Enum.HumanoidStateType.Running else hum:GetState()
+ local virtual=if type(preview)=="table" then preview else nil
+ local state=if virtual and not virtual.grounded then (if virtual.jumping then Enum.HumanoidStateType.Jumping else Enum.HumanoidStateType.Freefall) elseif preview then Enum.HumanoidStateType.Running else hum:GetState()
  local jumping=state==Enum.HumanoidStateType.Jumping
  local falling=state==Enum.HumanoidStateType.Freefall
  local climbing=state==Enum.HumanoidStateType.Climbing
  local swimming=state==Enum.HumanoidStateType.Swimming
  local airborne=jumping or falling
- local grounded=preview or hum.FloorMaterial~=Enum.Material.Air
- local movement=if preview then 1 else hum.MoveDirection.Magnitude
+ local grounded=if virtual then virtual.grounded elseif preview then true else hum.FloorMaterial~=Enum.Material.Air
+ local movement=if virtual then virtual.movement elseif preview then 1 else hum.MoveDirection.Magnitude
  local intensity=math.clamp((s.walkIntensity or 65)/100,0,1)
  local target=0
  if enabled then
