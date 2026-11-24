@@ -587,6 +587,15 @@ function UI.new(app,gui,scope)
   self.stars[i]={root=root,bars=bars,dot=dot}
  end
  self.top,self.topRim,self.topButtons=U.topPanel(self.stage)
+ self.updateChip=U.button(self.top,"v1.0.0")
+ self.updateChip.Name="LiveVersion"
+ self.updateChip.AnchorPoint=Vector2.new(.5,0)
+ self.updateChip.Position=UDim2.new(.5,0,1,6)
+ self.updateChip.Size=UDim2.fromOffset(112,22)
+ self.updateChip.TextSize=10;self.updateChip.ZIndex=self.top.ZIndex+2
+ self.updateChip.BackgroundTransparency=.15
+ self.updateRim=U.stroke(self.updateChip,Color3.fromRGB(166,138,255),.45)
+ scope:on(self.updateChip.Activated,function() self:open("Updates") end)
  for index,action in {"Scripts","Toggle","Workshop"} do
   scope:on(self.topButtons[index].Activated,function() if action=="Toggle" then self:show(not self.opened) else self:open(action) end end)
  end
@@ -815,6 +824,18 @@ function UI:animateBackground(t)
  local accent=U.hex(s.accent)
  local secondary=U.hex(s.secondary)
  self.top.Visible=s.topCapsule;self.rail.Visible=s.robloxRail
+ local live=self.app.liveUpdate
+ if live then
+  local unread=live.unread==true
+  local version=live.version..(if (live.testCount or 0)>0 and live.isTest then " · TEST "..tostring(live.testCount) else "")
+  local text=if unread then "v"..version.."  |  VERSION UPDATED  |  CHECK UPDATE LIST" else "v"..version
+  if self.updateChip.Text~=text then self.updateChip.Text=text end
+  local width=if unread then math.min(370,math.max(150,self.stage.AbsoluteSize.X-24)) else math.min(180,math.max(90,#text*7+20))
+  self.updateChip.Size=UDim2.fromOffset(width,if unread then 28 else 22)
+  self.updateChip.BackgroundColor3=if unread then accent:Lerp(Color3.fromRGB(22,17,35),.65) else Color3.fromRGB(24,20,40)
+  self.updateRim.Color=accent
+  self.updateRim.Transparency=if unread then .15 else .55
+ end
  self.topRim.Color=accent;self.railRim.Color=accent
  self.topButtons[2].BackgroundColor3=if self.opened then accent:Lerp(bg,.55) else soft
  local visible=s.screenParticles and q>.001
@@ -2618,11 +2639,12 @@ function E.render(a,tab,ui)
  elseif tab=="Updates" then
   ui:title("LIVE UPDATE CENTER")
   local state=a.liveUpdate
+  state.unread=false
   local version=ui:note("",36)
   local status=ui:note("",48)
   local notes=ui:note("",52)
   local function sync()
-   version.Text="RUNNING VERSION  /  "..state.version.."\nWEBSITE  /  "..(if state.connected then "CONNECTED · AUTO" else "RELAY OFFLINE")
+   version.Text="RUNNING VERSION  /  "..state.version..(if state.isTest then " · TEST "..tostring(state.testCount) else "").."\nWEBSITE  /  "..(if state.connected then "CONNECTED · AUTO" else "RELAY OFFLINE")
    status.Text=state.status
    notes.Text=state.notes or "No update applied. Your HUD, configs and menu stay active during an update."
   end
@@ -2632,6 +2654,16 @@ function E.render(a,tab,ui)
   end,3)
   ui:note("Website releases apply automatically through the first-party relay. Local test and manual check remain available. No remote executable code is loaded.",54)
   ui:chips({"Browse new presets"},function() a.libraryKind="Theme";a.selection=nil;ui:open("Workshop") end,1)
+  ui:title("UPDATE LIST")
+  local changelog=ui:note("",280)
+  ui:watch(function()
+   local rows={}
+   for i,release in state.releases do
+    if i>5 then break end
+    table.insert(rows,"v"..release.version.."  /  "..release.source.."  /  "..release.time.."\n"..release.notes)
+   end
+   changelog.Text=if #rows>0 then table.concat(rows,"\n\n") else "No updates applied in this session yet."
+  end)
  elseif tab=="Diagnostics" then local info=ui:note("",54);local log=ui:box("Session events","",165);log.TextEditable=false;local function refresh() info.Text=string.format("%s  ·  HP %s / %s  ·  %d tracked\n%s",a.mode,tostring(a.frame.hp),tostring(a.frame.max),#a.frame.targets,a.store.status);log.Text=table.concat(a.logs,"\n") end;ui:chips({"Refresh","Clear log","Reset settings"},function(n) if n=="Clear log" then table.clear(a.logs) elseif n=="Reset settings" then a:replace(S.defaults()) end;refresh() end,3);refresh();ui:title("SESSION");ui:note("Unload stops AETHER, removes its HUD and effects, and releases its camera and mouse controls. Export a bank first to retain local-only settings.",52);-- Allocate one confirmation row, once per Diagnostics page. Never append rows from clicks.
   local page=ui.page
   local row=ui:row(40,"UnloadConfirmation")
@@ -4206,7 +4238,7 @@ function app:runCue()
 end
 -- Live updates are bounded data packages, never downloaded executable Luau.
 local updateHttp=game:GetService("HttpService")
-local updateState={version="1.0.0",revision=0,status="Waiting for update relay",busy=false,history={},generation=0,connected=false}
+local updateState={version="1.0.0",publishedVersion="1.0.0",revision=0,status="Waiting for update relay",busy=false,history={},releases={},generation=0,connected=false,unread=false,testCount=0,isTest=false}
 app.liveUpdate=updateState
 local function validateUpdate(raw)
     assert(type(raw)=="table" and raw.format=="aether.live/1","Invalid update format")
@@ -4226,6 +4258,14 @@ local function validateUpdate(raw)
     end
     return {revision=raw.revision,version=raw.version,notes=raw.notes,presets=presets}
 end
+local function versionGreater(a,b)
+    local ax,ay,az=a:match("^(%d+)%.(%d+)%.(%d+)$")
+    local bx,by,bz=b:match("^(%d+)%.(%d+)%.(%d+)$")
+    local aa={tonumber(ax),tonumber(ay),tonumber(az)}
+    local bb={tonumber(bx),tonumber(by),tonumber(bz)}
+    for i=1,3 do if aa[i]~=bb[i] then return aa[i]>bb[i] end end
+    return false
+end
 function app:updateStatus(message)
     updateState.status=message
     self:log("Update",message)
@@ -4240,8 +4280,8 @@ function app:applyLiveUpdate(raw,force)
         if self.stopping or gen~=updateState.generation then return end
         local ok,pack=pcall(validateUpdate,raw)
         if not ok then updateState.busy=false;self:updateStatus("Rejected: "..tostring(pack):sub(-100));return end
-        if not force and pack.revision<=updateState.revision then updateState.busy=false;self:updateStatus("Already up to date");return end
-        local before={version=updateState.version,revision=updateState.revision,notes=updateState.notes,presets=S.copy(S.presets)}
+        if not force and (pack.revision<=updateState.revision or not versionGreater(pack.version,updateState.publishedVersion)) then updateState.busy=false;self:updateStatus("Already up to date");return end
+        local before={version=updateState.version,publishedVersion=updateState.publishedVersion,revision=updateState.revision,notes=updateState.notes,presets=S.copy(S.presets),isTest=updateState.isTest}
         local staged=S.copy(S.presets)
         for group,items in pack.presets do
             staged[group]=staged[group] or {}
@@ -4250,14 +4290,18 @@ function app:applyLiveUpdate(raw,force)
         -- Swap one validated data table. Preserve all settings, profile bank,
         -- current page, HUD, avatar, render callbacks and the session itself.
         S.presets=staged
-        updateState.version=pack.version;if not force then updateState.revision=pack.revision end;updateState.notes=pack.notes
+        updateState.version=pack.version;updateState.isTest=force==true;if not force then updateState.revision=pack.revision;updateState.publishedVersion=pack.version end;updateState.notes=pack.notes
         local applied,err=pcall(function() self:updateStatus("Updated live to "..pack.version) end)
         if not applied then
-            S.presets=before.presets;updateState.version=before.version;updateState.revision=before.revision;updateState.notes=before.notes
+            S.presets=before.presets;updateState.version=before.version;updateState.publishedVersion=before.publishedVersion;updateState.revision=before.revision;updateState.notes=before.notes;updateState.isTest=before.isTest
             updateState.status="Update rolled back: "..tostring(err):sub(-100)
         else
             table.insert(updateState.history,before)
             while #updateState.history>5 do table.remove(updateState.history,1) end
+            if force then updateState.testCount+=1 end
+            table.insert(updateState.releases,1,{version=pack.version,notes=pack.notes,source=if force then "LOCAL TEST "..tostring(updateState.testCount) else "WEBSITE",time=os.date("%H:%M:%S")})
+            while #updateState.releases>12 do table.remove(updateState.releases) end
+            updateState.unread=not (self.ui and self.ui.opened and self.ui.tab=="Updates")
         end
         updateState.busy=false
         if self.ui then self.ui:sync() end
@@ -4265,7 +4309,7 @@ function app:applyLiveUpdate(raw,force)
 end
 function app:testLiveUpdate()
     local revision=updateState.revision+1
-    self:applyLiveUpdate({format="aether.live/1",revision=revision,version="1.0."..tostring(revision),notes="Live test: new Aurora glass theme and Lunar halo preset. Existing settings remain intact.",presets={Theme={["Live Aurora"]={accent="8DEBFF",secondary="D8ACFF",glassColor="22243E"}},Halos={["Live Lunar"]={halo=true,haloStyle="Lunar",haloColor="C4B5FF"}}}},true)
+    self:applyLiveUpdate({format="aether.live/1",revision=revision,version=updateState.publishedVersion,notes="Live test: new Aurora glass theme and Lunar halo preset. Existing settings remain intact.",presets={Theme={["Live Aurora"]={accent="8DEBFF",secondary="D8ACFF",glassColor="22243E"}},Halos={["Live Lunar"]={halo=true,haloStyle="Lunar",haloColor="C4B5FF"}}}},true)
 end
 function app:checkLiveUpdate()
     if updateState.busy then return end
@@ -4280,7 +4324,8 @@ function app:rollbackLiveUpdate()
     if updateState.busy then return end
     local before=table.remove(updateState.history)
     if not before then self:updateStatus("No previous update");return end
-    S.presets=before.presets;updateState.version=before.version;updateState.revision=before.revision;updateState.notes=before.notes
+    S.presets=before.presets;updateState.version=before.version;updateState.publishedVersion=before.publishedVersion;updateState.revision=before.revision;updateState.notes=before.notes;updateState.isTest=before.isTest
+    updateState.unread=false
     self:updateStatus("Rolled back to "..before.version)
 end
 
