@@ -160,6 +160,11 @@ function H.new(scope,parent,preview,go,drag,close)
   local label=center(key,def[1],12);label.ZIndex=8
   table.insert(self.inputKeys,{p=key,rim=rim,label=label,code=def[5],mouse=def[1]=="LMB" or def[1]=="RMB"})
  end
+ self.wallhop=U.new("CanvasGroup",{Name="WallhopHelper",AnchorPoint=Vector2.new(.5,.5),Size=UDim2.fromOffset(210,86),BackgroundColor3=Color3.fromRGB(28,22,44),BackgroundTransparency=.15,Active=false,Interactable=false,Visible=false,ZIndex=6},parent)
+ U.corner(self.wallhop,12);U.stroke(self.wallhop,Color3.fromRGB(177,146,255),.35,1)
+ self.wallhopTitle=U.label(self.wallhop,"WALLHOP  /  PRACTICE",10,UDim2.fromOffset(12,7),UDim2.fromOffset(186,16))
+ self.wallhopText=U.label(self.wallhop,"READY",15,UDim2.fromOffset(12,27),UDim2.fromOffset(186,23))
+ self.wallhopDetail=U.label(self.wallhop,"Jump · camera angle",10,UDim2.fromOffset(12,55),UDim2.fromOffset(186,19))
  return self
 end
 function H:clearMarkers() for _,m in self.markers do m.root:Destroy() end;table.clear(self.markers) end
@@ -431,6 +436,31 @@ function H:step(s,f,dt)
    key.rim.Color=tint;key.rim.Transparency=if down then .1 else .55
   end
  end
+ local wh=self.wallhop
+ wh.Visible=s.wallhopHelper and not self.preview
+ if wh.Visible then
+  local vp=self.view.AbsoluteSize
+  wh.Position=UDim2.fromOffset(math.clamp(vp.X*s.wallhopX/100,105,math.max(105,vp.X-105)),math.clamp(vp.Y*s.wallhopY/100,43,math.max(43,vp.Y-43)))
+  local camera=workspace.CurrentCamera
+  local direction=camera and camera.CFrame.LookVector
+  local yaw=if direction then math.atan2(direction.X,direction.Z) else 0
+  local down=UIS:GetFocusedTextBox()==nil and UIS:IsKeyDown(Enum.KeyCode.Space)
+  if down and not self.whDown then self.whStart=t;self.whYaw=yaw;self.whAngle=0 end
+  self.whDown=down
+  if self.whStart and t-self.whStart<=1.5 then
+   local delta=math.deg(math.atan2(math.sin(yaw-self.whYaw),math.cos(yaw-self.whYaw)))
+   self.whAngle=math.max(self.whAngle or 0,math.abs(delta))
+   setText(self.wallhopText,if down then "JUMP INPUT" else "CAMERA ROTATION")
+   setText(self.wallhopDetail,string.format("%d° turn   ·   %d ms",math.floor(self.whAngle+.5),math.floor((t-self.whStart)*1000)))
+   self.wallhopText.TextColor3=U.hex(s.accent)
+  elseif self.whStart then
+   setText(self.wallhopText,"LAST ATTEMPT")
+   setText(self.wallhopDetail,string.format("Peak rotation: %d°",math.floor((self.whAngle or 0)+.5)))
+  else
+   setText(self.wallhopText,"READY")
+   setText(self.wallhopDetail,"Space · manual camera turn")
+  end
+ else self.whStart=nil;self.whDown=false;self.whAngle=nil end
  if not self.fpsAt or t>=self.fpsAt then
   self.fpsAt=t+.25
   setText(self.name,if f.fps then string.format("%d FPS",math.floor(f.fps+.5)) else "— FPS")

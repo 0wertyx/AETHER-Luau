@@ -921,7 +921,7 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.." / INTERACT"
+ self.tag.Text=self.app.mode.." / WALLHOP"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  for key,item in self.quickButtons do item.button.Text=item.label..(if st[key] then "  ON" else "  OFF");item.button.BackgroundColor3=if st[key] then U.hex(st.accent):Lerp(bg,.52) else soft end
@@ -1301,6 +1301,11 @@ function H.new(scope,parent,preview,go,drag,close)
   local label=center(key,def[1],12);label.ZIndex=8
   table.insert(self.inputKeys,{p=key,rim=rim,label=label,code=def[5],mouse=def[1]=="LMB" or def[1]=="RMB"})
  end
+ self.wallhop=U.new("CanvasGroup",{Name="WallhopHelper",AnchorPoint=Vector2.new(.5,.5),Size=UDim2.fromOffset(210,86),BackgroundColor3=Color3.fromRGB(28,22,44),BackgroundTransparency=.15,Active=false,Interactable=false,Visible=false,ZIndex=6},parent)
+ U.corner(self.wallhop,12);U.stroke(self.wallhop,Color3.fromRGB(177,146,255),.35,1)
+ self.wallhopTitle=U.label(self.wallhop,"WALLHOP  /  PRACTICE",10,UDim2.fromOffset(12,7),UDim2.fromOffset(186,16))
+ self.wallhopText=U.label(self.wallhop,"READY",15,UDim2.fromOffset(12,27),UDim2.fromOffset(186,23))
+ self.wallhopDetail=U.label(self.wallhop,"Jump · camera angle",10,UDim2.fromOffset(12,55),UDim2.fromOffset(186,19))
  return self
 end
 function H:clearMarkers() for _,m in self.markers do m.root:Destroy() end;table.clear(self.markers) end
@@ -1572,6 +1577,31 @@ function H:step(s,f,dt)
    key.rim.Color=tint;key.rim.Transparency=if down then .1 else .55
   end
  end
+ local wh=self.wallhop
+ wh.Visible=s.wallhopHelper and not self.preview
+ if wh.Visible then
+  local vp=self.view.AbsoluteSize
+  wh.Position=UDim2.fromOffset(math.clamp(vp.X*s.wallhopX/100,105,math.max(105,vp.X-105)),math.clamp(vp.Y*s.wallhopY/100,43,math.max(43,vp.Y-43)))
+  local camera=workspace.CurrentCamera
+  local direction=camera and camera.CFrame.LookVector
+  local yaw=if direction then math.atan2(direction.X,direction.Z) else 0
+  local down=UIS:GetFocusedTextBox()==nil and UIS:IsKeyDown(Enum.KeyCode.Space)
+  if down and not self.whDown then self.whStart=t;self.whYaw=yaw;self.whAngle=0 end
+  self.whDown=down
+  if self.whStart and t-self.whStart<=1.5 then
+   local delta=math.deg(math.atan2(math.sin(yaw-self.whYaw),math.cos(yaw-self.whYaw)))
+   self.whAngle=math.max(self.whAngle or 0,math.abs(delta))
+   setText(self.wallhopText,if down then "JUMP INPUT" else "CAMERA ROTATION")
+   setText(self.wallhopDetail,string.format("%d° turn   ·   %d ms",math.floor(self.whAngle+.5),math.floor((t-self.whStart)*1000)))
+   self.wallhopText.TextColor3=U.hex(s.accent)
+  elseif self.whStart then
+   setText(self.wallhopText,"LAST ATTEMPT")
+   setText(self.wallhopDetail,string.format("Peak rotation: %d°",math.floor((self.whAngle or 0)+.5)))
+  else
+   setText(self.wallhopText,"READY")
+   setText(self.wallhopDetail,"Space · manual camera turn")
+  end
+ else self.whStart=nil;self.whDown=false;self.whAngle=nil end
  if not self.fpsAt or t>=self.fpsAt then
   self.fpsAt=t+.25
   setText(self.name,if f.fps then string.format("%d FPS",math.floor(f.fps+.5)) else "— FPS")
@@ -2002,11 +2032,14 @@ function E.render(a,tab,ui)
   ui:title("GAME INTERACTION")
   ui:note("Shift-Lock is unchanged. Native Roblox Shift-Lock has priority in Follow mode; LeftAlt toggles AETHER lock when the native option is off. Camera orientation can affect gameplay in some experiences.",60)
   ui:title("SHIFT-LOCK / RETICLE")
-  local inputKeys={inputOverlay=true,inputMouse=true,inputX=true,inputY=true,inputScale=true,inputOpacity=true,inputColor=true}
+  local inputKeys={inputOverlay=true,inputMouse=true,inputX=true,inputY=true,inputScale=true,inputOpacity=true,inputColor=true,wallhopHelper=true,wallhopX=true,wallhopY=true}
   ui:group(tab,inputKeys)
   ui:title("LIVE INPUT DISPLAY")
   ui:note("Shows your own WASD, Space, Shift and mouse presses. Read-only visualization: no synthetic inputs or game automation.",44)
   for _,k in {"inputOverlay","inputMouse","inputX","inputY","inputScale","inputOpacity","inputColor"} do ui:control(k) end
+  ui:title("WALLHOP HELPER")
+  ui:note("Practice display: tracks your jump and horizontal camera rotation. No automatic jumps or camera movement.",42)
+  for _,k in {"wallhopHelper","wallhopX","wallhopY"} do ui:control(k) end
  elseif tab=="Fonts" then local text=ui:note(a.s.sample,62);text:SetAttribute("AETHERKeepFontColor",true);text.TextXAlignment=Enum.TextXAlignment.Center;local gradient=U.gradient(text,Color3.new(),Color3.new(),10);local glow=U.stroke(text,U.hex(a.s.fontB),.8);glow.ApplyStrokeMode=Enum.ApplyStrokeMode.Contextual;ui:watch(function() local s=a.s;text.Text=s.sample;text.FontFace=U.font(s);text.TextSize=s.fontSize*.23;text.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA);text.TextStrokeTransparency=1-s.fontOutline/100;gradient.Enabled=s.fontGradient;gradient.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB));glow.Color=U.hex(s.fontB);glow.Transparency=1-s.fontGlow*.008;glow.Thickness=1+s.fontGlow*.023 end);local query=ui:box("Search native typefaces",a.fontQuery or "",32,function(q) if q~=(a.fontQuery or "") then a.fontQuery=q;ui:open("Fonts") end end);local fonts={};for _,n in S.fonts do if n:lower():find((a.fontQuery or ""):lower(),1,true) then table.insert(fonts,n) end end;ui:chips(fonts,function(n) a:patch({font=n,fontAsset=""}) end,3,function() return a.s.font end);ui:group(tab,{font=true});preset(ui,a,tab)
  elseif tab=="Simulator" then preview(ui,a);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
  elseif tab=="Scripts" then scripts(ui,a)
@@ -2063,7 +2096,7 @@ toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA
 toggle("Indicators","indicators","Directional indicators",true);choice("Indicators","shape","Indicator shape","Soft Triangle",S.shapes);range("Indicators","size","Size (px)",31,14,72);range("Indicators","corners","Corner softness %",30,0,100);range("Indicators","edge","Distance from edges %",11,4,30);range("Indicators","turn","Rotation smoothing (ms)",180,0,800);range("Indicators","ink","Neon intensity %",60,0,100);range("Indicators","spread","Neon spread (px)",6,0,18);range("Indicators","arrowAlpha","Opacity %",95,10,100);range("Indicators","arrowSpeed","Animation speed %",100,40,220);color("Indicators","arrowA","Gradient start","BFA2FF");color("Indicators","arrowB","Gradient end","FF9ECE");toggle("Indicators","arrowRainbow","Rainbow gradient",false);toggle("Indicators","pulse","Pulsation",true);choice("Indicators","labels","Arrow labels","Both",{"Off","Name","Distance","Both"});toggle("Indicators","nearby","Nearby nameplates",false);range("Indicators","reach","Tracking range (studs)",800,50,2500)
 toggle("Cursor","cursor","Custom game pointer",false);choice("Cursor","cursorShape","Pointer shape","Rounded Triangle",{"Rounded Triangle","Soft Arrow","Diamond","Orbit","Spark","Chevron","Neon Pointer","Arrowhead","Split Arrow","Needle","Crystal","Spear","Star Pointer","Compass","Crosshair","Heart","Image"});range("Cursor","cursorSize","Pointer size",30,12,72);range("Cursor","cursorGlow","Pointer glow %",55,0,100);choice("Cursor","cursorPalette","Desktop AETHER palette","Aurora",{"Aurora","Sunset","Ocean","Rainbow","Mono","Custom"});range("Cursor","hotX","Hotspot X %",19,0,100);range("Cursor","hotY","Hotspot Y %",8,0,100);color("Cursor","cursorA","Gradient start","BA99FF");color("Cursor","cursorB","Gradient end","69D9FA");toggle("Cursor","cursorRainbow","Rainbow pointer",true);range("Cursor","cursorSpeed","Gradient speed %",65,10,200);choice("Cursor","cursorAnimation","Cursor animation","Sway",{"Off","Breathe","Sway","Spin","Pulse"});range("Cursor","cursorMotionSpeed","Animation speed %",100,20,200);toggle("Cursor","cursorTrail","Soft cursor trail",false);range("Cursor","cursorOffsetX","Pointer offset X (px)",0,-120,120);range("Cursor","cursorOffsetY","Pointer offset Y (px)",0,-120,120);toggle("Cursor","cursorDebug","Show hotspot marker",false);def("Cursor","image","Roblox image asset ID","asset","")
 toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Interaction","lock","Shift-lock · LeftAlt",false);choice("Interaction","lockReticle","Shift-lock reticle","Orbit",{"None","Dot","Ring","Orbit","Cross","Split Cross","Diamond","Triangle","Hexagon","Star","Corners","Compass","Double Ring","Petal"});range("Interaction","reticleSize","Reticle size (px)",28,12,64);range("Interaction","reticleStroke","Reticle thickness (px)",2,1,5);color("Interaction","reticleColor","Reticle color","C8A6FF");toggle("Interaction","reticleRainbow","Rainbow reticle",false);toggle("Interaction","reticleMotion","Reticle animation",true);range("Interaction","reticleSpeed","Reticle animation %",70,0,200);toggle("Interaction","reticleNeon","Neon reticle glow",true);range("Interaction","reticleGlow","Reticle glow intensity %",65,0,100);range("Interaction","reticleGlowRadius","Reticle glow radius (px)",4,1,8);toggle("Interaction","reticleGlowPulse","Pulsating glow",true)
-toggle("Interaction","inputOverlay","Show input overlay",false);toggle("Interaction","inputMouse","Show mouse buttons",true);range("Interaction","inputX","Input overlay X %",91,0,100);range("Interaction","inputY","Input overlay Y %",76,0,100);range("Interaction","inputScale","Input overlay size %",100,60,150);range("Interaction","inputOpacity","Input overlay opacity %",80,20,100);color("Interaction","inputColor","Pressed key color","BCA0FF")
+toggle("Interaction","inputOverlay","Show input overlay",false);toggle("Interaction","inputMouse","Show mouse buttons",true);range("Interaction","inputX","Input overlay X %",91,0,100);range("Interaction","inputY","Input overlay Y %",76,0,100);range("Interaction","inputScale","Input overlay size %",100,60,150);range("Interaction","inputOpacity","Input overlay opacity %",80,20,100);color("Interaction","inputColor","Pressed key color","BCA0FF");toggle("Interaction","wallhopHelper","Wallhop Helper",false);range("Interaction","wallhopX","Wallhop display X %",87,0,100);range("Interaction","wallhopY","Wallhop display Y %",42,0,100)
 choice("Fonts","font","Typeface","Gotham",S.fonts);choice("Fonts","weight","Weight","Bold",{"Regular","Medium","Bold","Heavy"});def("Fonts","fontAsset","Optional Roblox font family ID","asset","");text("Fonts","sample","Preview text","AETHER · Your interface",96);range("Fonts","fontSize","HUD type scale %",100,70,145);toggle("Fonts","fontGradient","Gradient lettering",true);range("Fonts","fontOutline","Text outline %",24,0,100);range("Fonts","fontGlow","Letter glow %",35,0,100);color("Fonts","fontA","Letter color","F1E6FF");color("Fonts","fontB","Letter gradient","CCA4FF")
 S.example='hud.widget("status", "Ready", 8, 38)\nfunction onHealthChanged(hp, maxHP)\n  hud.widget("status", hud.join("HP: ", hp), 8, 38)\n  if hp > 0 and hp <= maxHP * 0.3 then\n    hud.animate("status", "pulse")\n  else\n    hud.animate("status", "none")\n  end\nend'
 text("Scripts","cue","HUD script",S.example,8192);text("Scripts","luau","Luau draft",'-- ModuleScript for your own place\nreturn function(humanoid: Humanoid)\n  return humanoid.HealthChanged:Connect(function(hp)\n    print(hp, humanoid.MaxHealth)\n  end)\nend',8192)
