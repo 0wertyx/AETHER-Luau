@@ -1,25 +1,32 @@
 # Original AETHER desktop icons
 
-The desktop distribution `AETHER_Build/Web/assets/icons/` contains **32 original RGBA icons (224×224 each)**.
+This module uses the **32 original AETHER icons** supplied in `AETHER_32_Icons(1).zip`.
+The Roblox GUI already supports the complete 8×4 sprite atlas via
+`src/shared/Icons.luau`, used by the navigation **and the HUD dock**.
 
-Use `tools/export_desktop_icons.py` with your own `AETHER_Build(1).zip` to extract
-all source PNGs and generate an **8×4 atlas (1792×896)** without resampling.
+## Import the icons into Roblox
 
-```sh
-python -m pip install Pillow
-python tools/export_desktop_icons.py "AETHER_Build(1).zip" assets/icons
-```
+1. Download the 8×4 atlas (1792×896) supplied alongside this update,
+   `AETHER_original_icons_clean_atlas.png`. The images are derived from
+   the original 224×224 PNGs and have the text baked into the originals
+   removed so they remain readable as 24px icons.
+2. In Roblox Creator Dashboard, upload that **PNG** as an image asset
+   owned by the place's creator/group; wait for moderation and availability.
+3. In AETHER, go to **Dashboard → AETHER icon atlas Roblox asset ID**
+   and enter the numeric asset ID.
+4. The 16 navigation buttons and 3 HUD dock buttons will display their
+   corresponding original purple icons, with text-only fallback until the
+   asset is configured.
 
-**Using the icons in Roblox:** Publish `AETHER_original_icons_atlas.png` as an
-image asset in Roblox Studio / Creator Dashboard and enter its **numeric asset ID**
-into **Dashboard → AETHER icon atlas Roblox asset ID**. The UI then uses
-`ImageRectOffset` and `ImageRectSize=224×224` for the navigation icons.
+GitHub raw PNG URLs cannot be used directly in `ImageLabel.Image`.
+Do not substitute a GitHub URL for a Roblox asset ID.
 
-GitHub raw PNG URLs cannot be directly set as Roblox `ImageLabel.Image`.
-The original binary PNGs are intentionally *not* embedded in Luau source, and
-no Roblox asset ID is bundled or invented.
+The existing `tools/export_desktop_icons.py` can export the original 32
+PNG images from a desktop release if required. Its atlas also uses 8×4 tiles
+of 224×224 pixels and remains compatible with `src/shared/Icons.luau`.
 
-Atlas order, in row-major sequence (8 columns):
+Atlas order:
+
 ```
 Home Dashboard HUD Fonts Themes World_FX Indicators Simulator
 Workshop Downloads Plugins Extensions AI_Assistant Music Media Games

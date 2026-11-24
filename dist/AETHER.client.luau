@@ -576,31 +576,115 @@ end
 
 -- BEGIN MODULE Hud
 __aether_factories["Hud"] = function()
-local U=__aether_require("Util");local Symbol=__aether_require("Symbol")
+local U=__aether_require("Util");local Symbol=__aether_require("Symbol");local Icons=__aether_require("Icons")
 local H={};H.__index=H
-local sizes={hp=Vector2.new(180,61),clock=Vector2.new(82,49),profile=Vector2.new(112,40),dock=Vector2.new(153,36),cross=Vector2.new(16,16)}
+local sizes={hp=Vector2.new(264,94),clock=Vector2.new(116,58),profile=Vector2.new(172,58),dock=Vector2.new(221,49),cross=Vector2.new(18,18)}
 local function center(p,t,size) local n=U.label(p,t,size);n.TextXAlignment=Enum.TextXAlignment.Center;return n end
 function H.new(scope,parent,preview,go,drag)
- local self=setmetatable({view=parent,preview=preview,widgets={},markers={},extras={},spark={},time=0,phase=0,paintAt=0,last=-1},H)
+ local self=setmetatable({view=parent,preview=preview,widgets={},markers={},extras={},spark={},time=0,phase=0,paintAt=0,last=-1,dockIcons={}},H)
  self.layer=U.frame(parent,"Directions",nil,nil,nil,1);self.layer.ClipsDescendants=true
- for i=1,9 do local n=U.frame(parent,"Dust",UDim2.fromScale((i*.617)%1,(i*.349)%1),UDim2.fromOffset(2+i%2,2+i%2),nil,.54);U.corner(n,8);self.spark[i]=n end
- for _,k in {"hp","clock","profile","dock","cross"} do local d=sizes[k];local p=U.new("CanvasGroup",{Name=k,BackgroundColor3=Color3.new(1,1,1),Size=UDim2.fromOffset(d.X,d.Y),BorderSizePixel=0,ZIndex=3},parent);local g=U.gradient(p,Color3.fromRGB(53,40,75),Color3.fromRGB(22,21,36));U.corner(p,if k=="cross" then 0 else 10);local rim=U.stroke(p,Color3.fromRGB(189,156,255),.4);local scale=U.new("UIScale",{},p);self.widgets[k]={p=p,g=g,rim=rim,scale=scale};if drag then p.Active=true;scope:on(p.InputBegan,function(i) drag(i,k,p,parent) end) end end
- local hp=self.widgets.hp.p;self.heart=Symbol.new(hp,"Heart",50);self.heart.root.Position=UDim2.fromOffset(23,20);self.heart.root.Size=UDim2.fromOffset(31,31)
- self.hpTitle=U.label(hp,"HEALTH",11,UDim2.fromOffset(41,6),UDim2.fromOffset(67,17));self.value=U.label(hp,"—",13,UDim2.fromOffset(40,23),UDim2.fromOffset(134,20));self.stateText=U.label(hp,"",10,UDim2.fromOffset(101,6),UDim2.fromOffset(72,17));self.stateText.TextXAlignment=Enum.TextXAlignment.Right
- self.track=U.frame(hp,"Meter",UDim2.fromOffset(10,48),UDim2.new(1,-20,0,6),Color3.fromRGB(63,54,79));U.corner(self.track,4);self.trail=U.frame(self.track,"DamageTrail",nil,nil,Color3.fromRGB(239,214,251));U.corner(self.trail,4);self.fill=U.frame(self.track,"Fill",nil,nil,Color3.new(1,1,1));U.corner(self.fill,4);self.fillG=U.gradient(self.fill,Color3.new(1,1,1),Color3.new(1,1,1),0)
- self.clock=U.label(self.widgets.clock.p,"--:--",16,UDim2.fromOffset(9,3),UDim2.new(1,-14,0,23));self.clockSub=U.label(self.widgets.clock.p,"AETHER TIME",9,UDim2.fromOffset(9,26),UDim2.new(1,-12,0,15));self.name=center(self.widgets.profile.p,"",12)
- for i,item in {{"HUD","HUD"},{"FX","Character"},{"Assets","Workshop"}} do local b=U.button(self.widgets.dock.p,item[1]);b.Size=UDim2.fromOffset(46,26);b.Position=UDim2.fromOffset(5+(i-1)*48,5);b.TextSize=11;scope:on(b.Activated,function() go(item[2]) end) end
- local cr=self.widgets.cross.p;cr.BackgroundTransparency=1;self.widgets.cross.rim.Enabled=false;self.crossH=U.frame(cr,"H",UDim2.fromScale(0,.46),UDim2.fromScale(1,.08));self.crossV=U.frame(cr,"V",UDim2.fromScale(.46,0),UDim2.fromScale(.08,1))
+ for i=1,9 do
+  local n=U.frame(parent,"Dust",UDim2.fromScale((i*.617)%1,(i*.349)%1),UDim2.fromOffset(2+i%2,2+i%2),nil,.54)
+  U.corner(n,8);self.spark[i]=n
+ end
+ for _,k in {"hp","clock","profile","dock","cross"} do
+  local d=sizes[k]
+  local p=U.new("CanvasGroup",{Name=k,BackgroundColor3=Color3.new(1,1,1),Size=UDim2.fromOffset(d.X,d.Y),BorderSizePixel=0,ZIndex=3},parent)
+  local g=U.gradient(p,Color3.fromRGB(53,40,75),Color3.fromRGB(22,21,36))
+  U.corner(p,if k=="cross" then 0 else 15)
+  local rim=U.stroke(p,Color3.fromRGB(189,156,255),.4,1.15)
+  local scale=U.new("UIScale",{},p)
+  self.widgets[k]={p=p,g=g,rim=rim,scale=scale}
+  if drag then
+   p.Active=true
+   scope:on(p.InputBegan,function(i) drag(i,k,p,parent) end)
+  end
+ end
+ local hp=self.widgets.hp.p
+ self.hpAccent=U.frame(hp,"AccentLine",UDim2.fromOffset(0,0),UDim2.new(1,0,0,3),Color3.fromRGB(188,150,255))
+ U.gradient(self.hpAccent,Color3.fromRGB(190,144,255),Color3.fromRGB(111,220,249),0)
+ self.heart=Symbol.new(hp,"Heart",50)
+ self.heart.root.AnchorPoint=Vector2.new(.5,.5)
+ self.heart.root.Position=UDim2.fromOffset(40,44)
+ self.heart.root.Size=UDim2.fromOffset(35,35)
+ self.hpTitle=U.label(hp,"VITALS  /  HEALTH",10,UDim2.fromOffset(77,14),UDim2.fromOffset(127,17))
+ self.hpTitle.TextColor3=Color3.fromRGB(194,177,229)
+ self.value=U.label(hp,"— / — HP",20,UDim2.fromOffset(76,35),UDim2.fromOffset(165,27))
+ self.stateText=U.label(hp,"READY",10,UDim2.fromOffset(192,14),UDim2.fromOffset(53,17))
+ self.stateText.TextXAlignment=Enum.TextXAlignment.Right
+ self.track=U.frame(hp,"HealthMeter",UDim2.fromOffset(16,77),UDim2.new(1,-32,0,7),Color3.fromRGB(62,52,86),.06)
+ U.corner(self.track,6)
+ self.trail=U.frame(self.track,"DamageTrail",nil,UDim2.fromScale(1,1),Color3.fromRGB(245,208,255))
+ U.corner(self.trail,6)
+ self.fill=U.frame(self.track,"Fill",nil,UDim2.fromScale(1,1),Color3.new(1,1,1))
+ U.corner(self.fill,6)
+ self.fillG=U.gradient(self.fill,Color3.fromRGB(167,130,249),Color3.fromRGB(241,147,213),0)
+ local clock=self.widgets.clock.p
+ self.clock=U.label(clock,"--:--",21,UDim2.fromOffset(13,6),UDim2.new(1,-24,0,29))
+ self.clockSub=U.label(clock,"AETHER · TIME",9,UDim2.fromOffset(13,34),UDim2.new(1,-23,0,15))
+ local profile=self.widgets.profile.p
+ self.profileDot=U.frame(profile,"Online",UDim2.fromOffset(13,18),UDim2.fromOffset(7,7),Color3.fromRGB(152,240,210))
+ U.corner(self.profileDot,9)
+ self.profileTitle=U.label(profile,"PLAYER  /  ONLINE",9,UDim2.fromOffset(28,9),UDim2.new(1,-35,0,18))
+ self.name=U.label(profile,"",15,UDim2.fromOffset(14,28),UDim2.new(1,-27,0,22))
+ local dock=self.widgets.dock.p
+ for i,item in {{"HUD","HUD"},{"FX","Character"},{"ASSETS","Workshop"}} do
+  local b=U.button(dock,item[1])
+  b.Name="Dock_"..item[2]
+  b.Size=UDim2.fromOffset(64,35)
+  b.Position=UDim2.fromOffset(8+(i-1)*71,7)
+  b.TextSize=11
+  table.insert(self.dockIcons,Icons.new(b,item[2]))
+  scope:on(b.Activated,function() go(item[2]) end)
+ end
+ local cr=self.widgets.cross.p
+ cr.BackgroundTransparency=1
+ self.widgets.cross.rim.Enabled=false
+ self.crossH=U.frame(cr,"H",UDim2.fromScale(0,.46),UDim2.fromScale(1,.08))
+ self.crossV=U.frame(cr,"V",UDim2.fromScale(.46,0),UDim2.fromScale(.08,1))
  return self
 end
 function H:clearMarkers() for _,m in self.markers do m.root:Destroy() end;table.clear(self.markers) end
 function H:setStyle(s)
  local factor=if self.preview then math.clamp(self.view.AbsoluteSize.X/850,.43,.74) else math.clamp(self.view.AbsoluteSize.X/770,.66,1)
- self.factor=factor;local accent=U.hex(s.accent);local a,b=U.hex(s.glassColor),Color3.fromRGB(17,16,30);local face=U.font(s)
- for k,w in self.widgets do local x,y=s[k.."X"]/100,s[k.."Y"]/100;w.p.AnchorPoint=Vector2.new(x,y);w.p.Position=UDim2.fromScale(x,y);w.p.Rotation=s[k.."Turn"];w.scale.Scale=factor*s[k.."Scale"]/100;w.p.GroupTransparency=1-s[k.."Alpha"]/100;w.p.Visible=s[k];w.rim.Color=accent;w.rim.Transparency=1-s.rim/100;w.g.Color=ColorSequence.new(a,b);w.p.BackgroundTransparency=if k=="cross" then 1 else 1-s.glass/100 end
- self.widgets.hp.p.Size=UDim2.fromOffset(180,if s.compact then 44 else 61);self.track.Visible=not s.compact;self.crossH.BackgroundColor3=accent;self.crossV.BackgroundColor3=accent
- for _,item in {{self.clock,16},{self.clockSub,9},{self.hpTitle,11},{self.value,14},{self.stateText,10},{self.name,12}} do local n=item[1];n.FontFace=face;n.TextSize=item[2]*s.fontSize/100;n.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA);n.TextStrokeColor3=U.hex(s.fontB);n.TextStrokeTransparency=1-s.fontOutline/100;local grad=n:FindFirstChildOfClass("UIGradient") or U.gradient(n,accent,b,0);grad.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB));grad.Enabled=s.fontGradient end
- self.settings=s;self.width=self.view.AbsoluteSize.X
+ self.factor=factor
+ local accent=U.hex(s.accent)
+ local a,b=U.hex(s.glassColor),Color3.fromRGB(17,16,30)
+ local face=U.font(s)
+ for k,w in self.widgets do
+  local x,y=s[k.."X"]/100,s[k.."Y"]/100
+  w.p.AnchorPoint=Vector2.new(x,y)
+  w.p.Position=UDim2.fromScale(x,y)
+  w.p.Rotation=s[k.."Turn"]
+  w.scale.Scale=factor*s[k.."Scale"]/100
+  w.p.GroupTransparency=1-s[k.."Alpha"]/100
+  w.p.Visible=s[k]
+  w.rim.Color=accent
+  w.rim.Transparency=1-s.rim/100
+  w.g.Color=ColorSequence.new(a,b)
+  w.p.BackgroundTransparency=if k=="cross" then 1 else 1-s.glass/100
+ end
+ self.widgets.hp.p.Size=UDim2.fromOffset(264,if s.compact then 72 else 94)
+ self.track.Visible=true
+ self.track.Position=UDim2.fromOffset(16,if s.compact then 60 else 77)
+ self.crossH.BackgroundColor3=accent
+ self.crossV.BackgroundColor3=accent
+ self.hpAccent.BackgroundColor3=accent
+ self.profileDot.BackgroundColor3=U.hex(s.secondary)
+ for _,icon in self.dockIcons do icon:sync(s.iconAtlas) end
+ for _,item in {{self.clock,21},{self.clockSub,9},{self.hpTitle,10},{self.value,19},{self.stateText,10},{self.name,15},{self.profileTitle,9}} do
+  local n=item[1]
+  n.FontFace=face
+  n.TextSize=item[2]*s.fontSize/100
+  n.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA)
+  n.TextStrokeColor3=U.hex(s.fontB)
+  n.TextStrokeTransparency=1-s.fontOutline/100
+  local grad=n:FindFirstChildOfClass("UIGradient") or U.gradient(n,accent,b,0)
+  grad.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB))
+  grad.Enabled=s.fontGradient
+ end
+ self.settings=s
+ self.width=self.view.AbsoluteSize.X
 end
 function H:vitals(s,f,dt)
  local hp,max=f.hp,f.max;local w=self.widgets.hp;w.p.Visible=s.hp and hp~=nil;if hp==nil then self.last=-1;self.phase=0;return end
@@ -878,7 +962,7 @@ color("Theme","accent","Accent","A68AFF");color("Theme","secondary","Second neon
 range("Theme","glass","Glass opacity %",81,10,100);range("Theme","rim","Neon rim %",55,0,100);toggle("Theme","sparkles","Floating sparkles",true)
 toggle("Motion","reduce","Reduce motion",false);range("Motion","speed","Animation speed %",100,40,200);range("Motion","duration","Transition (ms)",300,80,1400);choice("Motion","ease","Interpolation","Smooth",{"Smooth","Linear","Sine"})
 toggle("HUD","locked","Lock widget positions",true);toggle("HUD","compact","Compact health panel",false)
-for _,row in {{"hp","Health",82,13},{"clock","Clock",3,93},{"profile","Player card",96,94},{"dock","Studio dock",48,95},{"cross","Reticle",50,50}} do
+for _,row in {{"hp","Health",3,9},{"clock","Clock",3,96},{"profile","Player card",97,9},{"dock","Studio dock",50,96},{"cross","Reticle",50,50}} do
  local k,t=row[1],row[2];toggle("HUD",k,t,true); range("HUD",k.."X",t.." · horizontal %",row[3],0,100);range("HUD",k.."Y",t.." · vertical %",row[4],0,100)
  range("HUD",k.."Scale",t.." · scale %",100,50,160);range("HUD",k.."Turn",t.." · rotation",0,-180,180);range("HUD",k.."Alpha",t.." · opacity %",100,10,100)
 end
