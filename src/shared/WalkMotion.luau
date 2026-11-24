@@ -37,24 +37,24 @@ end
 local function add(j,cf)
  if j and j.Parent then j.Transform=j.Transform*cf end
 end
-function W:step(character,s,dt)
+function W:step(character,s,dt,preview)
  self:bind(character)
  if not character then return end
  local hum=character:FindFirstChildOfClass("Humanoid")
- if not hum or not hum:FindFirstChildOfClass("Animator") then return end
+ if not hum or (not preview and not hum:FindFirstChildOfClass("Animator")) then return end
  dt=math.clamp(dt,0,.07)
  local style=s.walkStyle or "Natural"
  local pack=MotionPacks.get(style)
  local floating=style=="Floating" or style=="Glide" or style=="Ethereal"
- local enabled=s.walkAnimation and not s.reduce and hum.Health>0 and not hum.Sit
- local state=hum:GetState()
+ local enabled=s.walkAnimation and not s.reduce and (preview or (hum.Health>0 and not hum.Sit))
+ local state=if preview then Enum.HumanoidStateType.Running else hum:GetState()
  local jumping=state==Enum.HumanoidStateType.Jumping
  local falling=state==Enum.HumanoidStateType.Freefall
  local climbing=state==Enum.HumanoidStateType.Climbing
  local swimming=state==Enum.HumanoidStateType.Swimming
  local airborne=jumping or falling
- local grounded=hum.FloorMaterial~=Enum.Material.Air
- local movement=hum.MoveDirection.Magnitude
+ local grounded=preview or hum.FloorMaterial~=Enum.Material.Air
+ local movement=if preview then 1 else hum.MoveDirection.Magnitude
  local intensity=math.clamp((s.walkIntensity or 65)/100,0,1)
  local target=0
  if enabled then
