@@ -53,6 +53,51 @@ local function segment(p,a,b,thick)
  p.Size=Vector3.new(thick,thick,d.Magnitude)
  p.CFrame=CFrame.lookAt((a+b)*.5,b)
 end
+-- Each path is traced from one half of the supplied drawing in image coordinates.
+-- Mirror the path around the centre seam, retaining gaps and internal facet lines.
+-- All geometry is cosmetic only: anchored, noncolliding and nonqueryable.
+local sketchWings={
+ ["Geo Bloom"]={origin={220,136},unit=61,colors={"D9A0FF","F4D3FF"},paths={
+  {220,136,127,10,84,95,48,48,56,94,14,54,88,188,88,158,120,121,114,158,156,87,220,136},
+  {120,53,125,69,136,80,123,82,123,96,115,85,108,95,111,81,104,70,116,69,120,53},
+  {78,100,78,124},{67,112,89,112}
+ }},
+ Kagune={origin={237,345},unit=70,colors={"C91435","FF455B"},paths={
+  {230,323,201,295,174,238,153,227,128,222,98,222,60,245,48,274,49,322,79,348,60,308,80,279,108,278,147,319},
+  {145,312,160,296,202,331,226,335},
+  {226,347,158,357,119,406,45,377,1,393,25,455,68,455,34,423,36,408,111,434,143,416,168,375,211,377,237,351},
+  {212,385,193,478,128,497,166,455,199,396,212,385}
+ }},
+ Seraphim={origin={270,685},unit=82,colors={"F8F5FF","ACD9FF"},paths={
+  {265,683,200,676,178,646,165,611,146,636,144,663},
+  {174,638,159,671},{185,655,178,694},{199,676,196,707},{215,679,219,710},{235,686,229,710},
+  {156,677,157,701},{181,700,189,721},{205,712,220,733},
+  {265,683,247,720,184,751,121,742,48,636,12,665,1,740,25,696,64,724,89,775,60,845,99,797,75,836,116,796,91,839,132,795,108,842,148,805,125,842,197,784,179,816,249,741,265,698},
+  {234,717,231,726}
+ }},
+ ["Burnt Fallen"]={origin={1411,12},unit=93,colors={"3D3038","BC5B43"},paths={
+  {1396,2,1370,85,1335,116,1287,129,1231,120,1167,116,1128,129,1112,159,1113,199,1146,229},
+  {1359,94,1380,134,1389,139},{1334,117,1364,159,1391,171},
+  {1281,118,1329,173,1347,182},{1228,116,1286,201,1321,218},
+  {1168,117,1212,173,1243,201},{1140,125,1160,178,1205,205},
+  {1124,141,1141,195,1183,218}
+ }},
+ ["Knife Wing"]={origin={1507,292},unit=62,colors={"E5E8F2","889CB9"},paths={
+  {1384,239,1447,346,1440,350,1428,329,1418,334,1383,272,1384,239},
+  {1338,288,1426,373,1416,383,1396,361,1388,369,1340,323,1338,288},
+  {1305,328,1379,389,1371,398,1357,385,1350,395,1303,354,1305,328},
+  {1392,479,1330,517,1360,521,1383,506,1380,494,1395,486,1392,479},
+  {1409,494,1415,495,1415,511,1424,513,1424,535,1406,551,1409,494}
+ }},
+ ["Crystal Wing"]={origin={1424,680},unit=90,colors={"82E5FF","B995FF"},paths={
+  {1418,643,1383,646,1342,713,1410,676,1418,643},
+  {1342,713,1331,674,1269,631,1241,650,1213,713,1269,677,1298,698,1342,713},
+  {1269,631,1298,698,1311,762,1269,705,1269,677},
+  {1213,713,1199,683,1138,673,1188,718,1213,713,1242,732,1253,791,1213,747,1213,713},
+  {1188,718,1171,743,1184,813,1206,741,1188,718},
+  {1311,762,1349,775,1362,844,1311,791,1311,762}
+ }}
+}
 local function config(detail)
  if detail=="Balanced" then return 8,5,24,12
  elseif detail=="Ultra" then return 15,9,48,32
@@ -61,7 +106,7 @@ end
 function A.new(parent,preview)
  return setmetatable({
   parent=parent,preview=preview,feathers={},trims={},beads={},ornaments={},
-  parts={},frames={},geoWings={},geoHalos={},key="",paintAt=-1,walk=0,phase=0,lastAt=nil
+  parts={},frames={},geoWings={},geoHalos={},sketchEdges={},diamonds={},diamondTime={},key="",paintAt=-1,walk=0,phase=0,lastAt=nil
  },A)
 end
 function A:clear()
@@ -69,7 +114,7 @@ function A:clear()
  self.root=nil;self.highlight=nil;self.emitter=nil;self.trail=nil;self.light=nil;self.neonEnergy=0;self.neonHP=nil
  self.key="";self.char=nil;self.lastAt=nil;self.walk=0;self.phase=0
  table.clear(self.feathers);table.clear(self.trims);table.clear(self.beads)
- table.clear(self.ornaments);table.clear(self.parts);table.clear(self.frames);table.clear(self.geoWings);table.clear(self.geoHalos)
+ table.clear(self.ornaments);table.clear(self.parts);table.clear(self.frames);table.clear(self.geoWings);table.clear(self.geoHalos);table.clear(self.sketchEdges);table.clear(self.diamonds);table.clear(self.diamondTime)
 end
 function A:add(partInstance)
  table.insert(self.parts,partInstance)
@@ -79,7 +124,7 @@ function A:bind(char,body,head,s)
  local wdetail=s.wingDetail or "High";local hdetail=s.haloDetail or "High"
  local key=table.concat({tostring(s.wings),s.wingStyle,wdetail,
   tostring(s.halo),s.haloStyle,hdetail,tostring(s.neon),tostring(s.aura),tostring(s.trail)},"/")
- if not (char and body and head) or not(s.wings or s.halo or s.neon or s.aura or s.trail) then
+ if not (char and body and head) or not(s.wings or s.halo or s.neon or s.aura or s.trail or s.redDiamond or s.blueDiamond) then
   if self.root then self:clear() end;return
  end
  if self.key==key and self.char==char then return end
@@ -87,7 +132,26 @@ function A:bind(char,body,head,s)
  self.key=key;self.char=char;self.scope=U.scope()
  self.root=self.scope:add(U.new("Folder",{Name="AetherAvatarFX"},self.parent))
  self.paintAt=-1
- if s.wings and wingFigures[s.wingStyle] then
+ if s.wings and sketchWings[s.wingStyle] then
+  local def=sketchWings[s.wingStyle]
+  for _,side in {-1,1} do
+   for index,path in def.paths do
+    for j=1,#path-2,2 do
+     local function vertex(k)
+      return Vector3.new(side*(def.origin[1]-path[k])/def.unit,(def.origin[2]-path[k+1])/def.unit,0)
+     end
+     local p0,p1=vertex(j),vertex(j+2)
+     if (p1-p0).Magnitude>.002 then
+      local edge=self:add(part(self.root,"SketchWingContour",Vector3.new(.03,.03,.03),Enum.PartType.Block,true))
+      edge.Transparency=1
+      local glow=self:add(part(self.root,"SketchWingGlow",Vector3.new(.03,.03,.03),Enum.PartType.Block,true))
+      glow.Transparency=1
+      table.insert(self.sketchEdges,{p=edge,glow=glow,a=p0,b=p1,side=side,index=index})
+     end
+    end
+   end
+  end
+ elseif s.wings and wingFigures[s.wingStyle] then
   local sides=wingFigures[s.wingStyle]
   local count=if wdetail=="Ultra" then 5 elseif wdetail=="Balanced" then 3 else 4
   for _,side in {-1,1} do
@@ -259,6 +323,80 @@ function A:step(char,s,t)
   for i,p in f.edges do local nextPoint=point(i);segment(p,previous,nextPoint,.055*scale);previous=nextPoint end
   f.gem.Size=Vector3.one*(.12+.025*math.sin(phase))*scale
   f.gem.CFrame=basis*CFrame.Angles(phase*.5,phase*.7,0)
+ end
+ -- Shared movement per side keeps the traced outlines connected.
+ if #self.sketchEdges>0 then
+  local def=sketchWings[s.wingStyle]
+  local motion=if s.reduce then 0 else s.sketchMotion/100
+  local hover=math.sin(time*1.8)*.10*motion
+  local flap=(beat+gait*.09)*motion
+  local span=scale
+  local glow=s.sketchGlow/100
+  local bases={}
+  for _,side in {-1,1} do
+   bases[side]=mount*CFrame.new(side*.28*span,hover*span,.26*span)*CFrame.Angles(0,side*(flap-math.rad(s.wingSweep)*.25),-side*math.sin(time*1.25)*.025*motion)
+  end
+  local primary=if s.sketchColors then U.hex(def.colors[1]) else U.hex(s.wingColor)
+  local secondary=if s.sketchColors then U.hex(def.colors[2]) else U.hex(s.secondary)
+  for _,f in self.sketchEdges do
+   local basis=bases[f.side]
+   local p0=basis:PointToWorldSpace(f.a*span)
+   local p1=basis:PointToWorldSpace(f.b*span)
+   local width=(if s.wingStyle=="Burnt Fallen" then .040 else .052)*span
+   local color=if s.wingRainbow then Color3.fromHSV((time*.10+f.index*.13)%1,.62,1) else primary:Lerp(secondary,((f.index-1)%4)/5)
+   segment(f.p,p0,p1,width);f.p.Color=color
+   if glow>0 then
+    segment(f.glow,p0,p1,width*(1.8+glow));f.glow.Color=color;f.glow.Transparency=1-glow*.24
+   else f.glow.Transparency=1 end
+  end
+ end
+ -- Red above the raised hand, blue below the opposite hand. Independent timers
+ -- preserve opposite rotation and allow either effect to be toggled on its own.
+ for index,key in {"redDiamond","blueDiamond"} do
+  local on=s[key]
+  local group=self.diamonds[key]
+  if on and not group then
+   group={}
+   for echo=1,3 do
+    local ring={}
+    for j=1,4 do
+     local edge=self:add(part(self.root,"DiamondFX_"..key,Vector3.new(.03,.03,.03),Enum.PartType.Block,true))
+     edge.Transparency=1;ring[j]=edge
+    end
+    group[echo]=ring
+   end
+   self.diamonds[key]=group
+  end
+  if group then
+   if not on then
+    self.diamondTime[key]=nil
+    for _,ring in group do for _,edge in ring do edge.Transparency=1 end end
+   else
+    self.diamondTime[key]=(self.diamondTime[key] or 0)+dt
+    local age=self.diamondTime[key]
+    local q=if s.reduce then 1 else U.ease(age/.3,"Smooth")
+    local spin=(if index==1 then 1 else -1)*math.rad(140)*s.diamondSpeed/100*(if s.reduce then 0 else age)
+    local radius=.62*s.diamondSize/100*math.max(.02,q)
+    local arm=if index==1 then (char:FindFirstChild("RightHand") or char:FindFirstChild("Right Arm")) else (char:FindFirstChild("LeftHand") or char:FindFirstChild("Left Arm"))
+    local pos=if arm and arm:IsA("BasePart") then arm.Position else body.Position+body.CFrame.RightVector*(if index==1 then 1.5 else -1.5)
+    local color=if index==1 then Color3.fromRGB(255,38,64) else Color3.fromRGB(44,85,255)
+    for echo,ring in group do
+     if echo>1 and (not s.diamondEcho or s.reduce) then for _,edge in ring do edge.Transparency=1 end;continue end
+     local angle=spin-(echo-1)*(if index==1 then .52 else -.52)
+     local center=pos+Vector3.new(0,(if index==1 then .95 else -.95)+(if s.reduce then 0 else math.sin(age*2.4)*.09),0)
+     local basis=CFrame.new(center)*CFrame.Angles(.5,angle*.7,angle)
+     local function point(j)
+      local theta=(j-1)*math.pi/2
+      return basis:PointToWorldSpace(Vector3.new(math.cos(theta)*radius,math.sin(theta)*radius,0))
+     end
+     for j,edge in ring do
+      segment(edge,point(j),point(j%4+1),.055)
+      edge.Color=color:Lerp(Color3.new(1,1,1),(echo-1)*.13)
+      edge.Transparency=1-q*(if echo==1 then 1 else .34/(echo-1))
+     end
+    end
+   end
+  end
  end
  for _,f in self.trims do
   local v=(f.index-1)/4
@@ -783,7 +921,7 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.." / SKETCH"
+ self.tag.Text=self.app.mode.." / WING6"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  for key,item in self.quickButtons do item.button.Text=item.label..(if st[key] then "  ON" else "  OFF");item.button.BackgroundColor3=if st[key] then U.hex(st.accent):Lerp(bg,.52) else soft end
@@ -1868,7 +2006,7 @@ for _,row in {{"hp","Health",3,9},{"clock","Clock",3,96},{"profile","Player card
 end
 toggle("Character","walkAnimation","Custom walking animation",false);choice("Character","walkStyle","Walking style","Natural",{"Natural","Heroic","Floating","Bouncy","Glide","Ethereal","Toy","Robot","Ninja","Bubbly","Stylish","Mage","Levitation","Oldschool","Vampire","Astronaut","Zombie","Cartoony",
  "Angel Glide","Bat Swoop","Mermaid Drift","Serpent Slither","Cartwheel Flow","Rubberhose","Dream Sleep","Plushie","Cat Paws","Shy Kawaii","Gymnast","Skip Hop","Reindeer Prance","Fighter","Harpy Glide","Godly Aura","Wavy Expressive","Retro Zombie","Tsundere","Doll Walk","Skater","Little Duck","Floating Head","Dark Aura","Anime Hero","Headless Float"});range("Character","walkIntensity","Walking intensity %",65,0,100);toggle("Character","aura","Aura particles",false);toggle("Character","trail","Motion trail",false);range("Character","auraRate","Emission / second",12,1,45);range("Character","trailLife","Trail lifetime (ms)",400,80,1300);color("Character","auraColor","Aura color","C4A3FF")
-toggle("Wings","wings","Show wings",false);choice("Wings","wingStyle","Silhouette","Seraph",{"Seraph","Blade","Sylph","Phoenix","Frost","Butterfly","Raven","Celestial","Crystal","Dusk","Petal","Storm","Royal","Eclipse","Prism Wings","Triad Wings","Hex Wings","Star Wings","Orbital Wings","Diamond Wings"});range("Wings","wingSpan","Span %",100,50,175);range("Wings","wingSweep","Sweep (degrees)",24,-25,65);range("Wings","wingBeat","Flap speed %",90,0,200);color("Wings","wingColor","Feather color","B49BFF");toggle("Wings","wingRainbow","Prismatic feathers",false);choice("Wings","wingDetail","Feather detail","High",{"Balanced","High","Ultra"});toggle("Wings","wingWalk","Walking wing reaction",true)
+toggle("Wings","wings","Show wings",false);choice("Wings","wingStyle","Silhouette","Seraph",{"Seraph","Blade","Sylph","Phoenix","Frost","Butterfly","Raven","Celestial","Crystal","Dusk","Petal","Storm","Royal","Eclipse","Prism Wings","Triad Wings","Hex Wings","Star Wings","Orbital Wings","Diamond Wings","Geo Bloom","Kagune","Seraphim","Burnt Fallen","Knife Wing","Crystal Wing"});range("Wings","wingSpan","Span %",100,50,175);range("Wings","wingSweep","Sweep (degrees)",24,-25,65);range("Wings","wingBeat","Flap speed %",90,0,200);color("Wings","wingColor","Feather color","B49BFF");toggle("Wings","wingRainbow","Prismatic feathers",false);choice("Wings","wingDetail","Feather detail","High",{"Balanced","High","Ultra"});toggle("Wings","wingWalk","Walking wing reaction",true);toggle("Wings","sketchColors","Original sketch palette",true);range("Wings","sketchGlow","Contour glow %",80,0,100);range("Wings","sketchMotion","Floating motion %",70,0,150);toggle("Wings","redDiamond","Red rotating diamond",false);toggle("Wings","blueDiamond","Blue rotating diamond",false);range("Wings","diamondSpeed","Diamond rotation %",100,0,200);range("Wings","diamondSize","Diamond size %",100,50,175);toggle("Wings","diamondEcho","Diamond rotation echoes",true)
 toggle("Halos","halo","Show halo",false);choice("Halos","haloStyle","Orbit form","Ring",{"Ring","Binary","Crown","Double Ring","Spiral","Starfall","Solar","Lunar","Orbitals","Thorns","Prism","Eclipse","Comet","Lotus","Triangle","Square","Pentagon","Hexagon","Octagon","Star","Double Diamond","Infinity"});range("Halos","haloRadius","Radius %",88,45,175);range("Halos","haloHeight","Height above head %",105,55,220);range("Halos","haloSpin","Orbit speed %",75,0,200);color("Halos","haloColor","Halo color","FFB4D6");toggle("Halos","haloRainbow","Prismatic halo",false);choice("Halos","haloDetail","Halo geometry detail","High",{"Balanced","High","Ultra"});toggle("Halos","haloWalk","Walking halo reaction",true)
 toggle("Neon","neon","Character outline",true);range("Neon","neonFill","Body tint %",10,0,65);range("Neon","neonLight","Light intensity %",40,0,100);color("Neon","neonColor","Neon color","AB87FF");toggle("Neon","neonRainbow","Rainbow neon",false);choice("Neon","neonMotion","Neon animation","Breathe",{"Solid","Breathe","Aurora","Heartbeat","Flow","Reactive"});range("Neon","neonMotionSpeed","Neon animation speed %",90,0,180);range("Neon","neonMotionStrength","Neon animation intensity %",65,0,100);range("Neon","neonRange","Light radius (studs)",9,2,20)
 toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA","High sky","282057");color("Ambient","skyB","Horizon","8C70C2");color("Ambient","skyC","Ground light","EAB6CD");range("Ambient","fog","Fog density %",35,0,90);range("Ambient","bloom","Bloom %",40,0,100);range("Ambient","time","Time (tenths of an hour)",166,0,239);range("Ambient","light","Brightness %",105,25,180);range("Ambient","saturation","Saturation %",9,-85,85);range("Ambient","blur","Depth blur",0,0,16);range("Ambient","fade","Atmosphere fade (ms)",700,0,3500);range("Ambient","worldContrast","Contrast %",0,-80,80);range("Ambient","worldExposure","Exposure %",0,-100,100);range("Ambient","worldGlare","Atmospheric glare %",0,0,100);range("Ambient","worldRays","Sun rays %",0,0,100);range("Ambient","worldFocus","Depth of field %",0,0,100);range("Ambient","worldFocusDistance","Focus distance (studs)",60,8,250);range("Ambient","worldBloomSize","Bloom radius",26,0,56)
