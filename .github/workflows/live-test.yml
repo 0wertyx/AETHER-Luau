@@ -1,0 +1,57 @@
+name: Publish AETHER test update
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: aether-live-test
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Generate next validated data release
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("updates/live.json")
+          old = json.loads(path.read_text(encoding="utf-8"))
+          rev = int(old["revision"]) + 1
+          assert 1 <= rev <= 1000000
+          colors = ["8DEBFF", "FF9CCF", "B9A2FF", "9AF0C1"]
+          data = {
+              "format": "aether.live/1",
+              "revision": rev,
+              "version": f"1.1.{rev}",
+              "notes": f"Website test #{rev}: new theme preset, no restart.",
+              "presets": {
+                  "Theme": {
+                      "Website Test": {
+                          "accent": colors[rev % len(colors)],
+                          "secondary": "D8ACFF",
+                          "glassColor": "22243E"
+                      }
+                  },
+                  "Halos": {
+                      "Website Lunar": {
+                          "halo": True,
+                          "haloStyle": "Lunar",
+                          "haloColor": colors[rev % len(colors)]
+                      }
+                  }
+              }
+          }
+          path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+          PY
+      - name: Publish manifest
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add updates/live.json
+          git commit -m "Publish website test update"
+          git push origin HEAD:main
