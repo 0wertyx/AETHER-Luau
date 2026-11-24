@@ -423,6 +423,7 @@ local function frame(dt, now)
     view:step(styled, humanoid, ui.opened or app.editingHUD==true, dt, now)
     if app.preview then
         if app.preview.hud then app.preview.hud:step(styled, result, dt) end
+        if app.preview.pose then app.preview.pose(styled, dt) end
         if app.preview.avatar then app.preview.avatar:step(app.preview.rig, styled, now) end
         view:preview(app.preview.cursorHost,styled)
     end
