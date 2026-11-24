@@ -946,7 +946,7 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.." / PANELS"
+ self.tag.Text=self.app.mode.." / HUD DRAG FIX"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  for key,item in self.quickButtons do item.button.Text=item.label..(if st[key] then "  ON" else "  OFF");item.button.BackgroundColor3=if st[key] then U.hex(st.accent):Lerp(bg,.52) else soft end
@@ -2037,7 +2037,7 @@ local function scripts(ui,a)
 end
 function E.render(a,tab,ui)
  if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. F8 opens Studio. RightShift opens it only when native Shift-Lock is disabled. LeftAlt controls AETHER shoulder lock.",43);ui:chips({"Game","Simulator"},function(n) a:modeSet(n) end,2,function() return a.mode end);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme");ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
- elseif tab=="HUD" then preview(ui,a);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:control("compact");ui:title("TOP / LEFT PANELS");for _,v in {"topCapsule","robloxRail","movePanels"} do ui:control(v) end;ui:note("Enable moving panels, then use Edit HUD on screen. Disabling movement locks the saved locations.",38);ui:chips({"Reset panel positions"},function() a:patch({topCustom=false,railCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartPalette","heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);ui:chips({"hp","clock","profile","dock","cross","input","wallhop"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
+ elseif tab=="HUD" then preview(ui,a);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:control("compact");ui:title("TOP / LEFT PANELS");for _,v in {"topCapsule","robloxRail","movePanels"} do ui:control(v) end;ui:note("Enable moving panels here or with PANELS: LOCKED / MOVE in the live editor. Locked panels are outlined but cannot be dragged.",38);ui:chips({"Reset panel positions"},function() a:patch({topCustom=false,railCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartPalette","heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);ui:chips({"hp","clock","profile","dock","cross","input","wallhop"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
   if k=="input" then for _,v in {"inputOverlay","inputMouse","inputX","inputY","inputScale","inputOpacity","inputColor"} do ui:control(v) end
   elseif k=="wallhop" then for _,v in {"wallhopHelper","wallhopX","wallhopY","wallhopScale","wallhopOpacity"} do ui:control(v) end
   elseif k=="cross" then ui:note("Shift-Lock reticle stays at the center of the game view.",28);for _,v in {"cross","reticleSize","reticleColor","reticleNeon","reticleGlow"} do ui:control(v) end
@@ -3362,7 +3362,7 @@ local overlay = U.frame(gui, "HUDLayer", nil, nil, nil, 1)
 local pointerGui = scope:add(U.new("ScreenGui", {
     Name = "AETHER_Pointer", ResetOnSpawn = false,
     IgnoreGuiInset = true, ScreenInsets = Enum.ScreenInsets.None,
-    ClipToDeviceSafeArea = false, DisplayOrder = 100001,
+    ClipToDeviceSafeArea = false, DisplayOrder = 100003,
     ZIndexBehavior = Enum.ZIndexBehavior.Global,
 }, pg))
 local pointer = U.frame(pointerGui, "PointerLayer", nil, nil, nil, 1)
@@ -3491,12 +3491,21 @@ local store = Storage.new(app, scope)
 app.store = store
 
 -- Non-persistent editing session. Handles exist only while arranging the live HUD.
-local editorGui=scope:add(U.new("ScreenGui",{Name="AETHER_HUD_Editor",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=100000,ZIndexBehavior=Enum.ZIndexBehavior.Global,Enabled=false},pg))
+local editorGui=scope:add(U.new("ScreenGui",{Name="AETHER_HUD_Editor",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=100002,ZIndexBehavior=Enum.ZIndexBehavior.Global,Enabled=false},pg))
 local editor=U.frame(editorGui,"Editor",nil,nil,nil,1)
-local header=U.frame(editor,"EditorBar",UDim2.new(.5,-142,0,52),UDim2.fromOffset(284,38),Color3.fromRGB(27,21,44),.04)
+local header=U.frame(editor,"EditorBar",UDim2.new(.5,0,0,58),UDim2.new(.9,0,0,44),Color3.fromRGB(27,21,44),.04)
+header.AnchorPoint=Vector2.new(.5,0);header.ZIndex=20
+U.new("UISizeConstraint",{MaxSize=Vector2.new(440,44)},header)
 U.corner(header,12);U.stroke(header,Color3.fromRGB(188,151,255),.3)
-local instruction=U.label(header,"HUD EDIT · Drag a widget",11,UDim2.fromOffset(10,0),UDim2.fromOffset(188,38))
-local done=U.button(header,"DONE");done.Position=UDim2.fromOffset(201,4);done.Size=UDim2.fromOffset(78,30);done.Modal=true;done.ZIndex=12
+local instruction=U.label(header,"HUD EDIT",11,UDim2.fromOffset(10,0),UDim2.new(.32,-10,1,0));instruction.ZIndex=21
+local panelToggle=U.button(header,"PANELS: LOCKED");panelToggle.Position=UDim2.new(.32,0,0,5);panelToggle.Size=UDim2.new(.43,-4,1,-10);panelToggle.ZIndex=22;panelToggle.Modal=true
+local done=U.button(header,"DONE");done.Position=UDim2.new(.75,0,0,5);done.Size=UDim2.new(.25,-5,1,-10);done.Modal=true;done.ZIndex=22
+scope:on(panelToggle.Activated,function()
+    if not app.editingHUD then return end
+    ui.drag=nil
+    app:set("movePanels",not app.s.movePanels)
+    app:updateEditor()
+end)
 local handles={}
 local positions={"hp","clock","profile","dock","input","wallhop","top","rail"}
 local function isPanel(key) return key=="top" or key=="rail" end
@@ -3530,8 +3539,9 @@ end
 scope:on(done.Activated,function() app:editHUD(false) end)
 for _,key in positions do
     local b=U.button(editor,key:upper())
-    b.Name="Move_"..key;b.TextSize=11;b.BackgroundTransparency=.68;b.TextColor3=Color3.fromRGB(238,220,255);b.ZIndex=9
-    U.stroke(b,Color3.fromRGB(201,169,255),.12,1.5)
+    b.Name="Move_"..key;b.TextSize=12;b.BackgroundTransparency=.84;b.TextColor3=Color3.fromRGB(255,242,255);b.ZIndex=9;b.Active=true;b.AutoButtonColor=false;b.Visible=false;b.Modal=true
+    b.TextStrokeTransparency=.35
+    U.stroke(b,Color3.fromRGB(224,183,255),0,2.5)
     handles[key]=b
     scope:on(b.InputBegan,function(input)
         if not app.editingHUD or (input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch) then return end
@@ -3567,9 +3577,16 @@ end
 function app:updateEditor()
     editorGui.Enabled=self.editingHUD==true
     if not self.editingHUD then return end
+    panelToggle.Text=if self.s.movePanels then "PANELS: MOVE" else "PANELS: LOCKED"
+    panelToggle.BackgroundColor3=if self.s.movePanels then Color3.fromRGB(105,71,164) else Color3.fromRGB(52,40,77)
     for _,key in positions do
         local b,target=handles[key],widgetFor(key)
-        b.Visible=target.Visible and (if key=="top" then self.s.movePanels and self.s.topCapsule elseif key=="rail" then self.s.movePanels and self.s.robloxRail elseif key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
+        b.Visible=target.Visible and (if key=="top" then self.s.topCapsule elseif key=="rail" then self.s.robloxRail elseif key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
+        local locked=isPanel(key) and not self.s.movePanels
+        b.Active=not locked;b.Interactable=not locked
+        b.Text=key:upper()..(if locked then " · LOCKED" else " · MOVE")
+        local rim=b:FindFirstChildOfClass("UIStroke")
+        if rim then rim.Color=if locked then Color3.fromRGB(153,148,170) else Color3.fromRGB(224,183,255);rim.Transparency=if locked then .3 else 0 end
         if b.Visible then
             local xy=target.AbsolutePosition-editor.AbsolutePosition
             local sz=target.AbsoluteSize
@@ -3691,7 +3708,6 @@ local function frame(dt, now)
     result.shiftLock=view.shiftReticleActive==true and not ui.opened and not app.editingHUD and app.mode=="Game"
     ui:animateBackground(now)
     hud:step(styled, result, dt)
-    app:updateEditor()
     avatar:step(if app.mode == "Game" then character else nil, styled, now)
     world:apply(styled)
     view:step(styled, humanoid, ui.opened or app.editingHUD==true, dt, now)
@@ -3738,6 +3754,11 @@ scope:on(RunService.RenderStepped, function(dt)
     if not gui.Parent then scope:clear(); return end
     elapsed += math.min(dt, .1)
     local ok, err = pcall(frame, math.min(dt, .1), elapsed)
+    -- Keep drag handles synchronized even if another cosmetic module faults.
+    if app.editingHUD then
+        local good, problem=pcall(app.updateEditor,app)
+        if not good and not app.editorError then app.editorError=true;warn("AETHER HUD editor:",problem) end
+    end
     if not ok then
         if not app.lastError or elapsed - app.lastError > 2 then
             app.lastError = elapsed

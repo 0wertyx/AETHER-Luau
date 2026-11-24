@@ -41,7 +41,7 @@ local overlay = U.frame(gui, "HUDLayer", nil, nil, nil, 1)
 local pointerGui = scope:add(U.new("ScreenGui", {
     Name = "AETHER_Pointer", ResetOnSpawn = false,
     IgnoreGuiInset = true, ScreenInsets = Enum.ScreenInsets.None,
-    ClipToDeviceSafeArea = false, DisplayOrder = 100001,
+    ClipToDeviceSafeArea = false, DisplayOrder = 100003,
     ZIndexBehavior = Enum.ZIndexBehavior.Global,
 }, pg))
 local pointer = U.frame(pointerGui, "PointerLayer", nil, nil, nil, 1)
@@ -170,12 +170,21 @@ local store = Storage.new(app, scope)
 app.store = store
 
 -- Non-persistent editing session. Handles exist only while arranging the live HUD.
-local editorGui=scope:add(U.new("ScreenGui",{Name="AETHER_HUD_Editor",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=100000,ZIndexBehavior=Enum.ZIndexBehavior.Global,Enabled=false},pg))
+local editorGui=scope:add(U.new("ScreenGui",{Name="AETHER_HUD_Editor",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=100002,ZIndexBehavior=Enum.ZIndexBehavior.Global,Enabled=false},pg))
 local editor=U.frame(editorGui,"Editor",nil,nil,nil,1)
-local header=U.frame(editor,"EditorBar",UDim2.new(.5,-142,0,52),UDim2.fromOffset(284,38),Color3.fromRGB(27,21,44),.04)
+local header=U.frame(editor,"EditorBar",UDim2.new(.5,0,0,58),UDim2.new(.9,0,0,44),Color3.fromRGB(27,21,44),.04)
+header.AnchorPoint=Vector2.new(.5,0);header.ZIndex=20
+U.new("UISizeConstraint",{MaxSize=Vector2.new(440,44)},header)
 U.corner(header,12);U.stroke(header,Color3.fromRGB(188,151,255),.3)
-local instruction=U.label(header,"HUD EDIT · Drag a widget",11,UDim2.fromOffset(10,0),UDim2.fromOffset(188,38))
-local done=U.button(header,"DONE");done.Position=UDim2.fromOffset(201,4);done.Size=UDim2.fromOffset(78,30);done.Modal=true;done.ZIndex=12
+local instruction=U.label(header,"HUD EDIT",11,UDim2.fromOffset(10,0),UDim2.new(.32,-10,1,0));instruction.ZIndex=21
+local panelToggle=U.button(header,"PANELS: LOCKED");panelToggle.Position=UDim2.new(.32,0,0,5);panelToggle.Size=UDim2.new(.43,-4,1,-10);panelToggle.ZIndex=22;panelToggle.Modal=true
+local done=U.button(header,"DONE");done.Position=UDim2.new(.75,0,0,5);done.Size=UDim2.new(.25,-5,1,-10);done.Modal=true;done.ZIndex=22
+scope:on(panelToggle.Activated,function()
+    if not app.editingHUD then return end
+    ui.drag=nil
+    app:set("movePanels",not app.s.movePanels)
+    app:updateEditor()
+end)
 local handles={}
 local positions={"hp","clock","profile","dock","input","wallhop","top","rail"}
 local function isPanel(key) return key=="top" or key=="rail" end
@@ -209,8 +218,9 @@ end
 scope:on(done.Activated,function() app:editHUD(false) end)
 for _,key in positions do
     local b=U.button(editor,key:upper())
-    b.Name="Move_"..key;b.TextSize=11;b.BackgroundTransparency=.68;b.TextColor3=Color3.fromRGB(238,220,255);b.ZIndex=9
-    U.stroke(b,Color3.fromRGB(201,169,255),.12,1.5)
+    b.Name="Move_"..key;b.TextSize=12;b.BackgroundTransparency=.84;b.TextColor3=Color3.fromRGB(255,242,255);b.ZIndex=9;b.Active=true;b.AutoButtonColor=false;b.Visible=false;b.Modal=true
+    b.TextStrokeTransparency=.35
+    U.stroke(b,Color3.fromRGB(224,183,255),0,2.5)
     handles[key]=b
     scope:on(b.InputBegan,function(input)
         if not app.editingHUD or (input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch) then return end
@@ -246,9 +256,16 @@ end
 function app:updateEditor()
     editorGui.Enabled=self.editingHUD==true
     if not self.editingHUD then return end
+    panelToggle.Text=if self.s.movePanels then "PANELS: MOVE" else "PANELS: LOCKED"
+    panelToggle.BackgroundColor3=if self.s.movePanels then Color3.fromRGB(105,71,164) else Color3.fromRGB(52,40,77)
     for _,key in positions do
         local b,target=handles[key],widgetFor(key)
-        b.Visible=target.Visible and (if key=="top" then self.s.movePanels and self.s.topCapsule elseif key=="rail" then self.s.movePanels and self.s.robloxRail elseif key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
+        b.Visible=target.Visible and (if key=="top" then self.s.topCapsule elseif key=="rail" then self.s.robloxRail elseif key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
+        local locked=isPanel(key) and not self.s.movePanels
+        b.Active=not locked;b.Interactable=not locked
+        b.Text=key:upper()..(if locked then " · LOCKED" else " · MOVE")
+        local rim=b:FindFirstChildOfClass("UIStroke")
+        if rim then rim.Color=if locked then Color3.fromRGB(153,148,170) else Color3.fromRGB(224,183,255);rim.Transparency=if locked then .3 else 0 end
         if b.Visible then
             local xy=target.AbsolutePosition-editor.AbsolutePosition
             local sz=target.AbsoluteSize
@@ -370,7 +387,6 @@ local function frame(dt, now)
     result.shiftLock=view.shiftReticleActive==true and not ui.opened and not app.editingHUD and app.mode=="Game"
     ui:animateBackground(now)
     hud:step(styled, result, dt)
-    app:updateEditor()
     avatar:step(if app.mode == "Game" then character else nil, styled, now)
     world:apply(styled)
     view:step(styled, humanoid, ui.opened or app.editingHUD==true, dt, now)
@@ -417,6 +433,11 @@ scope:on(RunService.RenderStepped, function(dt)
     if not gui.Parent then scope:clear(); return end
     elapsed += math.min(dt, .1)
     local ok, err = pcall(frame, math.min(dt, .1), elapsed)
+    -- Keep drag handles synchronized even if another cosmetic module faults.
+    if app.editingHUD then
+        local good, problem=pcall(app.updateEditor,app)
+        if not good and not app.editorError then app.editorError=true;warn("AETHER HUD editor:",problem) end
+    end
     if not ok then
         if not app.lastError or elapsed - app.lastError > 2 then
             app.lastError = elapsed
