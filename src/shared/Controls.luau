@@ -122,8 +122,10 @@ function UI.new(app,gui,scope)
   self.layoutSide=side;self.panelExtent=Vector2.new(w,h)
   self.dockPicker.Text=({Left="←",Right="→",Top="↑",Bottom="↓",Floating="◇"})[side] or "◇"
   self.grip.Visible=s.menuResize
-  self.grip.Position=if side=="Right" then UDim2.new(0,4,1,-30) elseif side=="Bottom" then UDim2.new(1,-30,0,4) else UDim2.new(1,-30,1,-30)
-  self.grip.Text=if side=="Right" then "◣" elseif side=="Bottom" then "◥" else "◢"
+  self.grip.Position=if side=="Right" then UDim2.new(0,4,1,-30) elseif side=="Bottom" then UDim2.fromOffset(4,4) else UDim2.new(1,-30,1,-30)
+  self.grip.Text=if side=="Right" then "◣" elseif side=="Bottom" then "◤" else "◢"
+  self.brand.Position=UDim2.fromOffset(if side=="Bottom" and s.menuResize then 34 else 16,2)
+  self.brand.Size=UDim2.fromOffset(if side=="Bottom" and s.menuResize then 111 else 135,40)
   self.top.Size=UDim2.fromOffset(math.min(345,math.max(156,sz.X-(if narrow then 120 else 510))),38)
   self.top.Position=UDim2.new(.5,0,0,if narrow then 48 else 12)
   self.rail.Position=UDim2.new(0,12,.46,0)
@@ -192,7 +194,7 @@ function UI.new(app,gui,scope)
   local side=self.app.s.menuDock;local size=self.panelExtent;local origin=self.xy
   self:begin(input,function(point,start)
    local delta=point-start
-   local w=math.max(280,size.X+delta.X*(if side=="Right" then -1 else 1))
+   local w=math.max(280,size.X+delta.X*(if side=="Right" or side=="Bottom" then -1 else 1))
    local h=math.max(260,size.Y+delta.Y*(if side=="Bottom" then -1 else 1))
    self.menuDraft={side=side,w=w,h=h,xy=if side=="Floating" then origin else nil}
    self:layout()
