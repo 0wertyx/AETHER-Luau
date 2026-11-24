@@ -553,7 +553,33 @@ function E.render(a,tab,ui)
    ui:chips(ugc,function(style) a:patch({walkAnimation=true,walkStyle=style}) end,4,
     function() return a.s.walkStyle end)
   end
-  preset(ui,a,tab);ui:group(tab)
+  if tab=="Halos" then
+   ui:title("HALO V2 / INDIVIDUAL LAYERS")
+   ui:note("Each layer has its own toggle. Combine styles or use them independently of the legacy halo.",36)
+   for i,style in S.haloV2Styles do
+    local k="haloV2"..i
+    local row=ui:row(42,"HaloV2Style")
+    local label=U.label(row,style,12,UDim2.fromOffset(9,0),UDim2.new(.47,0,1,0))
+    local edit=U.button(row,"EDIT");edit.Position=UDim2.new(.49,0,0,4);edit.Size=UDim2.new(.20,-4,1,-8)
+    local state=U.button(row,"");state.Position=UDim2.new(.70,0,0,4);state.Size=UDim2.new(.30,-6,1,-8);state.TextSize=10
+    ui.page:on(edit.Activated,function() a.haloV2Selected=i;ui:open("Halos") end)
+    ui.page:on(state.Activated,function() a:set(k.."Enabled",not a.s[k.."Enabled"]) end)
+    ui:watch(function()
+     state.Text=if a.s[k.."Enabled"] then "ENABLED" else "DISABLED"
+     state.BackgroundColor3=if a.s[k.."Enabled"] then Color3.fromRGB(75,54,112) else Color3.fromRGB(43,39,52)
+     label.TextColor3=if a.haloV2Selected==i then U.hex(a.s.accent) else Color3.fromRGB(229,220,242)
+    end)
+   end
+   local selected=a.haloV2Selected or 1;local k="haloV2"..selected
+   ui:title("CUSTOMIZE / "..string.upper(S.haloV2Styles[selected]))
+   ui:colorPicker(k.."Color");ui:colorPicker(k.."Secondary")
+   for _,suffix in {"Radius","Height","Spin","Opacity","Glow","Thickness","Count","Tilt"} do ui:control(k..suffix) end
+   ui:title("LEGACY HALOS")
+   preset(ui,a,tab)
+   local skip={}
+   for i in S.haloV2Styles do for _,suffix in S.haloV2Fields do skip["haloV2"..i..suffix]=true end end
+   ui:group(tab,skip)
+  else preset(ui,a,tab);ui:group(tab) end
  elseif tab=="Ambient" then local sky=ui:row(106,"SkyPreview");local grad=U.gradient(sky,Color3.new(),Color3.new(),90);local sun=U.frame(sky,"Sun",nil,UDim2.fromOffset(30,30));U.corner(sun,30);ui:watch(function() local s=a.s;sky.BackgroundColor3=Color3.new(1,1,1);grad.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,U.hex(s.skyA)),ColorSequenceKeypoint.new(.64,U.hex(s.skyB)),ColorSequenceKeypoint.new(1,U.hex(s.skyC))});sun.BackgroundColor3=U.hex(s.skyC);sun.Position=UDim2.fromScale(.7,.66-.45*math.sin(s.time/240*math.pi));sun.BackgroundTransparency=.04+s.fog*.004 end);preset(ui,a,tab);ui:group(tab)
  elseif tab=="Indicators" then preview(ui,a);gallery(ui,a);ui:group(tab,{shape=true});ui:title("PER-PLAYER OVERRIDE");local id=ui:box("UserId or simulator ID","1");local label=ui:box("Label override","");local color=ui:box("Override hex",a.s.arrowA);ui:chips({"Assign current shape","Remove override"},function(k) local p=S.copy(a.s.players);if k=="Assign current shape" then p[id.Text]={label=label.Text,color=color.Text,shape=a.s.shape} else p[id.Text]=nil end;a:set("players",p);ui:message("Overrides updated") end,2)
  elseif tab=="Cursor" then local f=ui:row(94,"CursorPreview");local host=U.frame(f,"OriginalCursorPreview",UDim2.fromScale(.5,.5),UDim2.fromOffset(60,60),nil,1);host.AnchorPoint=Vector2.new(.5,.5);a.preview={cursorHost=host};preset(ui,a,tab);ui:group(tab);ui:note("Cursor animation never moves its click hotspot. Enable Show hotspot marker to compare the real mouse position with the skin; use Pointer offset X/Y only for calibration. EditableImage renders desktop SVG; imports need an authorized asset ID.",57)
