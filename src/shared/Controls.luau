@@ -34,7 +34,7 @@ function UI.new(app,gui,scope)
  scope:on(self.header.InputBegan,function(i) self:begin(i,function(point,start,origin) self.xy=origin+point-start;self:layout() end,self.xy) end)
  scope:on(Input.InputChanged,function(i) local d=self.drag;if d and (i==d.i or d.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseMovement) then d.fn(Vector2.new(i.Position.X,i.Position.Y),d.start,d.origin) end end)
  scope:on(Input.InputEnded,function(i) if self.drag and (self.drag.i==i or self.drag.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseButton1) then self.drag=nil end end)
- scope:on(Input.WindowFocusReleased,function() self.drag=nil end);scope:add(function() if self.page then self.page:clear() end end);return self
+ scope:on(Input.WindowFocusReleased,function() self.drag=nil end);scope:add(function() if self.page then self.page:clear() end;Icons.clear() end);return self
 end
 function UI:animateBackground(t)
  local s=self.app.s
@@ -138,7 +138,7 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.."   /   "..self.tab.."   /   HUD FIX 02"
+ self.tag.Text=self.app.mode.."   /   "..self.tab.."   /   HD128"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  for _,asset in self.icons do asset:sync(st.iconAtlas) end

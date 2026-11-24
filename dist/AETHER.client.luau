@@ -459,7 +459,7 @@ function UI.new(app,gui,scope)
  scope:on(self.header.InputBegan,function(i) self:begin(i,function(point,start,origin) self.xy=origin+point-start;self:layout() end,self.xy) end)
  scope:on(Input.InputChanged,function(i) local d=self.drag;if d and (i==d.i or d.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseMovement) then d.fn(Vector2.new(i.Position.X,i.Position.Y),d.start,d.origin) end end)
  scope:on(Input.InputEnded,function(i) if self.drag and (self.drag.i==i or self.drag.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseButton1) then self.drag=nil end end)
- scope:on(Input.WindowFocusReleased,function() self.drag=nil end);scope:add(function() if self.page then self.page:clear() end end);return self
+ scope:on(Input.WindowFocusReleased,function() self.drag=nil end);scope:add(function() if self.page then self.page:clear() end;Icons.clear() end);return self
 end
 function UI:animateBackground(t)
  local s=self.app.s
@@ -563,7 +563,7 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.."   /   "..self.tab.."   /   HUD FIX 02"
+ self.tag.Text=self.app.mode.."   /   "..self.tab.."   /   HD128"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  for _,asset in self.icons do asset:sync(st.iconAtlas) end
@@ -1117,6 +1117,7 @@ __aether_factories["Icons"] = function()
 -- The ORIGINAL AETHER desktop icons are 32 PNG images of 224 x 224.
 -- Make one 8x4 atlas from assets/icons and upload it as a Roblox image asset.
 -- The atlas is included separately for importing; Roblox cannot draw GitHub PNG URLs directly.
+local AssetService=game:GetService("AssetService")
 local U=__aether_require("Util")
 local I={}
 I.TILE=224
@@ -1133,7 +1134,7 @@ I.tabs={
  Cursor="Assets",Camera="Media",Fonts="Fonts",Simulator="Simulator",
  Scripts="Console",Workshop="Workshop",Profiles="Cloud",Diagnostics="Debug"
 }
--- Native line-art icons provide a reliable offline fallback for every tab.
+-- Procedural silhouettes supply HD textures and offline line-art fallback.
 -- Coordinates are normalized to a 24 by 24 icon, independent of display size.
 local drawings={
  Dashboard={{3,3,10,3,10,10,3,10,3,3},{14,3,21,3,21,10,14,10,14,3},{3,14,10,14,10,21,3,21,3,14},{14,14,21,14,21,21,14,21,14,14}},
@@ -1153,6 +1154,62 @@ local drawings={
  Cloud={{4,18,2,15,4,10,8,10,9,5,14,3,18,6,19,10,22,12,22,16,19,18,4,18}},
  Debug={{7,7,17,7,19,10,19,17,15,21,9,21,5,17,5,10,7,7},{8,7,6,3},{16,7,18,3},{2,11,5,11},{19,11,22,11},{2,16,5,16},{19,16,22,16},{12,8,12,20}},
 }
+-- Rasterize each silhouette once at 128 x 128 with smooth round caps.
+-- The texture is shared by the main menu, HUD and simulator preview.
+I.RES=128
+local textures={}
+local function raster(name)
+ local cached=textures[name]
+ if cached~=nil then return cached or nil end
+ local edit
+ local ok,err=pcall(function()
+  edit=AssetService:CreateEditableImage({Size=Vector2.new(I.RES,I.RES)})
+  assert(edit,"EditableImage unavailable")
+  local segments={}
+  for _,path in drawings[name] or drawings.Assets do
+   for j=1,#path-2,2 do
+    local a=Vector2.new(path[j],path[j+1])
+    local d=Vector2.new(path[j+2],path[j+3])-a
+    if d.Magnitude>0 then table.insert(segments,{a=a,d=d,length=d:Dot(d)}) end
+   end
+  end
+  local n=I.RES
+  local data=buffer.create(n*n*4)
+  -- Analytic signed distance coverage: subpixel antialiasing with rounded joins.
+  local radius=.83
+  local pixel=24/n
+  for y=0,n-1 do
+   for x=0,n-1 do
+    local p=Vector2.new((x+.5)*pixel,(y+.5)*pixel)
+    local dist2=math.huge
+    for _,seg in segments do
+     local v=p-seg.a
+     local q=math.clamp(v:Dot(seg.d)/seg.length,0,1)
+     local delta=v-seg.d*q
+     dist2=math.min(dist2,delta:Dot(delta))
+    end
+    local coverage=math.clamp((radius-math.sqrt(dist2))/pixel+.5,0,1)
+    if coverage>0 then
+     local offset=(y*n+x)*4
+     buffer.writeu32(data,offset,0x00FFFFFF)
+     buffer.writeu8(data,offset+3,math.round(coverage*255))
+    end
+   end
+  end
+  edit:WritePixelsBuffer(Vector2.zero,Vector2.new(n,n),data)
+ end)
+ if not ok then
+  if edit then edit:Destroy() end
+  textures[name]=false
+  return nil
+ end
+ textures[name]=edit
+ return edit
+end
+function I.clear()
+ for _,edit in textures do if edit then edit:Destroy() end end
+ table.clear(textures)
+end
 local function lineArt(button,name,iconOnly)
  local root=U.frame(button,"NativeIcon",nil,UDim2.fromOffset(20,20),nil,1)
  root.Active=false;root.Interactable=false;root.ZIndex=button.ZIndex+1
@@ -1183,18 +1240,30 @@ function I.new(button,tab)
  if index then visual.ImageRectOffset=Vector2.new(index%8*I.TILE,math.floor(index/8)*I.TILE) end
  visual.ImageRectSize=Vector2.new(I.TILE,I.TILE)
  local native=lineArt(button,name,iconOnly)
- local self={visual=visual,button=button,native=native,last=nil}
+ local hd
+ local texture=raster(name)
+ if texture then
+  local ok,result=pcall(function()
+   return U.new("ImageLabel",{Name="HDIcon128",BackgroundTransparency=1,Active=false,Selectable=false,Interactable=false,
+    Size=UDim2.fromOffset(23,23),Position=if iconOnly then UDim2.new(.5,-11.5,.5,-11.5) else UDim2.new(0,6,.5,-11.5),
+    ScaleType=Enum.ScaleType.Fit,ResampleMode=Enum.ResamplerMode.Default,
+    ImageColor3=Color3.fromRGB(237,222,255),ImageContent=Content.fromObject(texture),ZIndex=button.ZIndex+2},button)
+  end)
+  if ok then hd=result end
+ end
+ local self={visual=visual,button=button,native=native,hd=hd,last=nil}
  local function refresh()
   local ready=self.last~=nil and self.last~="" and index~=nil and visual.IsLoaded
   visual.Visible=ready
-  native.Visible=not ready
+  if hd then hd.Visible=not ready end
+  native.Visible=not ready and hd==nil
   if iconOnly then
    button.Text=""
   else
    button.TextXAlignment=Enum.TextXAlignment.Right
    button.TextSize=11
-   local pad=button:FindFirstChild("IconTextPadding") or U.new("UIPadding",{Name="IconTextPadding",PaddingRight=UDim.new(0,7),PaddingLeft=UDim.new(0,29)},button)
-   pad.PaddingRight=UDim.new(0,7)
+   local pad=button:FindFirstChild("IconTextPadding")
+   if pad then pad:Destroy() end
   end
   button.TextColor3=Color3.fromRGB(241,234,255)
   button.TextTransparency=0
