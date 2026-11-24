@@ -593,7 +593,7 @@ function E.render(a,tab,ui)
   local status=ui:note("",48)
   local notes=ui:note("",52)
   local function sync()
-   version.Text="RUNNING VERSION  /  "..state.version
+   version.Text="RUNNING VERSION  /  "..state.version.."\nWEBSITE  /  "..(if state.connected then "CONNECTED · AUTO" else "RELAY OFFLINE")
    status.Text=state.status
    notes.Text=state.notes or "No update applied. Your HUD, configs and menu stay active during an update."
   end
@@ -601,7 +601,7 @@ function E.render(a,tab,ui)
   ui:chips({"Test update","Check updates","Rollback"},function(n)
    if n=="Test update" then a:testLiveUpdate() elseif n=="Check updates" then a:checkLiveUpdate() else a:rollbackLiveUpdate() end
   end,3)
-  ui:note("Test update swaps preloaded data in place. Published packages arrive through an optional first-party server relay. No remote executable code is loaded.",54)
+  ui:note("Website releases apply automatically through the first-party relay. Local test and manual check remain available. No remote executable code is loaded.",54)
   ui:chips({"Browse new presets"},function() a.libraryKind="Theme";a.selection=nil;ui:open("Workshop") end,1)
  elseif tab=="Diagnostics" then local info=ui:note("",54);local log=ui:box("Session events","",165);log.TextEditable=false;local function refresh() info.Text=string.format("%s  ·  HP %s / %s  ·  %d tracked\n%s",a.mode,tostring(a.frame.hp),tostring(a.frame.max),#a.frame.targets,a.store.status);log.Text=table.concat(a.logs,"\n") end;ui:chips({"Refresh","Clear log","Reset settings"},function(n) if n=="Clear log" then table.clear(a.logs) elseif n=="Reset settings" then a:replace(S.defaults()) end;refresh() end,3);refresh();ui:title("SESSION");ui:note("Unload stops AETHER, removes its HUD and effects, and releases its camera and mouse controls. Export a bank first to retain local-only settings.",52);-- Allocate one confirmation row, once per Diagnostics page. Never append rows from clicks.
   local page=ui.page
