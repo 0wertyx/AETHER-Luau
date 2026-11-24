@@ -1,5 +1,6 @@
 local U=require(script.Parent.Util);local Symbol=require(script.Parent.Symbol);local Icons=require(script.Parent.Icons)
 local H={};H.__index=H
+local UIS=game:GetService("UserInputService")
 local sizes={hp=Vector2.new(264,94),clock=Vector2.new(116,58),profile=Vector2.new(124,58),dock=Vector2.new(285,49),cross=Vector2.new(18,18)}
 local heartPalettes={
  Aurora={"7DE3FF","B78AFF","FC82D6"},
@@ -144,6 +145,20 @@ function H.new(scope,parent,preview,go,drag,close)
   edge.AnchorPoint=Vector2.new(.5,.5);edge.Active=false;edge.Visible=false;U.corner(edge,3);self.reticleEdges[i]=edge
   local glow=U.stroke(edge,Color3.fromRGB(193,142,255),1,3)
   glow.Enabled=false;self.reticleGlowEdges[i]=glow
+ end
+ -- A read-only key display. It neither intercepts nor generates any game input.
+ self.inputRoot=U.new("CanvasGroup",{Name="InputOverlay",AnchorPoint=Vector2.new(.5,.5),Size=UDim2.fromOffset(172,114),BackgroundTransparency=1,Active=false,Interactable=false,Visible=false,ZIndex=6},parent)
+ self.inputKeys={}
+ for _,def in {
+  {"W",60,4,42,Enum.KeyCode.W},{"A",14,42,42,Enum.KeyCode.A},{"S",60,42,42,Enum.KeyCode.S},{"D",106,42,42,Enum.KeyCode.D},
+  {"SPACE",14,80,134,Enum.KeyCode.Space},{"SHIFT",106,4,58,Enum.KeyCode.LeftShift},
+  {"LMB",2,118,81,Enum.UserInputType.MouseButton1},{"RMB",88,118,81,Enum.UserInputType.MouseButton2}
+ } do
+  local key=U.frame(self.inputRoot,"Key_"..def[1],UDim2.fromOffset(def[2],def[3]),UDim2.fromOffset(def[4],34),Color3.fromRGB(33,27,49),.18)
+  key.Active=false;key.Interactable=false;key.ZIndex=7;U.corner(key,8)
+  local rim=U.stroke(key,Color3.fromRGB(185,155,231),.55,1)
+  local label=center(key,def[1],12);label.ZIndex=8
+  table.insert(self.inputKeys,{p=key,rim=rim,label=label,code=def[5],mouse=def[1]=="LMB" or def[1]=="RMB"})
  end
  return self
 end
@@ -391,6 +406,31 @@ end
 function H:step(s,f,dt)
  if self.settings~=s or self.width~=self.view.AbsoluteSize.X then self:setStyle(s) end;self.time+=dt;local t=self.time;local paint=t>=self.paintAt;if paint then self.paintAt=t+.075 end
  self:reticle(s,f,t);self:vitals(s,f,dt);self:animateWidgets(s,f,dt,t);self:directions(s,f,dt,t,paint)
+ local overlay=self.inputRoot
+ overlay.Visible=s.inputOverlay and not self.preview
+ if overlay.Visible then
+  local k=s.inputScale/100
+  local w,h=172*k,(if s.inputMouse then 156 else 114)*k
+  local vp=self.view.AbsoluteSize
+  overlay.Size=UDim2.fromOffset(172,if s.inputMouse then 156 else 114)
+  if not self.inputScale then self.inputScale=U.new("UIScale",{},overlay) end
+  self.inputScale.Scale=k
+  overlay.Position=UDim2.fromOffset(math.clamp(vp.X*s.inputX/100,w/2,math.max(w/2,vp.X-w/2)),math.clamp(vp.Y*s.inputY/100,h/2,math.max(h/2,vp.Y-h/2)))
+  overlay.GroupTransparency=1-s.inputOpacity/100
+  local focused=UIS:GetFocusedTextBox()~=nil
+  local tint=U.hex(s.inputColor)
+  for _,key in self.inputKeys do
+   key.p.Visible=not key.mouse or s.inputMouse
+   local down=false
+   if not focused then
+    if key.mouse then down=UIS:IsMouseButtonPressed(key.code)
+    else down=UIS:IsKeyDown(key.code) or (key.code==Enum.KeyCode.LeftShift and UIS:IsKeyDown(Enum.KeyCode.RightShift)) end
+   end
+   key.p.BackgroundColor3=if down then tint else Color3.fromRGB(33,27,49)
+   key.label.TextColor3=if down then Color3.fromRGB(25,18,39) else Color3.fromRGB(240,233,255)
+   key.rim.Color=tint;key.rim.Transparency=if down then .1 else .55
+  end
+ end
  if not self.fpsAt or t>=self.fpsAt then
   self.fpsAt=t+.25
   setText(self.name,if f.fps then string.format("%d FPS",math.floor(f.fps+.5)) else "— FPS")

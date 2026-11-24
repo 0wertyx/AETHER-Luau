@@ -651,7 +651,7 @@ function UI.new(app,gui,scope)
  self.place=U.label(self.panel,"PLACE  /  "..tostring(game.PlaceId),10,nil,nil);self.place.TextColor3=dim
  self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
  self.pageBox=U.new("CanvasGroup",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,GroupTransparency=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
- self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Fonts","Simulator","Scripts","Workshop","Profiles","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
+ self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Interaction","Fonts","Simulator","Scripts","Workshop","Profiles","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
  function self:layout()
   local sz=self.stage.AbsoluteSize
   if sz.X<2 or sz.Y<2 then return end
@@ -921,7 +921,7 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.." / WING6"
+ self.tag.Text=self.app.mode.." / INTERACT"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  for key,item in self.quickButtons do item.button.Text=item.label..(if st[key] then "  ON" else "  OFF");item.button.BackgroundColor3=if st[key] then U.hex(st.accent):Lerp(bg,.52) else soft end
@@ -1141,6 +1141,7 @@ end
 __aether_factories["Hud"] = function()
 local U=__aether_require("Util");local Symbol=__aether_require("Symbol");local Icons=__aether_require("Icons")
 local H={};H.__index=H
+local UIS=game:GetService("UserInputService")
 local sizes={hp=Vector2.new(264,94),clock=Vector2.new(116,58),profile=Vector2.new(124,58),dock=Vector2.new(285,49),cross=Vector2.new(18,18)}
 local heartPalettes={
  Aurora={"7DE3FF","B78AFF","FC82D6"},
@@ -1285,6 +1286,20 @@ function H.new(scope,parent,preview,go,drag,close)
   edge.AnchorPoint=Vector2.new(.5,.5);edge.Active=false;edge.Visible=false;U.corner(edge,3);self.reticleEdges[i]=edge
   local glow=U.stroke(edge,Color3.fromRGB(193,142,255),1,3)
   glow.Enabled=false;self.reticleGlowEdges[i]=glow
+ end
+ -- A read-only key display. It neither intercepts nor generates any game input.
+ self.inputRoot=U.new("CanvasGroup",{Name="InputOverlay",AnchorPoint=Vector2.new(.5,.5),Size=UDim2.fromOffset(172,114),BackgroundTransparency=1,Active=false,Interactable=false,Visible=false,ZIndex=6},parent)
+ self.inputKeys={}
+ for _,def in {
+  {"W",60,4,42,Enum.KeyCode.W},{"A",14,42,42,Enum.KeyCode.A},{"S",60,42,42,Enum.KeyCode.S},{"D",106,42,42,Enum.KeyCode.D},
+  {"SPACE",14,80,134,Enum.KeyCode.Space},{"SHIFT",106,4,58,Enum.KeyCode.LeftShift},
+  {"LMB",2,118,81,Enum.UserInputType.MouseButton1},{"RMB",88,118,81,Enum.UserInputType.MouseButton2}
+ } do
+  local key=U.frame(self.inputRoot,"Key_"..def[1],UDim2.fromOffset(def[2],def[3]),UDim2.fromOffset(def[4],34),Color3.fromRGB(33,27,49),.18)
+  key.Active=false;key.Interactable=false;key.ZIndex=7;U.corner(key,8)
+  local rim=U.stroke(key,Color3.fromRGB(185,155,231),.55,1)
+  local label=center(key,def[1],12);label.ZIndex=8
+  table.insert(self.inputKeys,{p=key,rim=rim,label=label,code=def[5],mouse=def[1]=="LMB" or def[1]=="RMB"})
  end
  return self
 end
@@ -1532,6 +1547,31 @@ end
 function H:step(s,f,dt)
  if self.settings~=s or self.width~=self.view.AbsoluteSize.X then self:setStyle(s) end;self.time+=dt;local t=self.time;local paint=t>=self.paintAt;if paint then self.paintAt=t+.075 end
  self:reticle(s,f,t);self:vitals(s,f,dt);self:animateWidgets(s,f,dt,t);self:directions(s,f,dt,t,paint)
+ local overlay=self.inputRoot
+ overlay.Visible=s.inputOverlay and not self.preview
+ if overlay.Visible then
+  local k=s.inputScale/100
+  local w,h=172*k,(if s.inputMouse then 156 else 114)*k
+  local vp=self.view.AbsoluteSize
+  overlay.Size=UDim2.fromOffset(172,if s.inputMouse then 156 else 114)
+  if not self.inputScale then self.inputScale=U.new("UIScale",{},overlay) end
+  self.inputScale.Scale=k
+  overlay.Position=UDim2.fromOffset(math.clamp(vp.X*s.inputX/100,w/2,math.max(w/2,vp.X-w/2)),math.clamp(vp.Y*s.inputY/100,h/2,math.max(h/2,vp.Y-h/2)))
+  overlay.GroupTransparency=1-s.inputOpacity/100
+  local focused=UIS:GetFocusedTextBox()~=nil
+  local tint=U.hex(s.inputColor)
+  for _,key in self.inputKeys do
+   key.p.Visible=not key.mouse or s.inputMouse
+   local down=false
+   if not focused then
+    if key.mouse then down=UIS:IsMouseButtonPressed(key.code)
+    else down=UIS:IsKeyDown(key.code) or (key.code==Enum.KeyCode.LeftShift and UIS:IsKeyDown(Enum.KeyCode.RightShift)) end
+   end
+   key.p.BackgroundColor3=if down then tint else Color3.fromRGB(33,27,49)
+   key.label.TextColor3=if down then Color3.fromRGB(25,18,39) else Color3.fromRGB(240,233,255)
+   key.rim.Color=tint;key.rim.Transparency=if down then .1 else .55
+  end
+ end
  if not self.fpsAt or t>=self.fpsAt then
   self.fpsAt=t+.25
   setText(self.name,if f.fps then string.format("%d FPS",math.floor(f.fps+.5)) else "— FPS")
@@ -1577,7 +1617,7 @@ I.order={
 I.tabs={
  Dashboard="Dashboard",HUD="HUD",Character="Profile",Wings="Favorites",
  Halos="AI_Assistant",Neon="Themes",Ambient="World_FX",Indicators="Indicators",
- Cursor="Assets",Camera="Media",Fonts="Fonts",Simulator="Simulator",
+ Cursor="Assets",Camera="Media",Interaction="Games",Fonts="Fonts",Simulator="Simulator",
  Scripts="Console",Workshop="Workshop",Profiles="Cloud",Diagnostics="Debug"
 }
 -- Procedural silhouettes supply HD textures and offline line-art fallback.
@@ -1672,6 +1712,7 @@ function I.drawing(name) return drawings[name] or drawings.Assets end
 -- Rasterize each silhouette once at 128 x 128 with smooth round caps.
 -- The texture is shared by the main menu, HUD and simulator preview.
 I.RES=128
+drawings.Games={{4,9,8,5,16,5,20,9,22,17,19,20,15,16,9,16,5,20,2,17,4,9},{5,11,11,11},{8,8,8,14},{15,10,17,10},{18,13,20,13}}
 local textures={}
 local function raster(name,glow)
  local key=name..(if glow then ":glow" else "")
@@ -1956,7 +1997,16 @@ function E.render(a,tab,ui)
  elseif tab=="Ambient" then local sky=ui:row(106,"SkyPreview");local grad=U.gradient(sky,Color3.new(),Color3.new(),90);local sun=U.frame(sky,"Sun",nil,UDim2.fromOffset(30,30));U.corner(sun,30);ui:watch(function() local s=a.s;sky.BackgroundColor3=Color3.new(1,1,1);grad.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,U.hex(s.skyA)),ColorSequenceKeypoint.new(.64,U.hex(s.skyB)),ColorSequenceKeypoint.new(1,U.hex(s.skyC))});sun.BackgroundColor3=U.hex(s.skyC);sun.Position=UDim2.fromScale(.7,.66-.45*math.sin(s.time/240*math.pi));sun.BackgroundTransparency=.04+s.fog*.004 end);preset(ui,a,tab);ui:group(tab)
  elseif tab=="Indicators" then preview(ui,a);gallery(ui,a);ui:group(tab,{shape=true});ui:title("PER-PLAYER OVERRIDE");local id=ui:box("UserId or simulator ID","1");local label=ui:box("Label override","");local color=ui:box("Override hex",a.s.arrowA);ui:chips({"Assign current shape","Remove override"},function(k) local p=S.copy(a.s.players);if k=="Assign current shape" then p[id.Text]={label=label.Text,color=color.Text,shape=a.s.shape} else p[id.Text]=nil end;a:set("players",p);ui:message("Overrides updated") end,2)
  elseif tab=="Cursor" then local f=ui:row(94,"CursorPreview");local host=U.frame(f,"OriginalCursorPreview",UDim2.fromScale(.5,.5),UDim2.fromOffset(60,60),nil,1);host.AnchorPoint=Vector2.new(.5,.5);a.preview={cursorHost=host};preset(ui,a,tab);ui:group(tab);ui:note("Cursor animation never moves its click hotspot. Enable Show hotspot marker to compare the real mouse position with the skin; use Pointer offset X/Y only for calibration. EditableImage renders desktop SVG; imports need an authorized asset ID.",57)
- elseif tab=="Camera" then ui:note("Native Roblox Shift-Lock has priority in Follow mode. To use AETHER shoulder lock, turn off the native Shift-Lock option, then press LeftAlt. F8 opens Studio. Both locks use the selected cosmetic reticle and neon glow.",40);preset(ui,a,tab);ui:group(tab)
+ elseif tab=="Camera" then ui:note("Camera framing, field of view and orbit controls. Shift-Lock settings are now in Interaction.",40);preset(ui,a,tab);ui:group(tab)
+ elseif tab=="Interaction" then
+  ui:title("GAME INTERACTION")
+  ui:note("Shift-Lock is unchanged. Native Roblox Shift-Lock has priority in Follow mode; LeftAlt toggles AETHER lock when the native option is off. Camera orientation can affect gameplay in some experiences.",60)
+  ui:title("SHIFT-LOCK / RETICLE")
+  local inputKeys={inputOverlay=true,inputMouse=true,inputX=true,inputY=true,inputScale=true,inputOpacity=true,inputColor=true}
+  ui:group(tab,inputKeys)
+  ui:title("LIVE INPUT DISPLAY")
+  ui:note("Shows your own WASD, Space, Shift and mouse presses. Read-only visualization: no synthetic inputs or game automation.",44)
+  for _,k in {"inputOverlay","inputMouse","inputX","inputY","inputScale","inputOpacity","inputColor"} do ui:control(k) end
  elseif tab=="Fonts" then local text=ui:note(a.s.sample,62);text:SetAttribute("AETHERKeepFontColor",true);text.TextXAlignment=Enum.TextXAlignment.Center;local gradient=U.gradient(text,Color3.new(),Color3.new(),10);local glow=U.stroke(text,U.hex(a.s.fontB),.8);glow.ApplyStrokeMode=Enum.ApplyStrokeMode.Contextual;ui:watch(function() local s=a.s;text.Text=s.sample;text.FontFace=U.font(s);text.TextSize=s.fontSize*.23;text.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA);text.TextStrokeTransparency=1-s.fontOutline/100;gradient.Enabled=s.fontGradient;gradient.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB));glow.Color=U.hex(s.fontB);glow.Transparency=1-s.fontGlow*.008;glow.Thickness=1+s.fontGlow*.023 end);local query=ui:box("Search native typefaces",a.fontQuery or "",32,function(q) if q~=(a.fontQuery or "") then a.fontQuery=q;ui:open("Fonts") end end);local fonts={};for _,n in S.fonts do if n:lower():find((a.fontQuery or ""):lower(),1,true) then table.insert(fonts,n) end end;ui:chips(fonts,function(n) a:patch({font=n,fontAsset=""}) end,3,function() return a.s.font end);ui:group(tab,{font=true});preset(ui,a,tab)
  elseif tab=="Simulator" then preview(ui,a);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
  elseif tab=="Scripts" then scripts(ui,a)
@@ -1971,7 +2021,7 @@ end
 -- BEGIN MODULE Schema
 __aether_factories["Schema"] = function()
 -- Shared, data-only contract. All settings/banks contain JSON primitives, not Instances.
-local S = {version = 1, defs = {}, order = {}, kinds = {"Theme","HUD","Motion","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Fonts","Scripts"}}
+local S = {version = 1, defs = {}, order = {}, kinds = {"Theme","HUD","Motion","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Interaction","Fonts","Scripts"}}
 S.shapes = {"Soft Triangle","Chevron","Diamond","Neon Pointer","Double Chevron","Angel Wings","Orbit Arc","Location Pin","Arrowhead","Split Arrow","Needle","Broad Chevron","Hollow Diamond","Crystal","Spear","Twin Wings","Shield","Beacon","Star Pointer","Compass","Double Spike","Arc Pointer","Kite","Crosshair"}
 S.fonts = {"Gotham","Code","RobotoMono","Ubuntu","Nunito","GothamMedium","SciFi","Arcade","FredokaOne","Oswald","TitilliumWeb","SourceSans","Highway","Fantasy","Garamond","Bodoni","Bangers","Cartoon","Kalam","Roboto","Sarpanch"}
 -- name, high sky, horizon, low light, fog %, bloom %, clock (tenths of an hour), brightness %, saturation.
@@ -2012,7 +2062,8 @@ toggle("Neon","neon","Character outline",true);range("Neon","neonFill","Body tin
 toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA","High sky","282057");color("Ambient","skyB","Horizon","8C70C2");color("Ambient","skyC","Ground light","EAB6CD");range("Ambient","fog","Fog density %",35,0,90);range("Ambient","bloom","Bloom %",40,0,100);range("Ambient","time","Time (tenths of an hour)",166,0,239);range("Ambient","light","Brightness %",105,25,180);range("Ambient","saturation","Saturation %",9,-85,85);range("Ambient","blur","Depth blur",0,0,16);range("Ambient","fade","Atmosphere fade (ms)",700,0,3500);range("Ambient","worldContrast","Contrast %",0,-80,80);range("Ambient","worldExposure","Exposure %",0,-100,100);range("Ambient","worldGlare","Atmospheric glare %",0,0,100);range("Ambient","worldRays","Sun rays %",0,0,100);range("Ambient","worldFocus","Depth of field %",0,0,100);range("Ambient","worldFocusDistance","Focus distance (studs)",60,8,250);range("Ambient","worldBloomSize","Bloom radius",26,0,56)
 toggle("Indicators","indicators","Directional indicators",true);choice("Indicators","shape","Indicator shape","Soft Triangle",S.shapes);range("Indicators","size","Size (px)",31,14,72);range("Indicators","corners","Corner softness %",30,0,100);range("Indicators","edge","Distance from edges %",11,4,30);range("Indicators","turn","Rotation smoothing (ms)",180,0,800);range("Indicators","ink","Neon intensity %",60,0,100);range("Indicators","spread","Neon spread (px)",6,0,18);range("Indicators","arrowAlpha","Opacity %",95,10,100);range("Indicators","arrowSpeed","Animation speed %",100,40,220);color("Indicators","arrowA","Gradient start","BFA2FF");color("Indicators","arrowB","Gradient end","FF9ECE");toggle("Indicators","arrowRainbow","Rainbow gradient",false);toggle("Indicators","pulse","Pulsation",true);choice("Indicators","labels","Arrow labels","Both",{"Off","Name","Distance","Both"});toggle("Indicators","nearby","Nearby nameplates",false);range("Indicators","reach","Tracking range (studs)",800,50,2500)
 toggle("Cursor","cursor","Custom game pointer",false);choice("Cursor","cursorShape","Pointer shape","Rounded Triangle",{"Rounded Triangle","Soft Arrow","Diamond","Orbit","Spark","Chevron","Neon Pointer","Arrowhead","Split Arrow","Needle","Crystal","Spear","Star Pointer","Compass","Crosshair","Heart","Image"});range("Cursor","cursorSize","Pointer size",30,12,72);range("Cursor","cursorGlow","Pointer glow %",55,0,100);choice("Cursor","cursorPalette","Desktop AETHER palette","Aurora",{"Aurora","Sunset","Ocean","Rainbow","Mono","Custom"});range("Cursor","hotX","Hotspot X %",19,0,100);range("Cursor","hotY","Hotspot Y %",8,0,100);color("Cursor","cursorA","Gradient start","BA99FF");color("Cursor","cursorB","Gradient end","69D9FA");toggle("Cursor","cursorRainbow","Rainbow pointer",true);range("Cursor","cursorSpeed","Gradient speed %",65,10,200);choice("Cursor","cursorAnimation","Cursor animation","Sway",{"Off","Breathe","Sway","Spin","Pulse"});range("Cursor","cursorMotionSpeed","Animation speed %",100,20,200);toggle("Cursor","cursorTrail","Soft cursor trail",false);range("Cursor","cursorOffsetX","Pointer offset X (px)",0,-120,120);range("Cursor","cursorOffsetY","Pointer offset Y (px)",0,-120,120);toggle("Cursor","cursorDebug","Show hotspot marker",false);def("Cursor","image","Roblox image asset ID","asset","")
-toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Camera","lock","Shift-lock · LeftAlt",false);choice("Camera","lockReticle","Shift-lock reticle","Orbit",{"None","Dot","Ring","Orbit","Cross","Split Cross","Diamond","Triangle","Hexagon","Star","Corners","Compass","Double Ring","Petal"});range("Camera","reticleSize","Reticle size (px)",28,12,64);range("Camera","reticleStroke","Reticle thickness (px)",2,1,5);color("Camera","reticleColor","Reticle color","C8A6FF");toggle("Camera","reticleRainbow","Rainbow reticle",false);toggle("Camera","reticleMotion","Reticle animation",true);range("Camera","reticleSpeed","Reticle animation %",70,0,200);toggle("Camera","reticleNeon","Neon reticle glow",true);range("Camera","reticleGlow","Reticle glow intensity %",65,0,100);range("Camera","reticleGlowRadius","Reticle glow radius (px)",4,1,8);toggle("Camera","reticleGlowPulse","Pulsating glow",true)
+toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Interaction","lock","Shift-lock · LeftAlt",false);choice("Interaction","lockReticle","Shift-lock reticle","Orbit",{"None","Dot","Ring","Orbit","Cross","Split Cross","Diamond","Triangle","Hexagon","Star","Corners","Compass","Double Ring","Petal"});range("Interaction","reticleSize","Reticle size (px)",28,12,64);range("Interaction","reticleStroke","Reticle thickness (px)",2,1,5);color("Interaction","reticleColor","Reticle color","C8A6FF");toggle("Interaction","reticleRainbow","Rainbow reticle",false);toggle("Interaction","reticleMotion","Reticle animation",true);range("Interaction","reticleSpeed","Reticle animation %",70,0,200);toggle("Interaction","reticleNeon","Neon reticle glow",true);range("Interaction","reticleGlow","Reticle glow intensity %",65,0,100);range("Interaction","reticleGlowRadius","Reticle glow radius (px)",4,1,8);toggle("Interaction","reticleGlowPulse","Pulsating glow",true)
+toggle("Interaction","inputOverlay","Show input overlay",false);toggle("Interaction","inputMouse","Show mouse buttons",true);range("Interaction","inputX","Input overlay X %",91,0,100);range("Interaction","inputY","Input overlay Y %",76,0,100);range("Interaction","inputScale","Input overlay size %",100,60,150);range("Interaction","inputOpacity","Input overlay opacity %",80,20,100);color("Interaction","inputColor","Pressed key color","BCA0FF")
 choice("Fonts","font","Typeface","Gotham",S.fonts);choice("Fonts","weight","Weight","Bold",{"Regular","Medium","Bold","Heavy"});def("Fonts","fontAsset","Optional Roblox font family ID","asset","");text("Fonts","sample","Preview text","AETHER · Your interface",96);range("Fonts","fontSize","HUD type scale %",100,70,145);toggle("Fonts","fontGradient","Gradient lettering",true);range("Fonts","fontOutline","Text outline %",24,0,100);range("Fonts","fontGlow","Letter glow %",35,0,100);color("Fonts","fontA","Letter color","F1E6FF");color("Fonts","fontB","Letter gradient","CCA4FF")
 S.example='hud.widget("status", "Ready", 8, 38)\nfunction onHealthChanged(hp, maxHP)\n  hud.widget("status", hud.join("HP: ", hp), 8, 38)\n  if hp > 0 and hp <= maxHP * 0.3 then\n    hud.animate("status", "pulse")\n  else\n    hud.animate("status", "none")\n  end\nend'
 text("Scripts","cue","HUD script",S.example,8192);text("Scripts","luau","Luau draft",'-- ModuleScript for your own place\nreturn function(humanoid: Humanoid)\n  return humanoid.HealthChanged:Connect(function(hp)\n    print(hp, humanoid.MaxHealth)\n  end)\nend',8192)
