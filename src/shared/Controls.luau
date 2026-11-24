@@ -2,8 +2,8 @@ local Input=game:GetService("UserInputService");local Tween=game:GetService("Twe
 local UI={};UI.__index=UI
 local bg=Color3.fromRGB(19,16,32);local dim=Color3.fromRGB(173,163,197);local soft=Color3.fromRGB(43,35,60)
 function UI.new(app,gui,scope)
- local self=setmetatable({app=app,gui=gui,scope=scope,syncs={},icons={},tab="Dashboard",opened=true,seq=0},UI)
- self.stage=U.frame(gui,"StudioArea",nil,nil,nil,1);self.panel=U.frame(self.stage,"Studio",nil,nil,bg,.035);self.panel.Active=true;U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3);U.gradient(self.panel,Color3.new(1,1,1),Color3.fromRGB(192,180,215),82)
+ local self=setmetatable({app=app,gui=gui,scope=scope,syncs={},icons={},tab="Dashboard",opened=true,seq=0,menuProgress=0,pageProgress=0,navHover={},navAmount={}},UI)
+ self.stage=U.frame(gui,"StudioArea",nil,nil,nil,1);self.panel=U.new("CanvasGroup",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=.035,BorderSizePixel=0,Size=UDim2.fromScale(1,1),GroupTransparency=1,Visible=false,Active=true},self.stage);U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3);U.gradient(self.panel,Color3.new(1,1,1),Color3.fromRGB(192,180,215),82)
  self.geoLayer=U.frame(self.panel,"GeometryBackground",UDim2.fromOffset(3,3),UDim2.new(1,-6,1,-6),nil,1)
  self.geoLayer.ClipsDescendants=true;self.geoLayer.Active=false;self.geoLayer.ZIndex=1
  self.geo={}
@@ -21,8 +21,8 @@ function UI.new(app,gui,scope)
  self.close=U.button(self.header,"×");self.close.Modal=true;self.close.Size=UDim2.fromOffset(33,29);self.close.Position=UDim2.new(1,-43,0,8);scope:on(self.close.Activated,function() self:show(false) end)
  self.reopen=U.button(self.stage,"A  /  STUDIO");self.reopen.Size=UDim2.fromOffset(99,31);self.reopen.Position=UDim2.fromOffset(12,10);self.reopen.Visible=false;scope:on(self.reopen.Activated,function() self:show(true) end)
  self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
- self.pageBox=U.frame(self.panel,"PageArea",nil,nil,nil,1);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
- self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Fonts","Simulator","Scripts","Workshop","Profiles","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end) end
+ self.pageBox=U.new("CanvasGroup",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,GroupTransparency=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
+ self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Fonts","Simulator","Scripts","Workshop","Profiles","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
  function self:layout()
   local sz=self.stage.AbsoluteSize;if sz.X<2 or sz.Y<2 then return end;local w,h=math.min(776,sz.X-16),math.min(526,sz.Y-24);local narrow=w<560;local p=self.panel;p.Size=UDim2.fromOffset(w,h);local xy=self.xy or Vector2.new((sz.X-w)*.5,(sz.Y-h)*.47);self.xy=Vector2.new(math.clamp(xy.X,0,sz.X-w),math.clamp(xy.Y,0,sz.Y-h));p.Position=UDim2.fromOffset(self.xy.X,self.xy.Y)
   self.nav.Position=UDim2.fromOffset(10,49);self.nav.Size=if narrow then UDim2.new(1,-20,0,35) else UDim2.new(0,122,1,-85);self.navList.FillDirection=if narrow then Enum.FillDirection.Horizontal else Enum.FillDirection.Vertical;self.nav.AutomaticCanvasSize=if narrow then Enum.AutomaticSize.X else Enum.AutomaticSize.Y;self.nav.ScrollingDirection=if narrow then Enum.ScrollingDirection.X else Enum.ScrollingDirection.Y
@@ -36,7 +36,39 @@ function UI.new(app,gui,scope)
 end
 function UI:animateBackground(t)
  local s=self.app.s
- self.geoLayer.Visible=s.menuGeometry and self.opened
+ local dt=math.clamp(t-(self.motionAt or t-1/60),0,.1)
+ self.motionAt=t
+ local immediate=s.reduce or s.menuTransition=="Off"
+ local duration=math.max(.06,s.duration/1000*100/s.speed)
+ local target=if self.opened then 1 else 0
+ local step=dt/duration
+ if immediate then self.menuProgress=target
+ else self.menuProgress=math.clamp(self.menuProgress+step*(if self.opened then 1 else -1),0,1) end
+ self.panel.Visible=self.opened or self.menuProgress>0
+ local q=U.ease(self.menuProgress,s.ease)
+ self.panel.GroupTransparency=1-q
+ local strength=s.menuAnimStrength/100
+ local offset=if immediate or s.menuTransition=="Fade" then 0 elseif s.menuTransition=="Slide" then (1-q)*48*strength else (1-q)*18*strength
+ if self.xy then self.panel.Position=UDim2.fromOffset(self.xy.X,self.xy.Y+offset) end
+ if not self.panel.Visible then return end
+ local accent=U.hex(s.accent)
+ local tm=if s.reduce then 0 else t*s.speed/100
+ self.outline.Color=accent:Lerp(U.hex(s.secondary),if s.reduce or not s.navGlow then 0 else .18+.15*math.sin(tm*1.6))
+ self.outline.Transparency=1-math.clamp(s.rim/100*(if s.reduce or not s.navGlow then 1 else .85+.15*math.sin(tm*1.8)),0,1)
+ self.outline.Thickness=if s.reduce or not s.navGlow then 1 else 1.2+.3*math.sin(tm*1.6)
+ self.pageProgress=if immediate or not s.tabTransition then 1 else math.min(1,self.pageProgress+dt/math.max(.06,duration*.72))
+ local pageQ=U.ease(self.pageProgress,s.ease)
+ self.pageBox.GroupTransparency=1-pageQ
+ if self.sc and self.sc.Parent then self.sc.Position=UDim2.fromOffset((1-pageQ)*12*strength,0) end
+ for name,b in self.buttons do
+  local desired=if name==self.tab then 1 elseif self.navHover[name] then .45 else 0
+  local amount=self.navAmount[name] or 0
+  local k=if s.reduce or not s.navGlow then 1 else 1-math.exp(-dt*15)
+  amount+=(desired-amount)*k
+  self.navAmount[name]=amount
+  b.BackgroundColor3=soft:Lerp(accent:Lerp(bg,.42),amount)
+ end
+ self.geoLayer.Visible=s.menuGeometry and self.panel.Visible
  if not self.geoLayer.Visible then return end
  local tm=if s.reduce then 0 else t*s.menuMotion/100
  local key=s.menuShape..":"..s.accent..":"..s.secondary..":"..s.menuOpacity
@@ -72,14 +104,26 @@ function UI:animateBackground(t)
  end
 end
 function UI:begin(i,fn,origin) if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end;local v=Vector2.new(i.Position.X,i.Position.Y);self.drag={i=i,start=v,fn=fn,origin=origin};fn(v,v,origin) end
-function UI:show(on) self.opened=on;self.panel.Visible=on;self.reopen.Visible=not on;self.drag=nil;if self.app.onMenu then self.app:onMenu(on) end end
+function UI:show(on)
+ self.opened=on
+ self.panel.Interactable=on
+ if on then self.panel.Visible=true end
+ self.reopen.Visible=not on
+ self.drag=nil
+ if self.app.s.reduce or self.app.s.menuTransition=="Off" then
+  self.menuProgress=if on then 1 else 0
+  self.panel.GroupTransparency=if on then 0 else 1
+  self.panel.Visible=on
+ end
+ if self.app.onMenu then self.app:onMenu(on) end
+end
 function UI:message(s) self.status.Text=s end
 function UI:open(tab)
  if not self.buttons[tab] then return end;self:show(true);self.drag=nil;if self.page then self.page:clear() end;self.app.preview=nil;self.page=U.scope();self.syncs={};self.seq=0;self.tab=tab
- for k,b in self.buttons do b.BackgroundColor3=if k==tab then Color3.fromRGB(93,67,138) else soft end
+ self.pageProgress=if self.app.s.reduce or not self.app.s.tabTransition or self.app.s.menuTransition=="Off" then 1 else 0
+ self.pageBox.GroupTransparency=1-U.ease(self.pageProgress,self.app.s.ease)
  local sc=self.page:add(U.new("ScrollingFrame",{Name="Page_"..tab,Size=UDim2.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=4,ScrollBarImageColor3=dim,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y},self.pageBox));U.new("UIListLayout",{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder},sc);self.sc=sc
  self:title(tab:upper().."   /   AETHER STUDIO");self.app:page(tab,self);self:sync()
- if not self.app.s.reduce then local fade=Tween:Create(self.titleLabel,TweenInfo.new(.18),{TextTransparency=0});self.titleLabel.TextTransparency=.6;self.page:add(fade);fade:Play() end
 end
 function UI:row(h,name) self.seq+=1;local f=U.frame(self.sc,name or "Row",nil,UDim2.new(1,-8,0,h),soft,.47);f.LayoutOrder=self.seq;U.corner(f,8);return f end
 function UI:title(str) local f=self:row(26,"Heading");f.BackgroundTransparency=1;local n=U.label(f,str,13);n.TextColor3=U.hex(self.app.s.accent);self.titleLabel=n;return n end

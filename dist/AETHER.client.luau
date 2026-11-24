@@ -396,8 +396,8 @@ local Input=game:GetService("UserInputService");local Tween=game:GetService("Twe
 local UI={};UI.__index=UI
 local bg=Color3.fromRGB(19,16,32);local dim=Color3.fromRGB(173,163,197);local soft=Color3.fromRGB(43,35,60)
 function UI.new(app,gui,scope)
- local self=setmetatable({app=app,gui=gui,scope=scope,syncs={},icons={},tab="Dashboard",opened=true,seq=0},UI)
- self.stage=U.frame(gui,"StudioArea",nil,nil,nil,1);self.panel=U.frame(self.stage,"Studio",nil,nil,bg,.035);self.panel.Active=true;U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3);U.gradient(self.panel,Color3.new(1,1,1),Color3.fromRGB(192,180,215),82)
+ local self=setmetatable({app=app,gui=gui,scope=scope,syncs={},icons={},tab="Dashboard",opened=true,seq=0,menuProgress=0,pageProgress=0,navHover={},navAmount={}},UI)
+ self.stage=U.frame(gui,"StudioArea",nil,nil,nil,1);self.panel=U.new("CanvasGroup",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=.035,BorderSizePixel=0,Size=UDim2.fromScale(1,1),GroupTransparency=1,Visible=false,Active=true},self.stage);U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3);U.gradient(self.panel,Color3.new(1,1,1),Color3.fromRGB(192,180,215),82)
  self.geoLayer=U.frame(self.panel,"GeometryBackground",UDim2.fromOffset(3,3),UDim2.new(1,-6,1,-6),nil,1)
  self.geoLayer.ClipsDescendants=true;self.geoLayer.Active=false;self.geoLayer.ZIndex=1
  self.geo={}
@@ -415,8 +415,8 @@ function UI.new(app,gui,scope)
  self.close=U.button(self.header,"×");self.close.Modal=true;self.close.Size=UDim2.fromOffset(33,29);self.close.Position=UDim2.new(1,-43,0,8);scope:on(self.close.Activated,function() self:show(false) end)
  self.reopen=U.button(self.stage,"A  /  STUDIO");self.reopen.Size=UDim2.fromOffset(99,31);self.reopen.Position=UDim2.fromOffset(12,10);self.reopen.Visible=false;scope:on(self.reopen.Activated,function() self:show(true) end)
  self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
- self.pageBox=U.frame(self.panel,"PageArea",nil,nil,nil,1);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
- self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Fonts","Simulator","Scripts","Workshop","Profiles","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end) end
+ self.pageBox=U.new("CanvasGroup",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,GroupTransparency=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
+ self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Fonts","Simulator","Scripts","Workshop","Profiles","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
  function self:layout()
   local sz=self.stage.AbsoluteSize;if sz.X<2 or sz.Y<2 then return end;local w,h=math.min(776,sz.X-16),math.min(526,sz.Y-24);local narrow=w<560;local p=self.panel;p.Size=UDim2.fromOffset(w,h);local xy=self.xy or Vector2.new((sz.X-w)*.5,(sz.Y-h)*.47);self.xy=Vector2.new(math.clamp(xy.X,0,sz.X-w),math.clamp(xy.Y,0,sz.Y-h));p.Position=UDim2.fromOffset(self.xy.X,self.xy.Y)
   self.nav.Position=UDim2.fromOffset(10,49);self.nav.Size=if narrow then UDim2.new(1,-20,0,35) else UDim2.new(0,122,1,-85);self.navList.FillDirection=if narrow then Enum.FillDirection.Horizontal else Enum.FillDirection.Vertical;self.nav.AutomaticCanvasSize=if narrow then Enum.AutomaticSize.X else Enum.AutomaticSize.Y;self.nav.ScrollingDirection=if narrow then Enum.ScrollingDirection.X else Enum.ScrollingDirection.Y
@@ -430,7 +430,39 @@ function UI.new(app,gui,scope)
 end
 function UI:animateBackground(t)
  local s=self.app.s
- self.geoLayer.Visible=s.menuGeometry and self.opened
+ local dt=math.clamp(t-(self.motionAt or t-1/60),0,.1)
+ self.motionAt=t
+ local immediate=s.reduce or s.menuTransition=="Off"
+ local duration=math.max(.06,s.duration/1000*100/s.speed)
+ local target=if self.opened then 1 else 0
+ local step=dt/duration
+ if immediate then self.menuProgress=target
+ else self.menuProgress=math.clamp(self.menuProgress+step*(if self.opened then 1 else -1),0,1) end
+ self.panel.Visible=self.opened or self.menuProgress>0
+ local q=U.ease(self.menuProgress,s.ease)
+ self.panel.GroupTransparency=1-q
+ local strength=s.menuAnimStrength/100
+ local offset=if immediate or s.menuTransition=="Fade" then 0 elseif s.menuTransition=="Slide" then (1-q)*48*strength else (1-q)*18*strength
+ if self.xy then self.panel.Position=UDim2.fromOffset(self.xy.X,self.xy.Y+offset) end
+ if not self.panel.Visible then return end
+ local accent=U.hex(s.accent)
+ local tm=if s.reduce then 0 else t*s.speed/100
+ self.outline.Color=accent:Lerp(U.hex(s.secondary),if s.reduce or not s.navGlow then 0 else .18+.15*math.sin(tm*1.6))
+ self.outline.Transparency=1-math.clamp(s.rim/100*(if s.reduce or not s.navGlow then 1 else .85+.15*math.sin(tm*1.8)),0,1)
+ self.outline.Thickness=if s.reduce or not s.navGlow then 1 else 1.2+.3*math.sin(tm*1.6)
+ self.pageProgress=if immediate or not s.tabTransition then 1 else math.min(1,self.pageProgress+dt/math.max(.06,duration*.72))
+ local pageQ=U.ease(self.pageProgress,s.ease)
+ self.pageBox.GroupTransparency=1-pageQ
+ if self.sc and self.sc.Parent then self.sc.Position=UDim2.fromOffset((1-pageQ)*12*strength,0) end
+ for name,b in self.buttons do
+  local desired=if name==self.tab then 1 elseif self.navHover[name] then .45 else 0
+  local amount=self.navAmount[name] or 0
+  local k=if s.reduce or not s.navGlow then 1 else 1-math.exp(-dt*15)
+  amount+=(desired-amount)*k
+  self.navAmount[name]=amount
+  b.BackgroundColor3=soft:Lerp(accent:Lerp(bg,.42),amount)
+ end
+ self.geoLayer.Visible=s.menuGeometry and self.panel.Visible
  if not self.geoLayer.Visible then return end
  local tm=if s.reduce then 0 else t*s.menuMotion/100
  local key=s.menuShape..":"..s.accent..":"..s.secondary..":"..s.menuOpacity
@@ -466,14 +498,26 @@ function UI:animateBackground(t)
  end
 end
 function UI:begin(i,fn,origin) if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end;local v=Vector2.new(i.Position.X,i.Position.Y);self.drag={i=i,start=v,fn=fn,origin=origin};fn(v,v,origin) end
-function UI:show(on) self.opened=on;self.panel.Visible=on;self.reopen.Visible=not on;self.drag=nil;if self.app.onMenu then self.app:onMenu(on) end end
+function UI:show(on)
+ self.opened=on
+ self.panel.Interactable=on
+ if on then self.panel.Visible=true end
+ self.reopen.Visible=not on
+ self.drag=nil
+ if self.app.s.reduce or self.app.s.menuTransition=="Off" then
+  self.menuProgress=if on then 1 else 0
+  self.panel.GroupTransparency=if on then 0 else 1
+  self.panel.Visible=on
+ end
+ if self.app.onMenu then self.app:onMenu(on) end
+end
 function UI:message(s) self.status.Text=s end
 function UI:open(tab)
  if not self.buttons[tab] then return end;self:show(true);self.drag=nil;if self.page then self.page:clear() end;self.app.preview=nil;self.page=U.scope();self.syncs={};self.seq=0;self.tab=tab
- for k,b in self.buttons do b.BackgroundColor3=if k==tab then Color3.fromRGB(93,67,138) else soft end
+ self.pageProgress=if self.app.s.reduce or not self.app.s.tabTransition or self.app.s.menuTransition=="Off" then 1 else 0
+ self.pageBox.GroupTransparency=1-U.ease(self.pageProgress,self.app.s.ease)
  local sc=self.page:add(U.new("ScrollingFrame",{Name="Page_"..tab,Size=UDim2.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=4,ScrollBarImageColor3=dim,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y},self.pageBox));U.new("UIListLayout",{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder},sc);self.sc=sc
  self:title(tab:upper().."   /   AETHER STUDIO");self.app:page(tab,self);self:sync()
- if not self.app.s.reduce then local fade=Tween:Create(self.titleLabel,TweenInfo.new(.18),{TextTransparency=0});self.titleLabel.TextTransparency=.6;self.page:add(fade);fade:Play() end
 end
 function UI:row(h,name) self.seq+=1;local f=U.frame(self.sc,name or "Row",nil,UDim2.new(1,-8,0,h),soft,.47);f.LayoutOrder=self.seq;U.corner(f,8);return f end
 function UI:title(str) local f=self:row(26,"Heading");f.BackgroundTransparency=1;local n=U.label(f,str,13);n.TextColor3=U.hex(self.app.s.accent);self.titleLabel=n;return n end
@@ -1092,8 +1136,8 @@ local function scripts(ui,a)
  ui:chips({"Save / browse script assets"},function() a.libraryKind="Scripts";a.selection=nil;ui:open("Workshop") end,1)
 end
 function E.render(a,tab,ui)
- if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. RightShift opens Studio; LeftAlt toggles shoulder lock.",43);ui:chips({"Game","Simulator"},function(n) a:modeSet(n) end,2,function() return a.mode end);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme");ui:note("For 32 ORIGINAL desktop icons, upload AETHER_original_icons_atlas.png as a Roblox image and enter its asset ID above. The atlas includes all 32 icons at 224px per tile.",53);ui:title("MOTION");ui:group("Motion")
- elseif tab=="HUD" then preview(ui,a);preset(ui,a,"HUD");ui:control("locked");ui:control("compact");ui:note("Unlock layout and drag a widget in the preview, or edit its coordinates below.",29);ui:chips({"hp","clock","profile","dock","cross"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab;for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end
+ if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. RightShift opens Studio; LeftAlt toggles shoulder lock.",43);ui:chips({"Game","Simulator"},function(n) a:modeSet(n) end,2,function() return a.mode end);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme");ui:note("For 32 ORIGINAL desktop icons, upload AETHER_original_icons_atlas.png as a Roblox image and enter its asset ID above. The atlas includes all 32 icons at 224px per tile.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
+ elseif tab=="HUD" then preview(ui,a);preset(ui,a,"HUD");ui:control("locked");ui:control("compact");ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudShine","hudReaction"} do ui:control(k) end;ui:note("Unlock layout and drag a widget in the preview, or edit its coordinates below.",29);ui:chips({"hp","clock","profile","dock","cross"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab;for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
   avatarPreview(ui,a)
   if tab=="Character" then
@@ -1152,9 +1196,9 @@ local function color(g,k,t,v) def(g,k,t,"color",v) end
 local function text(g,k,t,v,n) def(g,k,t,"text",v,0,n) end
 color("Theme","accent","Accent","A68AFF");color("Theme","secondary","Second neon","FF89C7");color("Theme","glassColor","Glass tint","211C35");color("Theme","uiFontColor","Studio text color","F1E6FF");color("Theme","uiMutedColor","Studio secondary text","ADA3C5");def("Theme","iconAtlas","AETHER icon atlas Roblox asset ID","asset","")
 range("Theme","glass","Glass opacity %",81,10,100);range("Theme","rim","Neon rim %",55,0,100);toggle("Theme","sparkles","Floating sparkles",true)
-toggle("Motion","reduce","Reduce motion",false);range("Motion","speed","Animation speed %",100,40,200);range("Motion","duration","Transition (ms)",300,80,1400);choice("Motion","ease","Interpolation","Smooth",{"Smooth","Linear","Sine"})
+toggle("Motion","reduce","Reduce motion",false);range("Motion","speed","Animation speed %",100,40,200);range("Motion","duration","Transition (ms)",300,80,1400);choice("Motion","ease","Interpolation","Smooth",{"Smooth","Linear","Sine"});choice("Motion","menuTransition","Menu transition","Glass",{"Glass","Slide","Fade","Off"});range("Motion","menuAnimStrength","Menu motion intensity %",75,0,100);toggle("Motion","tabTransition","Animated page transitions",true);toggle("Motion","navGlow","Animated navigation glow",true)
 toggle("Theme","menuGeometry","Animated geometric background",true);choice("Theme","menuShape","Background style","Mixed",{"Mixed","Rings","Crystals","Triangles","Hexagons"});range("Theme","menuDensity","Background density",12,4,20);range("Theme","menuMotion","Background speed %",65,0,180);range("Theme","menuOpacity","Background intensity %",55,0,100)
-toggle("HUD","locked","Lock widget positions",true);toggle("HUD","compact","Compact health panel",false)
+toggle("HUD","locked","Lock widget positions",true);toggle("HUD","compact","Compact health panel",false);choice("HUD","hudMotion","Widget animation","Glass",{"Glass","Float","Pulse","Off"});range("HUD","hudMotionStrength","Widget motion intensity %",65,0,100);toggle("HUD","hudShine","Health bar shimmer",true);toggle("HUD","hudReaction","Damage and healing glow",true)
 for _,row in {{"hp","Health",3,9},{"clock","Clock",3,96},{"profile","Player card",97,9},{"dock","Studio dock",50,96},{"cross","Reticle",50,50}} do
  local k,t=row[1],row[2];toggle("HUD",k,t,true); range("HUD",k.."X",t.." · horizontal %",row[3],0,100);range("HUD",k.."Y",t.." · vertical %",row[4],0,100)
  range("HUD",k.."Scale",t.." · scale %",100,50,160);range("HUD",k.."Turn",t.." · rotation",0,-180,180);range("HUD",k.."Alpha",t.." · opacity %",100,10,100)
@@ -1163,7 +1207,7 @@ toggle("Character","walkAnimation","Custom walking animation",false);choice("Cha
  "Angel Glide","Bat Swoop","Mermaid Drift","Serpent Slither","Cartwheel Flow","Rubberhose","Dream Sleep","Plushie","Cat Paws","Shy Kawaii","Gymnast","Skip Hop","Reindeer Prance","Fighter","Harpy Glide","Godly Aura","Wavy Expressive","Retro Zombie","Tsundere","Doll Walk","Skater","Little Duck","Floating Head","Dark Aura","Anime Hero","Headless Float"});range("Character","walkIntensity","Walking intensity %",65,0,100);toggle("Character","aura","Aura particles",false);toggle("Character","trail","Motion trail",false);range("Character","auraRate","Emission / second",12,1,45);range("Character","trailLife","Trail lifetime (ms)",400,80,1300);color("Character","auraColor","Aura color","C4A3FF")
 toggle("Wings","wings","Show wings",false);choice("Wings","wingStyle","Silhouette","Seraph",{"Seraph","Blade","Sylph","Phoenix","Frost","Butterfly","Raven","Celestial","Crystal","Dusk","Petal","Storm","Royal","Eclipse","Prism Wings","Triad Wings","Hex Wings","Star Wings","Orbital Wings","Diamond Wings"});range("Wings","wingSpan","Span %",100,50,175);range("Wings","wingSweep","Sweep (degrees)",24,-25,65);range("Wings","wingBeat","Flap speed %",90,0,200);color("Wings","wingColor","Feather color","B49BFF");toggle("Wings","wingRainbow","Prismatic feathers",false);choice("Wings","wingDetail","Feather detail","High",{"Balanced","High","Ultra"});toggle("Wings","wingWalk","Walking wing reaction",true)
 toggle("Halos","halo","Show halo",false);choice("Halos","haloStyle","Orbit form","Ring",{"Ring","Binary","Crown","Double Ring","Spiral","Starfall","Solar","Lunar","Orbitals","Thorns","Prism","Eclipse","Comet","Lotus","Triangle","Square","Pentagon","Hexagon","Octagon","Star","Double Diamond","Infinity"});range("Halos","haloRadius","Radius %",88,45,175);range("Halos","haloHeight","Height above head %",105,55,220);range("Halos","haloSpin","Orbit speed %",75,0,200);color("Halos","haloColor","Halo color","FFB4D6");toggle("Halos","haloRainbow","Prismatic halo",false);choice("Halos","haloDetail","Halo geometry detail","High",{"Balanced","High","Ultra"});toggle("Halos","haloWalk","Walking halo reaction",true)
-toggle("Neon","neon","Character outline",true);range("Neon","neonFill","Body tint %",10,0,65);range("Neon","neonLight","Light intensity %",40,0,100);color("Neon","neonColor","Neon color","AB87FF");toggle("Neon","neonRainbow","Rainbow neon",false)
+toggle("Neon","neon","Character outline",true);range("Neon","neonFill","Body tint %",10,0,65);range("Neon","neonLight","Light intensity %",40,0,100);color("Neon","neonColor","Neon color","AB87FF");toggle("Neon","neonRainbow","Rainbow neon",false);choice("Neon","neonMotion","Neon animation","Breathe",{"Solid","Breathe","Aurora","Heartbeat","Flow","Reactive"});range("Neon","neonMotionSpeed","Neon animation speed %",90,0,180);range("Neon","neonMotionStrength","Neon animation intensity %",65,0,100);range("Neon","neonRange","Light radius (studs)",9,2,20)
 toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA","High sky","282057");color("Ambient","skyB","Horizon","8C70C2");color("Ambient","skyC","Ground light","EAB6CD");range("Ambient","fog","Fog density %",35,0,90);range("Ambient","bloom","Bloom %",40,0,100);range("Ambient","time","Time (tenths of an hour)",166,0,239);range("Ambient","light","Brightness %",105,25,180);range("Ambient","saturation","Saturation %",9,-85,85);range("Ambient","blur","Depth blur",0,0,16);range("Ambient","fade","Atmosphere fade (ms)",700,0,3500);range("Ambient","worldContrast","Contrast %",0,-80,80);range("Ambient","worldExposure","Exposure %",0,-100,100);range("Ambient","worldGlare","Atmospheric glare %",0,0,100);range("Ambient","worldRays","Sun rays %",0,0,100);range("Ambient","worldFocus","Depth of field %",0,0,100);range("Ambient","worldFocusDistance","Focus distance (studs)",60,8,250);range("Ambient","worldBloomSize","Bloom radius",26,0,56)
 toggle("Indicators","indicators","Directional indicators",true);choice("Indicators","shape","Indicator shape","Soft Triangle",S.shapes);range("Indicators","size","Size (px)",31,14,72);range("Indicators","corners","Corner softness %",30,0,100);range("Indicators","edge","Distance from edges %",11,4,30);range("Indicators","turn","Rotation smoothing (ms)",180,0,800);range("Indicators","ink","Neon intensity %",60,0,100);range("Indicators","spread","Neon spread (px)",6,0,18);range("Indicators","arrowAlpha","Opacity %",95,10,100);range("Indicators","arrowSpeed","Animation speed %",100,40,220);color("Indicators","arrowA","Gradient start","BFA2FF");color("Indicators","arrowB","Gradient end","FF9ECE");toggle("Indicators","arrowRainbow","Rainbow gradient",false);toggle("Indicators","pulse","Pulsation",true);choice("Indicators","labels","Arrow labels","Both",{"Off","Name","Distance","Both"});toggle("Indicators","nearby","Nearby nameplates",false);range("Indicators","reach","Tracking range (studs)",800,50,2500)
 toggle("Cursor","cursor","Custom game pointer",false);choice("Cursor","cursorShape","Pointer shape","Rounded Triangle",{"Rounded Triangle","Soft Arrow","Diamond","Orbit","Spark","Chevron","Neon Pointer","Arrowhead","Split Arrow","Needle","Crystal","Spear","Star Pointer","Compass","Crosshair","Heart","Image"});range("Cursor","cursorSize","Pointer size",30,12,72);range("Cursor","cursorGlow","Pointer glow %",55,0,100);choice("Cursor","cursorPalette","Desktop AETHER palette","Aurora",{"Aurora","Sunset","Ocean","Rainbow","Mono","Custom"});range("Cursor","hotX","Hotspot X %",19,0,100);range("Cursor","hotY","Hotspot Y %",8,0,100);color("Cursor","cursorA","Gradient start","BA99FF");color("Cursor","cursorB","Gradient end","69D9FA");toggle("Cursor","cursorRainbow","Rainbow pointer",true);range("Cursor","cursorSpeed","Gradient speed %",65,10,200);choice("Cursor","cursorAnimation","Cursor animation","Sway",{"Off","Breathe","Sway","Spin","Pulse"});range("Cursor","cursorMotionSpeed","Animation speed %",100,20,200);toggle("Cursor","cursorTrail","Soft cursor trail",false);range("Cursor","cursorOffsetX","Pointer offset X (px)",0,-120,120);range("Cursor","cursorOffsetY","Pointer offset Y (px)",0,-120,120);toggle("Cursor","cursorDebug","Show hotspot marker",false);def("Cursor","image","Roblox image asset ID","asset","")
@@ -1221,6 +1265,13 @@ for _,row in {
 function S.sky(row) return {ambient=true,skyA=row[2],skyB=row[3],skyC=row[4],fog=row[5],bloom=row[6],time=row[7],light=row[8],saturation=row[9],worldContrast=row[10] or 0,worldExposure=row[11] or 0,worldGlare=row[12] or 0,worldRays=row[13] or 0,worldFocus=row[14] or 0,worldFocusDistance=60,worldBloomSize=26} end
 S.presets={Theme={Violet={accent="A68AFF",secondary="FF89C7",glassColor="211C35"},Ocean={accent="68CEF4",secondary="9B91FF",glassColor="112636"},Rose={accent="F699C6",secondary="D8A5FF",glassColor="301B31"}},HUD={Classic={hpX=82,hpY=13,clockX=3,clockY=93,compact=false},Broadcast={hpX=3,hpY=78,clockX=95,clockY=5,hpScale=115},Compact={compact=true,hpX=96,hpY=16,hpScale=80}},Motion={Calm={speed=70,duration=520},Swift={speed=155,duration=150},Still={reduce=true}},Wings={Seraph={wings=true,wingStyle="Seraph",wingSpan=115},Blade={wings=true,wingStyle="Blade",wingColor="76E3FF"},Sylph={wings=true,wingStyle="Sylph",wingRainbow=true}},Halos={Crown={halo=true,haloStyle="Crown"},Binary={halo=true,haloStyle="Binary",haloColor="82D9FF"}},Character={Comet={aura=true,trail=true,auraColor="AA89FE"}},Neon={Pulse={neon=true,neonRainbow=true,neonLight=65}},Cursor={Aurora={cursor=true,cursorShape="Rounded Triangle",cursorRainbow=true},Diamond={cursor=true,cursorShape="Diamond",hotX=50,hotY=50}},Camera={Portrait={camera=true,cameraMode="Orbit",fov=55,radius=8,lock=false},Shoulder={camera=true,cameraMode="Follow",lock=true}},Fonts={Terminal={font="Code",weight="Bold",fontAsset="",fontGradient=false},Soft={font="FredokaOne",weight="Regular",fontAsset=""}},Indicators={},Ambient={},Scripts={Vitals={cue=S.example}}}
 for _,v in S.shapes do S.presets.Indicators[v]={shape=v,indicators=true} end
+for _,v in S.defs.neonMotion.min do S.presets.Neon[v]={neon=true,neonMotion=v,neonRainbow=(v=="Aurora")} end
+S.presets.HUD.GlassMotion={hudMotion="Glass",hudMotionStrength=65,hudShine=true,hudReaction=true}
+S.presets.HUD.FloatMotion={hudMotion="Float",hudMotionStrength=75,hudShine=true,hudReaction=true}
+S.presets.HUD.PulseMotion={hudMotion="Pulse",hudMotionStrength=80,hudShine=true,hudReaction=true}
+S.presets.Motion.Glass={menuTransition="Glass",menuAnimStrength=75,tabTransition=true,navGlow=true,reduce=false}
+S.presets.Motion.Slide={menuTransition="Slide",menuAnimStrength=85,tabTransition=true,navGlow=true,reduce=false}
+S.presets.Motion.Minimal={menuTransition="Fade",menuAnimStrength=30,tabTransition=false,navGlow=false,reduce=false}
 S.presets.Character.NaturalWalk={walkAnimation=true,walkStyle="Natural",walkIntensity=65}
 S.presets.Character.HeroicWalk={walkAnimation=true,walkStyle="Heroic",walkIntensity=80}
 S.presets.Character.FloatWalk={walkAnimation=true,walkStyle="Floating",walkIntensity=60}
