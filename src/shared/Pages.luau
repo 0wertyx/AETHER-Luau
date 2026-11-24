@@ -36,9 +36,16 @@ local function avatarPreview(ui,a)
  local center=Vector3.zero
  local radius=1
  local yaw,pitch,zoom=.13,.08,1
+ local targetYaw,targetPitch,targetZoom=yaw,pitch,zoom
  local dragging=false
  local hovered=false
+ local lastMouse=nil
  local sc=ui.sc
+ local middle=Enum.UserInputType.MouseButton3
+ local function endOrbit()
+  dragging=false;lastMouse=nil
+  if sc.Parent then sc.ScrollingEnabled=not hovered end
+ end
  local function applyCamera()
   if page.dead then return end
   local aspect=math.max(.1,view.AbsoluteSize.X/math.max(1,view.AbsoluteSize.Y))
@@ -153,34 +160,59 @@ local function avatarPreview(ui,a)
   refresh(char)
  end
  page:on(view:GetPropertyChangedSignal("AbsoluteSize"),applyCamera)
- page:on(view.MouseEnter,function() hovered=true;sc.ScrollingEnabled=false end)
+ page:on(view.MouseEnter,function() if ui.opened then hovered=true;sc.ScrollingEnabled=false end end)
  page:on(view.MouseLeave,function() hovered=false;if not dragging then sc.ScrollingEnabled=true end end)
- page:on(view.InputBegan,function(input)
-  if input.UserInputType==Enum.UserInputType.MouseButton1 then dragging=true;sc.ScrollingEnabled=false end
+ -- Use global input rather than ViewportFrame.InputBegan, which can be
+ -- swallowed by the surrounding ScrollingFrame or another GUI layer.
+ page:on(Input.InputBegan,function(input)
+  if input.UserInputType==middle and hovered and ui.opened then
+   dragging=true;lastMouse=Input:GetMouseLocation();sc.ScrollingEnabled=false
+  end
  end)
  page:on(Input.InputChanged,function(input)
-  if dragging and input.UserInputType==Enum.UserInputType.MouseMovement then
-   yaw=(yaw-input.Delta.X*.012)%(math.pi*2)
-   pitch=math.clamp(pitch+input.Delta.Y*.009,-1.15,1.15)
-   applyCamera()
-  elseif hovered and input.UserInputType==Enum.UserInputType.MouseWheel then
-   zoom=math.clamp(zoom*math.exp(-input.Position.Z*.15),.35,2.6)
-   applyCamera()
+  if hovered and ui.opened and input.UserInputType==Enum.UserInputType.MouseWheel then
+   targetZoom=math.clamp(targetZoom*math.exp(-input.Position.Z*.15),.35,2.6)
   end
  end)
  page:on(Input.InputEnded,function(input)
-  if input.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false;sc.ScrollingEnabled=not hovered end
+  if input.UserInputType==middle then endOrbit() end
  end)
- page:on(Input.WindowFocusReleased,function() dragging=false;hovered=false;sc.ScrollingEnabled=true end)
- ui:note("Drag to orbit · Scroll to zoom · Walking style plays in place",25)
- ui:chips({"Reset view"},function() yaw,pitch,zoom=.13,.08,1;applyCamera() end,1)
+ page:on(Input.WindowFocusReleased,function() hovered=false;endOrbit() end)
+ page:on(game:GetService("RunService").RenderStepped,function(dt)
+  if not ui.opened then
+   if hovered or dragging then hovered=false;endOrbit() end
+   return
+  end
+  if dragging then
+   if not Input:IsMouseButtonPressed(middle) then
+    endOrbit()
+   else
+    local mouse=Input:GetMouseLocation()
+    local delta=mouse-(lastMouse or mouse)
+    lastMouse=mouse
+    targetYaw-=delta.X*.009
+    targetPitch=math.clamp(targetPitch+delta.Y*.007,-1.15,1.15)
+   end
+  end
+  local alpha=if a.s.reduce then 1 else 1-math.exp(-math.min(dt,.1)*18)
+  if math.abs(targetYaw-yaw)+math.abs(targetPitch-pitch)+math.abs(targetZoom-zoom)>.0001 then
+   yaw+=(targetYaw-yaw)*alpha
+   pitch+=(targetPitch-pitch)*alpha
+   zoom+=(targetZoom-zoom)*alpha
+   applyCamera()
+  end
+ end)
+ ui:note("Hold middle mouse to orbit · Scroll to zoom · Walking preview",25)
+ ui:chips({"Reset view"},function()
+  targetYaw=yaw+((.13-yaw+math.pi)%(2*math.pi)-math.pi)
+  targetPitch,targetZoom=.08,1
+ end,1)
  page:on(player.CharacterAdded,bind)
  page:on(player.CharacterRemoving,function() bind(nil) end)
  page:on(player.CharacterAppearanceLoaded,function(char) if char==player.Character then refresh(char) end end)
  page:add(function()
   generation+=1
-  dragging=false;hovered=false
-  if sc.Parent then sc.ScrollingEnabled=true end
+  hovered=false;endOrbit()
   if characterScope then characterScope:clear() end
   motion:destroy();avatar:clear()
  end)
