@@ -424,7 +424,7 @@ local function frame(dt, now)
     if app.preview then
         if app.preview.hud then app.preview.hud:step(styled, result, dt) end
         if app.preview.pose then app.preview.pose(styled, dt) end
-        if app.preview.avatar then app.preview.avatar:step(app.preview.rig, styled, now) end
+        if app.preview.avatar then app.preview.avatar:step(app.preview.rig, styled, app.preview.effectTime or now) end
         view:preview(app.preview.cursorHost,styled)
     end
     store:tick(now)
