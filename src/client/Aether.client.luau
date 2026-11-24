@@ -151,12 +151,12 @@ function app:drag(input, key, widget, frame)
         local x = math.clamp(math.round(x0 + delta.X / w * 100), 0, 100)
         local y = math.clamp(math.round(y0 + delta.Y / h * 100), 0, 100)
         if self.s[key .. "X"] ~= x or self.s[key .. "Y"] ~= y then
-            self:patch({[key .. "X"] = x, [key .. "Y"] = y})
+            self:patch({layoutMode="Custom",[key .. "X"] = x, [key .. "Y"] = y})
         end
     end)
 end
 
-local hud = Hud.new(scope, overlay, false, function(tab) app.ui:open(tab) end)
+local hud = Hud.new(scope, overlay, false, function(tab) app.ui:open(tab) end,nil,function(key) app:set(key,false) end)
 local avatar = Avatar.new(workspace, false)
 local walkMotion = WalkMotion.new()
 local world = World.new()
@@ -224,6 +224,7 @@ end
 local targetTimer, cachedTargets = 0, {}
 local function frame(dt, now)
     local result = app.frame
+    if dt>0 then result.fps=U.approach(result.fps or 1/dt,1/dt,dt,.6) end
     result.name = player.DisplayName
     result.mode = app.mode:upper()
     if app.mode == "Simulator" then

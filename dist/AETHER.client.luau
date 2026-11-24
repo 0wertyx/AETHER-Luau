@@ -893,7 +893,7 @@ end
 __aether_factories["Hud"] = function()
 local U=__aether_require("Util");local Symbol=__aether_require("Symbol");local Icons=__aether_require("Icons")
 local H={};H.__index=H
-local sizes={hp=Vector2.new(264,94),clock=Vector2.new(116,58),profile=Vector2.new(172,58),dock=Vector2.new(221,49),cross=Vector2.new(18,18)}
+local sizes={hp=Vector2.new(264,94),clock=Vector2.new(116,58),profile=Vector2.new(124,58),dock=Vector2.new(285,49),cross=Vector2.new(18,18)}
 local heartPalettes={
  Aurora={"7DE3FF","B78AFF","FC82D6"},
  Amethyst={"7550E8","BB8CFF","F2B8FF"},
@@ -941,7 +941,7 @@ local function setText(label,value)
  if label.Text~=value then label.Text=value end
 end
 local function center(p,t,size) local n=U.label(p,t,size);n.TextXAlignment=Enum.TextXAlignment.Center;return n end
-function H.new(scope,parent,preview,go,drag)
+function H.new(scope,parent,preview,go,drag,close)
  local self=setmetatable({view=parent,preview=preview,widgets={},markers={},extras={},spark={},time=0,phase=0,paintAt=0,last=-1,dockIcons={}},H)
  self.layer=U.frame(parent,"Directions",nil,nil,nil,1);self.layer.ClipsDescendants=true
  for i=1,9 do
@@ -1004,16 +1004,24 @@ function H.new(scope,parent,preview,go,drag)
  local profile=self.widgets.profile.p
  self.profileDot=U.frame(profile,"Online",UDim2.fromOffset(13,18),UDim2.fromOffset(7,7),Color3.fromRGB(152,240,210))
  U.corner(self.profileDot,9)
- self.profileTitle=U.label(profile,"PLAYER  /  ONLINE",9,UDim2.fromOffset(28,9),UDim2.new(1,-35,0,18))
+ self.profileTitle=U.label(profile,"PERFORMANCE",9,UDim2.fromOffset(25,9),UDim2.new(1,-43,0,18))
  self.name=U.label(profile,"",15,UDim2.fromOffset(14,28),UDim2.new(1,-27,0,22))
  local dock=self.widgets.dock.p
- for i,item in {{"HUD","HUD"},{"FX","Character"},{"ASSETS","Workshop"}} do
+ if close then
+  for _,key in {"clock","profile"} do
+   local button=U.button(self.widgets[key].p,"×")
+   button.Size=UDim2.fromOffset(16,16);button.Position=UDim2.new(1,-19,0,3)
+   button.TextSize=12;button.BackgroundTransparency=.6;button.ZIndex=5
+   scope:on(button.Activated,function() close(key) end)
+  end
+ end
+ for i,item in {{"HOME","Dashboard"},{"HUD","HUD"},{"FX","Character"},{"SKY","Ambient"},{"ASSETS","Workshop"},{"MORE","Profiles"}} do
   local b=U.button(dock,item[1])
   b.Name="Dock_"..item[2]
   b:SetAttribute("AETHERIconOnly",true)
   b:SetAttribute("AETHERText",item[1])
-  b.Size=UDim2.fromOffset(64,35)
-  b.Position=UDim2.fromOffset(8+(i-1)*71,7)
+  b.Size=UDim2.fromOffset(42,35)
+  b.Position=UDim2.fromOffset(6+(i-1)*46,7)
   b.TextSize=11
   table.insert(self.dockIcons,Icons.new(b,item[2]))
   scope:on(b.Activated,function() go(item[2]) end)
@@ -1031,6 +1039,20 @@ function H.new(scope,parent,preview,go,drag)
  return self
 end
 function H:clearMarkers() for _,m in self.markers do m.root:Destroy() end;table.clear(self.markers) end
+function H:placement(s,k)
+ local x,y=s[k.."X"]/100,s[k.."Y"]/100
+ if s.layoutMode~="Sketch" then return x,y,0,0 end
+ local factor=self.factor or 1
+ local pad=if self.preview then 5 else 14
+ if k=="hp" then return 1,0,-pad,if self.preview then 5 else 12 end
+ if k=="clock" then return 0,1,pad,-pad end
+ if k=="profile" then return 0,1,pad+116*factor*s.clockScale/100+8,-pad end
+ if k=="dock" then
+  local narrow=self.view.AbsoluteSize.X<760 and not self.preview
+  return .5,1,0,if narrow then -84 else -pad
+ end
+ return .5,.5,0,0
+end
 function H:setStyle(s)
  local factor=if self.preview then math.clamp(self.view.AbsoluteSize.X/850,.43,.74) else math.clamp(self.view.AbsoluteSize.X/770,.66,1)
  self.factor=factor
@@ -1038,9 +1060,9 @@ function H:setStyle(s)
  local a,b=U.hex(s.glassColor),Color3.fromRGB(17,16,30)
  local face=U.font(s)
  for k,w in self.widgets do
-  local x,y=s[k.."X"]/100,s[k.."Y"]/100
+  local x,y,ox,oy=self:placement(s,k)
   w.p.AnchorPoint=Vector2.new(x,y)
-  w.p.Position=UDim2.fromScale(x,y)
+  w.p.Position=UDim2.new(x,ox,y,oy)
   w.p.Rotation=s[k.."Turn"]
   w.scale.Scale=factor*s[k.."Scale"]/100
   w.p.GroupTransparency=1-s[k.."Alpha"]/100
@@ -1179,7 +1201,7 @@ function H:vitals(s,f,dt)
  local angle=if s.heartDirection=="Horizontal" then 0 elseif s.heartDirection=="Diagonal" then 45 elseif s.heartDirection=="Reverse" then 270 elseif s.heartDirection=="Orbit" and not dead and not s.reduce then (90+self.time*s.heartGradientSpeed*.6)%360 else 90
  self.heart:paint(self.heartTint,self.heartTint2,if dead then 0 else math.clamp(s.heartGlow+beat*25,0,100),8,self.heartMid,angle)
  self.heart.root.GroupTransparency=if dead then .55 else 0
- local shake=if not s.reduce and not dead and self.effect=="Damage" and self.age<.28 then math.sin(self.age*100)*3*(1-self.age/.28) else 0;self.hpShake=shake;w.p.Position=UDim2.new(s.hpX/100,shake,s.hpY/100,0);w.rim.Color=self.tint;w.rim.Transparency=if dead then .9 else 1-math.min(1,(s.rim+beat*15)/100)
+ local shake=if not s.reduce and not dead and self.effect=="Damage" and self.age<.28 then math.sin(self.age*100)*3*(1-self.age/.28) else 0;self.hpShake=shake;w.rim.Color=self.tint;w.rim.Transparency=if dead then .9 else 1-math.min(1,(s.rim+beat*15)/100)
  self.shine.Visible=s.hudShine and not dead and not s.reduce and self.bar>.02 and s.hudMotion~="Off"
  if self.shine.Visible then
   local progress=(self.time*s.speed/100*.42)%1
@@ -1209,7 +1231,7 @@ function H:animateWidgets(s,f,dt,t)
   local q=U.ease(progress,s.ease)
   w.p.Visible=want or progress>0
   w.p.GroupTransparency=1-q*s[key.."Alpha"]/100
-  local x,y=s[key.."X"]/100,s[key.."Y"]/100
+  local x,y,ox,oy=self:placement(s,key)
   local alive=key~="hp" or (f.hp~=nil and f.hp>0)
   local idle=enabled and alive and want and not self.preview
   local phase=time*1.8+index*.8
@@ -1217,7 +1239,7 @@ function H:animateWidgets(s,f,dt,t)
   local pulse=if idle and s.hudMotion=="Pulse" then math.sin(phase)*.025*strength else 0
   local entry=if enabled then (1-q)*strength else 0
   local shake=if key=="hp" then (self.hpShake or 0) else 0
-  w.p.Position=UDim2.new(x,shake,y,bob+(if y>.5 then 1 else -1)*entry*14)
+  w.p.Position=UDim2.new(x,ox+shake,y,oy+bob+(if y>.5 then 1 else -1)*entry*14)
   w.scale.Scale=self.factor*s[key.."Scale"]/100*(1-entry*.08+pulse)
   if key~="hp" then
    local glow=if idle and s.hudMotion~="Off" then (.5+.5*math.sin(phase))*.18*strength else 0
@@ -1247,7 +1269,11 @@ end
 function H:step(s,f,dt)
  if self.settings~=s or self.width~=self.view.AbsoluteSize.X then self:setStyle(s) end;self.time+=dt;local t=self.time;local paint=t>=self.paintAt;if paint then self.paintAt=t+.075 end
  self:reticle(s,f,t);self:vitals(s,f,dt);self:animateWidgets(s,f,dt,t);self:directions(s,f,dt,t,paint)
- setText(self.name,f.name);setText(self.clockSub,f.mode)
+ if not self.fpsAt or t>=self.fpsAt then
+  self.fpsAt=t+.25
+  setText(self.name,if f.fps then string.format("%d FPS",math.floor(f.fps+.5)) else "— FPS")
+ end
+ setText(self.clockSub,f.mode)
  if not self.clockAt or t>=self.clockAt then
   self.clockAt=t+.25
   setText(self.clock,os.date("%H:%M"))
@@ -1568,7 +1594,7 @@ local function scripts(ui,a)
 end
 function E.render(a,tab,ui)
  if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. RightShift opens Studio; LeftAlt toggles shoulder lock.",43);ui:chips({"Game","Simulator"},function(n) a:modeSet(n) end,2,function() return a.mode end);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme");ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
- elseif tab=="HUD" then preview(ui,a);preset(ui,a,"HUD");ui:control("locked");ui:control("compact");ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartPalette","heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Unlock layout and drag a widget in the preview, or edit its coordinates below.",29);ui:chips({"hp","clock","profile","dock","cross"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab;for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end
+ elseif tab=="HUD" then preview(ui,a);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:control("compact");ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartPalette","heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);ui:chips({"hp","clock","profile","dock","cross"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab;for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
   avatarPreview(ui,a)
   if tab=="Character" then
@@ -2933,12 +2959,12 @@ function app:drag(input, key, widget, frame)
         local x = math.clamp(math.round(x0 + delta.X / w * 100), 0, 100)
         local y = math.clamp(math.round(y0 + delta.Y / h * 100), 0, 100)
         if self.s[key .. "X"] ~= x or self.s[key .. "Y"] ~= y then
-            self:patch({[key .. "X"] = x, [key .. "Y"] = y})
+            self:patch({layoutMode="Custom",[key .. "X"] = x, [key .. "Y"] = y})
         end
     end)
 end
 
-local hud = Hud.new(scope, overlay, false, function(tab) app.ui:open(tab) end)
+local hud = Hud.new(scope, overlay, false, function(tab) app.ui:open(tab) end,nil,function(key) app:set(key,false) end)
 local avatar = Avatar.new(workspace, false)
 local walkMotion = WalkMotion.new()
 local world = World.new()
@@ -3006,6 +3032,7 @@ end
 local targetTimer, cachedTargets = 0, {}
 local function frame(dt, now)
     local result = app.frame
+    if dt>0 then result.fps=U.approach(result.fps or 1/dt,1/dt,dt,.6) end
     result.name = player.DisplayName
     result.mode = app.mode:upper()
     if app.mode == "Simulator" then
