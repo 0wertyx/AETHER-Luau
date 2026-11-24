@@ -428,7 +428,9 @@ local UI={};UI.__index=UI
 local bg=Color3.fromRGB(19,16,32);local dim=Color3.fromRGB(173,163,197);local soft=Color3.fromRGB(43,35,60)
 function UI.new(app,gui,scope)
  local self=setmetatable({app=app,gui=gui,scope=scope,syncs={},icons={},tab="Dashboard",opened=true,seq=0,menuProgress=0,pageProgress=0,navHover={},navAmount={}},UI)
- self.stage=U.frame(gui,"StudioArea",nil,nil,nil,1);self.panel=U.new("CanvasGroup",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=.035,BorderSizePixel=0,Size=UDim2.fromScale(1,1),GroupTransparency=1,Visible=false,Active=true},self.stage);U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3);U.gradient(self.panel,Color3.new(1,1,1),Color3.fromRGB(192,180,215),82)
+ self.stage=U.frame(gui,"StudioArea",nil,nil,nil,1);self.panel=U.new("CanvasGroup",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=.035,BorderSizePixel=0,Size=UDim2.fromScale(1,1),GroupTransparency=1,Visible=false,Active=true},self.stage);U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3);self.panel.BackgroundTransparency=1;self.panel.GroupColor3=Color3.new(1,1,1)
+ self.panelBackground=U.frame(self.panel,"GlassBackground",nil,nil,Color3.new(1,1,1),.035);self.panelBackground.Active=false;self.panelBackground.Interactable=false;U.corner(self.panelBackground,17)
+ U.gradient(self.panelBackground,bg,Color3.fromRGB(39,30,58),82)
  self.geoLayer=U.frame(self.panel,"GeometryBackground",UDim2.fromOffset(3,3),UDim2.new(1,-6,1,-6),nil,1)
  self.geoLayer.ClipsDescendants=true;self.geoLayer.Active=false;self.geoLayer.ZIndex=1
  self.geo={}
@@ -829,12 +831,19 @@ function H.new(scope,parent,preview,go,drag)
  end
  for _,k in {"hp","clock","profile","dock","cross"} do
   local d=sizes[k]
-  local p=U.new("CanvasGroup",{Name=k,BackgroundColor3=Color3.new(1,1,1),Size=UDim2.fromOffset(d.X,d.Y),BorderSizePixel=0,ZIndex=3},parent)
-  local g=U.gradient(p,Color3.fromRGB(53,40,75),Color3.fromRGB(22,21,36))
+  local p=U.new("CanvasGroup",{Name=k,BackgroundTransparency=1,GroupColor3=Color3.new(1,1,1),Size=UDim2.fromOffset(d.X,d.Y),BorderSizePixel=0,ZIndex=3},parent)
+  -- A gradient on a CanvasGroup tints the entire composited texture.
+  -- Put glass shading on a separate first child; leave text and glyphs untouched.
+  local background=U.frame(p,"GlassBackground",nil,nil,Color3.new(1,1,1),0)
+  background.Active=false
+  background.Interactable=false
+  background.Visible=k~="cross"
+  local g=U.gradient(background,Color3.fromRGB(53,40,75),Color3.fromRGB(22,21,36))
+  U.corner(background,if k=="cross" then 0 else 15)
   U.corner(p,if k=="cross" then 0 else 15)
   local rim=U.stroke(p,Color3.fromRGB(189,156,255),.4,1.15)
   local scale=U.new("UIScale",{},p)
-  self.widgets[k]={p=p,g=g,rim=rim,scale=scale}
+  self.widgets[k]={p=p,g=g,background=background,rim=rim,scale=scale}
   if drag then
    p.Active=true
    scope:on(p.InputBegan,function(i) drag(i,k,p,parent) end)
@@ -919,7 +928,9 @@ function H:setStyle(s)
   w.rim.Color=accent
   w.rim.Transparency=1-s.rim/100
   w.g.Color=ColorSequence.new(a,b)
-  w.p.BackgroundTransparency=if k=="cross" then 1 else 1-s.glass/100
+  w.p.BackgroundTransparency=1
+  w.p.GroupColor3=Color3.new(1,1,1)
+  w.background.BackgroundTransparency=1-s.glass/100
  end
  self.widgets.hp.p.Size=UDim2.fromOffset(264,if s.compact then 72 else 94)
  self.track.Visible=true
@@ -937,7 +948,7 @@ function H:setStyle(s)
   n.FontFace=face
   n.TextSize=item[2]*s.fontSize/100
   n.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA)
-  n.TextStrokeColor3=U.hex(s.fontB)
+  n.TextStrokeColor3=Color3.fromRGB(20,16,32)
   n.TextStrokeTransparency=1-s.fontOutline/100
   local grad=n:FindFirstChildOfClass("UIGradient") or U.gradient(n,accent,b,0)
   grad.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB))
@@ -1119,6 +1130,41 @@ I.tabs={
  Cursor="Assets",Camera="Media",Fonts="Fonts",Simulator="Simulator",
  Scripts="Console",Workshop="Workshop",Profiles="Cloud",Diagnostics="Debug"
 }
+-- Native line-art icons provide a reliable offline fallback for every tab.
+-- Coordinates are normalized to a 24 by 24 icon, independent of display size.
+local drawings={
+ Dashboard={{3,3,10,3,10,10,3,10,3,3},{14,3,21,3,21,10,14,10,14,3},{3,14,10,14,10,21,3,21,3,14},{14,14,21,14,21,21,14,21,14,14}},
+ HUD={{2,4,22,4,22,20,2,20,2,4},{5,7,11,7,11,11,5,11,5,7},{5,16,19,16},{15,8,19,8}},
+ Profile={{12,3,16,5,17,9,14,12,10,12,7,9,8,5,12,3},{4,21,4,18,8,15,16,15,20,18,20,21}},
+ Favorites={{12,2,15,9,22,9,17,14,19,21,12,17,5,21,7,14,2,9,9,9,12,2}},
+ AI_Assistant={{12,2,15,9,22,12,15,15,12,22,9,15,2,12,9,9,12,2},{19,2,19,6},{17,4,21,4}},
+ Themes={{12,2,21,7,21,16,12,22,3,16,3,7,12,2},{12,6,15,12,12,18,9,12,12,6}},
+ World_FX={{3,19,9,10,13,15,17,8,22,19,3,19},{6,4,9,4},{7.5,2.5,7.5,5.5}},
+ Indicators={{12,2,22,21,12,16,2,21,12,2}},
+ Assets={{4,2,18,2,21,5,21,22,4,22,4,2},{8,7,17,7},{8,12,17,12},{8,17,14,17}},
+ Media={{3,6,15,6,15,18,3,18,3,6},{15,10,21,6,21,18,15,14}},
+ Fonts={{3,21,10,3,13,3,21,21},{6,14,18,14}},
+ Simulator={{12,2,22,7,22,17,12,22,2,17,2,7,12,2},{2,7,12,12,22,7},{12,12,12,22}},
+ Console={{2,4,22,4,22,20,2,20,2,4},{5,8,9,12,5,16},{12,16,18,16}},
+ Workshop={{3,5,21,5,21,21,3,21,3,5},{8,5,8,2,16,2,16,5},{3,11,21,11},{10,10,14,10,14,13,10,13,10,10}},
+ Cloud={{4,18,2,15,4,10,8,10,9,5,14,3,18,6,19,10,22,12,22,16,19,18,4,18}},
+ Debug={{7,7,17,7,19,10,19,17,15,21,9,21,5,17,5,10,7,7},{8,7,6,3},{16,7,18,3},{2,11,5,11},{19,11,22,11},{2,16,5,16},{19,16,22,16},{12,8,12,20}},
+}
+local function lineArt(button,name,iconOnly)
+ local root=U.frame(button,"NativeIcon",nil,UDim2.fromOffset(20,20),nil,1)
+ root.Active=false;root.Interactable=false;root.ZIndex=button.ZIndex+1
+ root.Position=if iconOnly then UDim2.new(.5,-10,.5,-10) else UDim2.new(0,7,.5,-10)
+ local color=Color3.fromRGB(231,216,255)
+ for _,path in drawings[name] or drawings.Assets do
+  for j=1,#path-2,2 do
+   local x,y=path[j],path[j+1];local dx,dy=path[j+2]-x,path[j+3]-y
+   local edge=U.frame(root,"Stroke",UDim2.fromScale((x+dx*.5)/24,(y+dy*.5)/24),UDim2.new(math.sqrt(dx*dx+dy*dy)/24,0,0,1.6),color,0)
+   edge.AnchorPoint=Vector2.new(.5,.5);edge.Rotation=math.deg(math.atan2(dy,dx));edge.Active=false;edge.Interactable=false;edge.ZIndex=root.ZIndex
+   U.corner(edge,2)
+  end
+ end
+ return root
+end
 local lookup={}
 for index,name in I.order do lookup[name]=index-1 end
 function I.new(button,tab)
@@ -1133,21 +1179,30 @@ function I.new(button,tab)
  local index=lookup[name]
  if index then visual.ImageRectOffset=Vector2.new(index%8*I.TILE,math.floor(index/8)*I.TILE) end
  visual.ImageRectSize=Vector2.new(I.TILE,I.TILE)
- local self={visual=visual,button=button,last=""}
+ local native=lineArt(button,name,iconOnly)
+ local self={visual=visual,button=button,native=native,last=nil}
+ local function refresh()
+  local ready=self.last~=nil and self.last~="" and index~=nil and visual.IsLoaded
+  visual.Visible=ready
+  native.Visible=not ready
+  if iconOnly then
+   button.Text=""
+  else
+   button.TextXAlignment=Enum.TextXAlignment.Right
+   button.TextSize=11
+  end
+  button.TextColor3=Color3.fromRGB(241,234,255)
+ end
+ visual:GetPropertyChangedSignal("IsLoaded"):Connect(refresh)
  function self:sync(asset)
   asset=tostring(asset or ""):match("^%d+$") or ""
-  if asset==self.last then return end
-  self.last=asset
-  local ready=asset~="" and index~=nil
-  visual.Visible=ready
-  visual.Image=if ready then "rbxassetid://"..asset else ""
-  if iconOnly then
-   button.Text=if ready then "" else tostring(button:GetAttribute("AETHERText") or "")
-  else
-   button.TextXAlignment=if ready then Enum.TextXAlignment.Right else Enum.TextXAlignment.Center
-   button.TextSize=if ready then 11 else 13
+  if asset~=self.last then
+   self.last=asset
+   visual.Image=if asset~="" and index~=nil then "rbxassetid://"..asset else ""
   end
+  refresh()
  end
+ self:sync("")
  return self
 end
 return I

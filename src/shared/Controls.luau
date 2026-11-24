@@ -3,7 +3,9 @@ local UI={};UI.__index=UI
 local bg=Color3.fromRGB(19,16,32);local dim=Color3.fromRGB(173,163,197);local soft=Color3.fromRGB(43,35,60)
 function UI.new(app,gui,scope)
  local self=setmetatable({app=app,gui=gui,scope=scope,syncs={},icons={},tab="Dashboard",opened=true,seq=0,menuProgress=0,pageProgress=0,navHover={},navAmount={}},UI)
- self.stage=U.frame(gui,"StudioArea",nil,nil,nil,1);self.panel=U.new("CanvasGroup",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=.035,BorderSizePixel=0,Size=UDim2.fromScale(1,1),GroupTransparency=1,Visible=false,Active=true},self.stage);U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3);U.gradient(self.panel,Color3.new(1,1,1),Color3.fromRGB(192,180,215),82)
+ self.stage=U.frame(gui,"StudioArea",nil,nil,nil,1);self.panel=U.new("CanvasGroup",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=.035,BorderSizePixel=0,Size=UDim2.fromScale(1,1),GroupTransparency=1,Visible=false,Active=true},self.stage);U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3);self.panel.BackgroundTransparency=1;self.panel.GroupColor3=Color3.new(1,1,1)
+ self.panelBackground=U.frame(self.panel,"GlassBackground",nil,nil,Color3.new(1,1,1),.035);self.panelBackground.Active=false;self.panelBackground.Interactable=false;U.corner(self.panelBackground,17)
+ U.gradient(self.panelBackground,bg,Color3.fromRGB(39,30,58),82)
  self.geoLayer=U.frame(self.panel,"GeometryBackground",UDim2.fromOffset(3,3),UDim2.new(1,-6,1,-6),nil,1)
  self.geoLayer.ClipsDescendants=true;self.geoLayer.Active=false;self.geoLayer.ZIndex=1
  self.geo={}

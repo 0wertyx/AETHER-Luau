@@ -49,12 +49,19 @@ function H.new(scope,parent,preview,go,drag)
  end
  for _,k in {"hp","clock","profile","dock","cross"} do
   local d=sizes[k]
-  local p=U.new("CanvasGroup",{Name=k,BackgroundColor3=Color3.new(1,1,1),Size=UDim2.fromOffset(d.X,d.Y),BorderSizePixel=0,ZIndex=3},parent)
-  local g=U.gradient(p,Color3.fromRGB(53,40,75),Color3.fromRGB(22,21,36))
+  local p=U.new("CanvasGroup",{Name=k,BackgroundTransparency=1,GroupColor3=Color3.new(1,1,1),Size=UDim2.fromOffset(d.X,d.Y),BorderSizePixel=0,ZIndex=3},parent)
+  -- A gradient on a CanvasGroup tints the entire composited texture.
+  -- Put glass shading on a separate first child; leave text and glyphs untouched.
+  local background=U.frame(p,"GlassBackground",nil,nil,Color3.new(1,1,1),0)
+  background.Active=false
+  background.Interactable=false
+  background.Visible=k~="cross"
+  local g=U.gradient(background,Color3.fromRGB(53,40,75),Color3.fromRGB(22,21,36))
+  U.corner(background,if k=="cross" then 0 else 15)
   U.corner(p,if k=="cross" then 0 else 15)
   local rim=U.stroke(p,Color3.fromRGB(189,156,255),.4,1.15)
   local scale=U.new("UIScale",{},p)
-  self.widgets[k]={p=p,g=g,rim=rim,scale=scale}
+  self.widgets[k]={p=p,g=g,background=background,rim=rim,scale=scale}
   if drag then
    p.Active=true
    scope:on(p.InputBegan,function(i) drag(i,k,p,parent) end)
@@ -139,7 +146,9 @@ function H:setStyle(s)
   w.rim.Color=accent
   w.rim.Transparency=1-s.rim/100
   w.g.Color=ColorSequence.new(a,b)
-  w.p.BackgroundTransparency=if k=="cross" then 1 else 1-s.glass/100
+  w.p.BackgroundTransparency=1
+  w.p.GroupColor3=Color3.new(1,1,1)
+  w.background.BackgroundTransparency=1-s.glass/100
  end
  self.widgets.hp.p.Size=UDim2.fromOffset(264,if s.compact then 72 else 94)
  self.track.Visible=true
@@ -157,7 +166,7 @@ function H:setStyle(s)
   n.FontFace=face
   n.TextSize=item[2]*s.fontSize/100
   n.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA)
-  n.TextStrokeColor3=U.hex(s.fontB)
+  n.TextStrokeColor3=Color3.fromRGB(20,16,32)
   n.TextStrokeTransparency=1-s.fontOutline/100
   local grad=n:FindFirstChildOfClass("UIGradient") or U.gradient(n,accent,b,0)
   grad.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB))
