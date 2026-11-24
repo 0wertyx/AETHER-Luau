@@ -2044,8 +2044,8 @@ local function preview(ui,a,showPanels)
   ui:watch(function() h:layoutPreview(a.s) end)
  end
 end
-local function avatarPreview(ui,a)
- local f=ui:row(230,"RigPreview")
+local function avatarPreview(ui,a,worldMode)
+ local f=ui:row(if worldMode then 300 else 230,"RigPreview")
  local view=U.new("ViewportFrame",{Size=UDim2.fromScale(1,1),Active=true,BorderSizePixel=0,BackgroundColor3=Color3.fromRGB(21,19,36),Ambient=Color3.fromRGB(155,145,175),LightColor=Color3.fromRGB(246,222,255),LightDirection=Vector3.new(-1,-1,-.6)},f)
  U.corner(view,10)
  local w=U.new("WorldModel",{},view)
@@ -2053,7 +2053,8 @@ local function avatarPreview(ui,a)
  local player=game:GetService("Players").LocalPlayer
  local page=ui.page
  local avatar=Avatar.new(w,true)
- local previewState={avatar=avatar,rig=nil};a.preview=previewState
+ local previewState=if worldMode and a.preview then a.preview else {}
+ previewState.avatar=avatar;previewState.rig=nil;a.preview=previewState
  local label=U.label(view,"Loading avatar...",12)
  label.TextXAlignment=Enum.TextXAlignment.Center
  local generation=0
@@ -2071,6 +2072,18 @@ local function avatarPreview(ui,a)
  local lastMouse=nil
  local sc=ui.sc
  local middle=Enum.UserInputType.MouseButton3
+ local full=false
+ local paused=false
+ local speed=1
+ local stage=nil
+ local floorOffset=2
+ local centerOffset=Vector3.zero
+ local moving=false
+ local startPosition=Vector3.zero
+ local fullGui,fullHost,fullStatus,fullPause,fullSpeed=nil,nil,nil,nil,nil
+ local actionName="AETHER_Preview_"..Http:GenerateGUID(false)
+ local CAS=game:GetService("ContextActionService")
+ local keys={}
  local function endOrbit()
   dragging=false;lastMouse=nil
   if sc.Parent then sc.ScrollingEnabled=not hovered end
@@ -2089,7 +2102,78 @@ local function avatarPreview(ui,a)
   if page.dead or not rig or not rig.Parent then return end
   local cf,size=rig:GetBoundingBox()
   center=cf.Position;radius=math.max(.5,size.Magnitude*.5)
+  if rootPart then
+   centerOffset=center-rootPart.Position
+   startPosition=rootPart.Position
+   floorOffset=math.max(.5,rootPart.Position.Y-(cf.Position.Y-size.Y*.5))
+  end
   applyCamera()
+ end
+ local function stageStatus(message)
+  if fullStatus then fullStatus.Text=message end
+  if not page.dead then ui:message(message) end
+ end
+ local function sceneClear()
+  if stage then stage:Destroy();stage=nil end
+ end
+ local function sceneFloor()
+  local ground=U.new("Part",{Name="PreviewFloor",Size=Vector3.new(110,.25,110),CFrame=CFrame.new(startPosition-Vector3.new(0,floorOffset+.125,0)),Anchored=true,CanCollide=false,CanTouch=false,CanQuery=true,Color=Color3.fromRGB(52,44,74),Material=Enum.Material.SmoothPlastic},stage)
+  return ground
+ end
+ local function resetScene()
+  sceneClear()
+  stage=U.new("Folder",{Name="PreviewEnvironment"},w)
+  sceneFloor()
+  stageStatus("Demo stage · capture visible scenery to preview your environment")
+ end
+ local function captureScene()
+  if not worldMode or not rootPart or not rootPart.Parent then return end
+  local character=player.Character
+  local sourceRoot=character and character:FindFirstChild("HumanoidRootPart")
+  local sourceCamera=workspace.CurrentCamera
+  if not sourceRoot or not sourceCamera then stageStatus("Scene unavailable");return end
+  sceneClear()
+  stage=U.new("Folder",{Name="PreviewEnvironment"},w)
+  local origin=sourceRoot.CFrame
+  local params=RaycastParams.new()
+  params.FilterType=Enum.RaycastFilterType.Exclude
+  params.FilterDescendantsInstances={character}
+  local seen={}
+  local count=0
+  local size=sourceCamera.ViewportSize
+  -- Sample only currently visible surfaces; never enumerate the whole map,
+  -- copy other characters, scripts, remotes or hidden server objects.
+  for y=0,13 do
+   for x=0,21 do
+    local ray=sourceCamera:ViewportPointToRay((x+.5)*size.X/22,(y+.5)*size.Y/14)
+    local hit=workspace:Raycast(ray.Origin,ray.Direction*85,params)
+    local source=hit and hit.Instance
+    if source and source:IsA("BasePart") and not source:IsA("Terrain") and source.Anchored and source.Transparency<.98 and not seen[source] and count<180 then
+     seen[source]=true
+     local parent=source.Parent
+     local characterPart=false
+     while parent and parent~=workspace do
+      if parent:IsA("Model") and parent:FindFirstChildOfClass("Humanoid") then characterPart=true;break end
+      parent=parent.Parent
+     end
+     if not characterPart then
+      local ok,clone=pcall(function() return source:Clone() end)
+      if ok and clone then
+       for _,child in clone:GetDescendants() do
+        if child.Parent and not (child:IsA("DataModelMesh") or child:IsA("Decal") or child:IsA("Texture") or child:IsA("SurfaceAppearance")) then child:Destroy() end
+       end
+       clone.Name="SceneSurface"
+       clone.Anchored=true;clone.CanCollide=false;clone.CanTouch=false;clone.CanQuery=true
+       clone.LocalTransparencyModifier=0
+       clone.CFrame=CFrame.new(startPosition)*origin:ToObjectSpace(source.CFrame)
+       clone.Parent=stage;count+=1
+      end
+     end
+    end
+   end
+  end
+  if count==0 then sceneFloor() end
+  stageStatus(tostring(count).." visible surfaces · static local snapshot")
  end
  local function prepareRig(rig)
   motion:bind(nil);rootPart=rig:FindFirstChild("HumanoidRootPart")
@@ -2128,9 +2212,43 @@ local function avatarPreview(ui,a)
  previewState.pose=function(settings,dt)
   local rig=previewState.rig
   if page.dead or not rootPart or not rootPart.Parent or not rig then return end
+  if worldMode then
+   if paused then return end
+   dt=math.min(dt,.05)*speed
+   previewState.effectTime=(previewState.effectTime or os.clock())+dt
+   moving=false
+   if full and ui.opened then
+    local x=(if keys[Enum.KeyCode.D] then 1 else 0)-(if keys[Enum.KeyCode.A] then 1 else 0)
+    local z=(if keys[Enum.KeyCode.W] then 1 else 0)-(if keys[Enum.KeyCode.S] then 1 else 0)
+    if x~=0 or z~=0 then
+     local forward=Vector3.new(cam.CFrame.LookVector.X,0,cam.CFrame.LookVector.Z)
+     forward=if forward.Magnitude>.01 then forward.Unit else Vector3.new(0,0,-1)
+     local right=forward:Cross(Vector3.yAxis)
+     local dir=(forward*z+right*x).Unit
+     local pos=rootPart.Position
+     local delta=dir*dt*8
+     local wall=w:Raycast(pos,delta+dir*.45)
+     if not wall then
+      local nextPos=pos+delta
+      local ground=w:Raycast(nextPos+Vector3.new(0,2,0),Vector3.new(0,-8,0))
+      if ground and ground.Normal.Y>.5 then
+       nextPos=Vector3.new(nextPos.X,ground.Position.Y+floorOffset,nextPos.Z)
+      else
+       nextPos=Vector3.new(nextPos.X,pos.Y,nextPos.Z)
+      end
+      if (nextPos-startPosition).Magnitude<=45 then
+       rootPart.CFrame=CFrame.lookAt(nextPos,nextPos+dir);moving=true
+      end
+     end
+    end
+   end
+   center=rootPart.Position+centerOffset;applyCamera()
+  end
   for _,motor in motors do motor.Transform=CFrame.identity end
-  if ui.tab=="Character" and settings.walkAnimation and not settings.reduce then
-   motion:step(rig,settings,dt,true)
+  if ((ui.tab=="Character" and settings.walkAnimation) or (worldMode and moving)) and not settings.reduce then
+   local demo=settings
+   if worldMode and not settings.walkAnimation then demo=table.clone(settings);demo.walkAnimation=true end
+   motion:step(rig,demo,dt,true)
   else
    motion:bind(nil)
   end
@@ -2172,6 +2290,7 @@ local function avatarPreview(ui,a)
    avatar:clear()
    if previewState.rig then previewState.rig:Destroy() end
    rig.Parent=w;previewState.rig=rig;prepareRig(rig);previewState.pose(a.s,0);label.Visible=false;fit()
+   if worldMode then resetScene() end
   end)
  end
  local function bind(char)
@@ -2187,6 +2306,54 @@ local function avatarPreview(ui,a)
   characterScope:on(char.DescendantAdded,appearanceChanged)
   characterScope:on(char.DescendantRemoving,appearanceChanged)
   refresh(char)
+ end
+ local function closeFull()
+  if not full then return end
+  full=false
+  CAS:UnbindAction(actionName);table.clear(keys)
+  hovered=false;endOrbit()
+  if not page.dead and f.Parent then view.Parent=f end
+  if fullGui and fullGui.Parent then fullGui.Enabled=false end
+  applyCamera()
+ end
+ local function togglePause()
+  paused=not paused
+  if fullPause then fullPause.Text=if paused then "Resume" else "Pause" end
+  stageStatus(if paused then "Preview paused" else "Preview running")
+ end
+ local function cycleSpeed()
+  speed=if speed==.5 then 1 elseif speed==1 then 2 else .5
+  if fullSpeed then fullSpeed.Text=tostring(speed).."x" end
+  stageStatus("Playback speed "..tostring(speed).."x")
+ end
+ local function openFull()
+  if full or page.dead then return end
+  if not fullGui then
+   fullGui=page:add(U.new("ScreenGui",{Name="AETHER_WorldPreview",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=100002,ZIndexBehavior=Enum.ZIndexBehavior.Sibling,Enabled=false},player:WaitForChild("PlayerGui")))
+   local shell=U.frame(fullGui,"WorldPreview",nil,nil,Color3.fromRGB(17,14,28),0)
+   shell.Active=true
+   local bar=U.frame(shell,"Toolbar",UDim2.fromOffset(12,12),UDim2.new(1,-24,0,46),Color3.fromRGB(41,32,61),0);U.corner(bar,12)
+   local title=U.label(bar,"AETHER / WORLD PREVIEW",16,UDim2.fromOffset(14,0),UDim2.new(1,-410,1,0))
+   local function tool(text,offset,width,fn)
+    local b=U.button(bar,text);b.AnchorPoint=Vector2.new(1,.5);b.Position=UDim2.new(1,-offset,.5,0);b.Size=UDim2.fromOffset(width,32)
+    page:on(b.Activated,fn);return b
+   end
+   tool("Exit full screen",8,112,closeFull)
+   fullSpeed=tool(tostring(speed).."x",128,54,cycleSpeed)
+   fullPause=tool(if paused then "Resume" else "Pause",190,68,togglePause)
+   tool("Capture",266,76,captureScene)
+   fullHost=U.frame(shell,"Viewport",UDim2.fromOffset(12,68),UDim2.new(1,-24,1,-114),nil,1)
+   fullStatus=U.label(shell,"WASD · middle mouse orbit · scroll zoom · static local preview",13,UDim2.new(0,16,1,-42),UDim2.new(1,-32,0,30))
+  end
+  full=true;fullGui.Enabled=true;view.Parent=fullHost
+  if worldMode then
+   CAS:BindActionAtPriority(actionName,function(_,state,input)
+    if state==Enum.UserInputState.Begin then keys[input.KeyCode]=true
+    elseif state==Enum.UserInputState.End or state==Enum.UserInputState.Cancel then keys[input.KeyCode]=nil end
+    return Enum.ContextActionResult.Sink
+   end,false,Enum.ContextActionPriority.High.Value+100,Enum.KeyCode.W,Enum.KeyCode.A,Enum.KeyCode.S,Enum.KeyCode.D)
+  end
+  hovered=false;endOrbit();applyCamera()
  end
  page:on(view:GetPropertyChangedSignal("AbsoluteSize"),applyCamera)
  page:on(view.MouseEnter,function() if ui.opened then hovered=true;sc.ScrollingEnabled=false end end)
@@ -2206,9 +2373,10 @@ local function avatarPreview(ui,a)
  page:on(Input.InputEnded,function(input)
   if input.UserInputType==middle then endOrbit() end
  end)
- page:on(Input.WindowFocusReleased,function() hovered=false;endOrbit() end)
+ page:on(Input.WindowFocusReleased,function() table.clear(keys);hovered=false;endOrbit() end)
  page:on(game:GetService("RunService").RenderStepped,function(dt)
   if not ui.opened then
+   if full then closeFull() end
    if hovered or dragging then hovered=false;endOrbit() end
    return
   end
@@ -2231,7 +2399,11 @@ local function avatarPreview(ui,a)
    applyCamera()
   end
  end)
- ui:note("Hold middle mouse to orbit · Scroll to zoom · Walking preview",25)
+ ui:note(if worldMode then "Capture visible scene · Full screen for WASD · Middle mouse orbit · Scroll zoom" else "Hold middle mouse to orbit · Scroll to zoom · Walking preview",32)
+ if worldMode then
+  ui:chips({"Capture visible scene","Full screen"},function(n) if n=="Full screen" then openFull() else captureScene() end end,2)
+  ui:chips({"Demo stage","Pause / resume","Playback speed"},function(n) if n=="Demo stage" then resetScene() elseif n=="Pause / resume" then togglePause() else cycleSpeed() end end,3)
+ end
  ui:chips({"Reset view"},function()
   targetYaw=yaw+((.13-yaw+math.pi)%(2*math.pi)-math.pi)
   targetPitch,targetZoom=.08,1
@@ -2241,9 +2413,11 @@ local function avatarPreview(ui,a)
  page:on(player.CharacterAppearanceLoaded,function(char) if char==player.Character then refresh(char) end end)
  page:add(function()
   generation+=1
+  closeFull()
+  CAS:UnbindAction(actionName)
   hovered=false;endOrbit()
   if characterScope then characterScope:clear() end
-  motion:destroy();avatar:clear()
+  motion:destroy();avatar:clear();sceneClear()
  end)
  bind(player.Character)
 end
@@ -2336,7 +2510,7 @@ function E.render(a,tab,ui)
   ui:note("Practice display: tracks your jump and horizontal camera rotation. No automatic jumps or camera movement.",42)
   for _,k in {"wallhopHelper","wallhopX","wallhopY","wallhopScale","wallhopOpacity"} do ui:control(k) end
  elseif tab=="Fonts" then local text=ui:note(a.s.sample,62);text:SetAttribute("AETHERKeepFontColor",true);text.TextXAlignment=Enum.TextXAlignment.Center;local gradient=U.gradient(text,Color3.new(),Color3.new(),10);local glow=U.stroke(text,U.hex(a.s.fontB),.8);glow.ApplyStrokeMode=Enum.ApplyStrokeMode.Contextual;ui:watch(function() local s=a.s;text.Text=s.sample;text.FontFace=U.font(s);text.TextSize=s.fontSize*.23;text.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA);text.TextStrokeTransparency=1-s.fontOutline/100;gradient.Enabled=s.fontGradient;gradient.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB));glow.Color=U.hex(s.fontB);glow.Transparency=1-s.fontGlow*.008;glow.Thickness=1+s.fontGlow*.023 end);local query=ui:box("Search native typefaces",a.fontQuery or "",32,function(q) if q~=(a.fontQuery or "") then a.fontQuery=q;ui:open("Fonts") end end);local fonts={};for _,n in S.fonts do if n:lower():find((a.fontQuery or ""):lower(),1,true) then table.insert(fonts,n) end end;ui:chips(fonts,function(n) a:patch({font=n,fontAsset=""}) end,3,function() return a.s.font end);ui:group(tab,{font=true});preset(ui,a,tab)
- elseif tab=="Simulator" then preview(ui,a);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
+ elseif tab=="Simulator" then preview(ui,a);ui:title("WORLD PREVIEW");avatarPreview(ui,a,true);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
  elseif tab=="Scripts" then scripts(ui,a)
  elseif tab=="Workshop" or tab=="Profiles" then library(ui,a,tab=="Profiles")
  elseif tab=="List" then
@@ -4185,7 +4359,7 @@ local function frame(dt, now)
     if app.preview then
         if app.preview.hud then app.preview.hud:step(styled, result, dt) end
         if app.preview.pose then app.preview.pose(styled, dt) end
-        if app.preview.avatar then app.preview.avatar:step(app.preview.rig, styled, now) end
+        if app.preview.avatar then app.preview.avatar:step(app.preview.rig, styled, app.preview.effectTime or now) end
         view:preview(app.preview.cursorHost,styled)
     end
     store:tick(now)
