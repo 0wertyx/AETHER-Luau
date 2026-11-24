@@ -47,14 +47,15 @@ function W:step(character,s,dt,preview)
  local pack=MotionPacks.get(style)
  local floating=style=="Floating" or style=="Glide" or style=="Ethereal"
  local enabled=s.walkAnimation and not s.reduce and (preview or (hum.Health>0 and not hum.Sit))
- local state=if preview then Enum.HumanoidStateType.Running else hum:GetState()
+ local virtual=if type(preview)=="table" then preview else nil
+ local state=if virtual and not virtual.grounded then (if virtual.jumping then Enum.HumanoidStateType.Jumping else Enum.HumanoidStateType.Freefall) elseif preview then Enum.HumanoidStateType.Running else hum:GetState()
  local jumping=state==Enum.HumanoidStateType.Jumping
  local falling=state==Enum.HumanoidStateType.Freefall
  local climbing=state==Enum.HumanoidStateType.Climbing
  local swimming=state==Enum.HumanoidStateType.Swimming
  local airborne=jumping or falling
- local grounded=preview or hum.FloorMaterial~=Enum.Material.Air
- local movement=if preview then 1 else hum.MoveDirection.Magnitude
+ local grounded=if virtual then virtual.grounded elseif preview then true else hum.FloorMaterial~=Enum.Material.Air
+ local movement=if virtual then virtual.movement elseif preview then 1 else hum.MoveDirection.Magnitude
  local intensity=math.clamp((s.walkIntensity or 65)/100,0,1)
  local target=0
  if enabled then
