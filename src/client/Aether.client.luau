@@ -138,7 +138,7 @@ function app:runCue()
 end
 -- Live updates are bounded data packages, never downloaded executable Luau.
 local updateHttp=game:GetService("HttpService")
-local updateState={version="1.0.0",revision=0,status="Waiting for update relay",busy=false,history={},generation=0,connected=false}
+local updateState={version="1.0.0",publishedVersion="1.0.0",revision=0,status="Waiting for update relay",busy=false,history={},releases={},generation=0,connected=false,unread=false,testCount=0,isTest=false}
 app.liveUpdate=updateState
 local function validateUpdate(raw)
     assert(type(raw)=="table" and raw.format=="aether.live/1","Invalid update format")
@@ -158,6 +158,14 @@ local function validateUpdate(raw)
     end
     return {revision=raw.revision,version=raw.version,notes=raw.notes,presets=presets}
 end
+local function versionGreater(a,b)
+    local ax,ay,az=a:match("^(%d+)%.(%d+)%.(%d+)$")
+    local bx,by,bz=b:match("^(%d+)%.(%d+)%.(%d+)$")
+    local aa={tonumber(ax),tonumber(ay),tonumber(az)}
+    local bb={tonumber(bx),tonumber(by),tonumber(bz)}
+    for i=1,3 do if aa[i]~=bb[i] then return aa[i]>bb[i] end end
+    return false
+end
 function app:updateStatus(message)
     updateState.status=message
     self:log("Update",message)
@@ -172,8 +180,8 @@ function app:applyLiveUpdate(raw,force)
         if self.stopping or gen~=updateState.generation then return end
         local ok,pack=pcall(validateUpdate,raw)
         if not ok then updateState.busy=false;self:updateStatus("Rejected: "..tostring(pack):sub(-100));return end
-        if not force and pack.revision<=updateState.revision then updateState.busy=false;self:updateStatus("Already up to date");return end
-        local before={version=updateState.version,revision=updateState.revision,notes=updateState.notes,presets=S.copy(S.presets)}
+        if not force and (pack.revision<=updateState.revision or not versionGreater(pack.version,updateState.publishedVersion)) then updateState.busy=false;self:updateStatus("Already up to date");return end
+        local before={version=updateState.version,publishedVersion=updateState.publishedVersion,revision=updateState.revision,notes=updateState.notes,presets=S.copy(S.presets),isTest=updateState.isTest}
         local staged=S.copy(S.presets)
         for group,items in pack.presets do
             staged[group]=staged[group] or {}
@@ -182,14 +190,18 @@ function app:applyLiveUpdate(raw,force)
         -- Swap one validated data table. Preserve all settings, profile bank,
         -- current page, HUD, avatar, render callbacks and the session itself.
         S.presets=staged
-        updateState.version=pack.version;if not force then updateState.revision=pack.revision end;updateState.notes=pack.notes
+        updateState.version=pack.version;updateState.isTest=force==true;if not force then updateState.revision=pack.revision;updateState.publishedVersion=pack.version end;updateState.notes=pack.notes
         local applied,err=pcall(function() self:updateStatus("Updated live to "..pack.version) end)
         if not applied then
-            S.presets=before.presets;updateState.version=before.version;updateState.revision=before.revision;updateState.notes=before.notes
+            S.presets=before.presets;updateState.version=before.version;updateState.publishedVersion=before.publishedVersion;updateState.revision=before.revision;updateState.notes=before.notes;updateState.isTest=before.isTest
             updateState.status="Update rolled back: "..tostring(err):sub(-100)
         else
             table.insert(updateState.history,before)
             while #updateState.history>5 do table.remove(updateState.history,1) end
+            if force then updateState.testCount+=1 end
+            table.insert(updateState.releases,1,{version=pack.version,notes=pack.notes,source=if force then "LOCAL TEST "..tostring(updateState.testCount) else "WEBSITE",time=os.date("%H:%M:%S")})
+            while #updateState.releases>12 do table.remove(updateState.releases) end
+            updateState.unread=not (self.ui and self.ui.opened and self.ui.tab=="Updates")
         end
         updateState.busy=false
         if self.ui then self.ui:sync() end
@@ -197,7 +209,7 @@ function app:applyLiveUpdate(raw,force)
 end
 function app:testLiveUpdate()
     local revision=updateState.revision+1
-    self:applyLiveUpdate({format="aether.live/1",revision=revision,version="1.0."..tostring(revision),notes="Live test: new Aurora glass theme and Lunar halo preset. Existing settings remain intact.",presets={Theme={["Live Aurora"]={accent="8DEBFF",secondary="D8ACFF",glassColor="22243E"}},Halos={["Live Lunar"]={halo=true,haloStyle="Lunar",haloColor="C4B5FF"}}}},true)
+    self:applyLiveUpdate({format="aether.live/1",revision=revision,version=updateState.publishedVersion,notes="Live test: new Aurora glass theme and Lunar halo preset. Existing settings remain intact.",presets={Theme={["Live Aurora"]={accent="8DEBFF",secondary="D8ACFF",glassColor="22243E"}},Halos={["Live Lunar"]={halo=true,haloStyle="Lunar",haloColor="C4B5FF"}}}},true)
 end
 function app:checkLiveUpdate()
     if updateState.busy then return end
@@ -212,7 +224,8 @@ function app:rollbackLiveUpdate()
     if updateState.busy then return end
     local before=table.remove(updateState.history)
     if not before then self:updateStatus("No previous update");return end
-    S.presets=before.presets;updateState.version=before.version;updateState.revision=before.revision;updateState.notes=before.notes
+    S.presets=before.presets;updateState.version=before.version;updateState.publishedVersion=before.publishedVersion;updateState.revision=before.revision;updateState.notes=before.notes;updateState.isTest=before.isTest
+    updateState.unread=false
     self:updateStatus("Rolled back to "..before.version)
 end
 
