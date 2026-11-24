@@ -1,10 +1,10 @@
 -- The ORIGINAL AETHER desktop icons are 32 PNG images of 224 x 224.
--- Make one 8x4 atlas from assets/icons and upload it as a Roblox image asset.
+-- Upload the original 8x4 atlas to Roblox. Supports 128px or legacy 224px tiles.
 -- The atlas is included separately for importing; Roblox cannot draw GitHub PNG URLs directly.
 local AssetService=game:GetService("AssetService")
 local U=require(script.Parent.Util)
 local I={}
-I.TILE=224
+I.TILE=128
 I.columns=8
 I.order={
  "Home","Dashboard","HUD","Fonts","Themes","World_FX","Indicators","Simulator",
@@ -153,7 +153,13 @@ function I.new(button,tab)
   button.TextTransparency=0
  end
  visual:GetPropertyChangedSignal("IsLoaded"):Connect(refresh)
- function self:sync(asset)
+ function self:sync(asset,tile)
+  tile=if tonumber(tile)==224 then 224 else 128
+  if self.tile~=tile then
+   self.tile=tile
+   visual.ImageRectSize=Vector2.new(tile,tile)
+   if index then visual.ImageRectOffset=Vector2.new(index%8*tile,math.floor(index/8)*tile) end
+  end
   asset=tostring(asset or ""):match("^%d+$") or ""
   if asset~=self.last then
    self.last=asset

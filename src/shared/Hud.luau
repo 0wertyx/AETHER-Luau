@@ -163,7 +163,7 @@ function H:setStyle(s)
  self.reticleKey=nil
  self.hpAccent.BackgroundColor3=accent
  self.profileDot.BackgroundColor3=U.hex(s.secondary)
- for _,icon in self.dockIcons do icon:sync(s.iconAtlas) end
+ for _,icon in self.dockIcons do icon:sync(s.iconAtlas,s.iconAtlasTile) end
  for _,item in {{self.clock,21},{self.clockSub,9},{self.hpTitle,10},{self.value,19},{self.stateText,10},{self.name,15},{self.profileTitle,9}} do
   local n=item[1]
   n.FontFace=face
@@ -244,7 +244,7 @@ function H:vitals(s,f,dt)
  local mix=if s.reduce or dead then 1 else 1-math.exp(-dt*12);self.tint=(self.tint or a):Lerp(a,mix);self.tint2=(self.tint2 or b):Lerp(b,mix);self.fillG.Color=ColorSequence.new(self.tint,self.tint2)
  local beat=0;if not dead and not s.reduce then local period=if ratio<=.3 then .33+.5*ratio elseif ratio<=.65 then .62+.45*ratio else .91+.62*ratio;self.phase=(self.phase+dt*s.speed/100/period)%1;beat=math.max(0,1-math.abs(self.phase-.12)*9)+.6*math.max(0,1-math.abs(self.phase-.31)*13) else self.phase=0 end
  local bump=if not s.reduce and not dead and (self.effect=="Heal" or self.effect=="Revive") then math.sin(math.pi*q)*(if self.effect=="Revive" then .22 else .09) else 0
- local side=30*(1+beat*(.12+.15*(1-ratio))+bump)
+ local side=35*(1+beat*(.12+.15*(1-ratio))+bump)
  self.heart.root.Size=UDim2.fromOffset(side,side)
  local ha,hm,hb=heartColors(s,ratio,dead,self.time)
  self.heartTint=(self.heartTint or ha):Lerp(ha,mix)

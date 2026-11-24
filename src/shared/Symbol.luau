@@ -1,5 +1,6 @@
 -- Native vector masks. Scan-convert once per silhouette/softness, merge identical runs vertically.
 -- No image uploads, EditableImage permissions, or external texture dependencies for built-ins.
+local AssetService=game:GetService("AssetService")
 local U=require(script.Parent.Util)
 local M={};local masks={};local N=64
 local paths={
@@ -32,19 +33,67 @@ local function build(name,round)
   local x=0;local nextRow={};while x<N do if not pixel(x) then x+=1;continue end;local l=x;repeat x+=1 until x==N or not pixel(x);local id=l*64+x;local b=last[id];if b then b.h+=1 else b={x=l,y=y,w=x-l,h=1};table.insert(rows,b) end;nextRow[id]=b end;last=nextRow
  end;return rows
 end
+-- Smooth heart silhouette, with a real 128x128 alpha texture rather than GUI scanline rectangles.
+local function heartImage(parent)
+ local edit
+ local ok,label,gradient=pcall(function()
+  local n=128
+  edit=AssetService:CreateEditableImage({Size=Vector2.new(n,n)})
+  assert(edit,"EditableImage unavailable")
+  local data=buffer.create(n*n*4)
+  -- Four-by-four coverage sampling of a smooth algebraic heart.
+  for y=0,n-1 do
+   for x=0,n-1 do
+    local hits=0
+    for sy=0,3 do
+     local py=1.45-(y+(sy+.5)/4)*2.65/n
+     for sx=0,3 do
+      local px=-1.35+(x+(sx+.5)/4)*2.70/n
+      local q=px*px+py*py-1
+      if q*q*q-px*px*py*py*py<=0 then hits+=1 end
+     end
+    end
+    if hits>0 then
+     local offset=(y*n+x)*4
+     buffer.writeu32(data,offset,0x00FFFFFF)
+     buffer.writeu8(data,offset+3,math.round(hits*255/16))
+    end
+   end
+  end
+  edit:WritePixelsBuffer(Vector2.zero,Vector2.new(n,n),data)
+  local image=U.new("ImageLabel",{Name="HeartHD128",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,
+   Active=false,Selectable=false,Interactable=false,ScaleType=Enum.ScaleType.Fit,
+   ImageContent=Content.fromObject(edit),ResampleMode=Enum.ResamplerMode.Default,ZIndex=parent.ZIndex+1},parent)
+  local grad=U.new("UIGradient",{Rotation=90},image)
+  return image,grad
+ end)
+ if not ok then if edit then edit:Destroy() end;return nil,nil end
+ label.Destroying:Once(function() edit:Destroy() end)
+ return label,gradient
+end
 function M.new(parent,name,round)
  local root=U.new("CanvasGroup",{Name="Glyph",BackgroundTransparency=1,AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromScale(1,1)},parent)
  local outer=U.frame(root,"OuterGlow",nil,nil,nil,.89);U.corner(outer,999);local inner=U.frame(root,"InnerGlow",nil,nil,nil,.80);U.corner(inner,999)
  local ink=U.frame(root,"Ink",nil,nil,nil,1);for _,f in {outer,inner,ink} do f.AnchorPoint=Vector2.new(.5,.5);f.Position=UDim2.fromScale(.5,.5) end
  local self={root=root,ink=ink,parts={},key=""}
+ if name=="Heart" then self.hd,self.hdGradient=heartImage(ink) end
  function self:shape(n,r)
-  r=math.round(r/10)*10;local key=n..r;if self.key==key then return end;self.key=key;local mask=masks[key];if not mask then mask=build(n,r);masks[key]=mask end
+  r=math.round(r/10)*10;local key=n..r;if self.key==key then return end;self.key=key
+  if self.hd then
+   self.hd.Visible=n=="Heart"
+   if n=="Heart" then for _,part in self.parts do part.Visible=false end;self.mask={};self.a=nil;return end
+  end
+  local mask=masks[key];if not mask then mask=build(n,r);masks[key]=mask end
   for i,rect in mask do local part=self.parts[i] or U.frame(ink,"Run",nil,nil,Color3.new(1,1,1));self.parts[i]=part;part.Position=UDim2.fromScale(rect.x/N,rect.y/N);part.Size=UDim2.fromScale(rect.w/N,rect.h/N);part.Visible=true end
   for i=#mask+1,#self.parts do self.parts[i].Visible=false end;self.mask=mask;self.a=nil
  end
  function self:paint(a,b,glow,spread,middle,angle)
   angle=angle or 90
   if self.a~=a or self.b~=b or self.mid~=middle or self.angle~=angle then
+   if self.hdGradient and self.hd.Visible then
+    self.hdGradient.Color=if middle then ColorSequence.new({ColorSequenceKeypoint.new(0,a),ColorSequenceKeypoint.new(.5,middle),ColorSequenceKeypoint.new(1,b)}) else ColorSequence.new(a,b)
+    self.hdGradient.Rotation=angle
+   end
    local rad=math.rad(angle);local dx,dy=math.cos(rad),math.sin(rad)
    local span=math.abs(dx)+math.abs(dy)
    for i,rect in self.mask do
@@ -54,7 +103,7 @@ function M.new(parent,name,round)
    end
    outer.BackgroundColor3=b;inner.BackgroundColor3=a;self.a=a;self.b=b;self.mid=middle;self.angle=angle
   end
-  if self.glow~=glow or self.spread~=spread then outer.BackgroundTransparency=1-glow*.0016;inner.BackgroundTransparency=1-glow*.0024;outer.Visible=glow>0;inner.Visible=glow>0;local k=.69+spread*.016;outer.Size=UDim2.fromScale(k,k);inner.Size=UDim2.fromScale(k*.77,k*.77);ink.Size=UDim2.fromScale(.73,.73);self.glow=glow;self.spread=spread end
+  if self.glow~=glow or self.spread~=spread then outer.BackgroundTransparency=1-glow*.0016;inner.BackgroundTransparency=1-glow*.0024;outer.Visible=glow>0;inner.Visible=glow>0;local k=.69+spread*.016;outer.Size=UDim2.fromScale(k,k);inner.Size=UDim2.fromScale(k*.77,k*.77);ink.Size=if self.hd and self.hd.Visible then UDim2.fromScale(.94,.94) else UDim2.fromScale(.73,.73);self.glow=glow;self.spread=spread end
  end
  self:shape(name,round or 30);self:paint(Color3.fromRGB(185,150,255),Color3.fromRGB(255,165,220),50,8);return self
 end

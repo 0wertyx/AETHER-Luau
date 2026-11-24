@@ -446,7 +446,6 @@ function UI.new(app,gui,scope)
  end
  self.header=U.frame(self.panel,"Titlebar",nil,UDim2.new(1,0,0,46),nil,1);self.header.Active=true;self.brand=U.label(self.header,"A E T H E R",18,UDim2.fromOffset(16,2),UDim2.fromOffset(135,40));self.tag=U.label(self.header,"",11,UDim2.fromOffset(147,3),UDim2.new(1,-211,0,40));self.tag.TextColor3=dim
  self.close=U.button(self.header,"×");self.close.Modal=true;self.close.Size=UDim2.fromOffset(33,29);self.close.Position=UDim2.new(1,-43,0,8);scope:on(self.close.Activated,function() self:show(false) end)
- self.reopen=U.button(self.stage,"A  /  STUDIO");self.reopen.Size=UDim2.fromOffset(99,31);self.reopen.Position=UDim2.fromOffset(12,10);self.reopen.Visible=false;scope:on(self.reopen.Activated,function() self:show(true) end)
  self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
  self.pageBox=U.new("CanvasGroup",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,GroupTransparency=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
  self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Fonts","Simulator","Scripts","Workshop","Profiles","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
@@ -535,7 +534,6 @@ function UI:show(on)
  self.opened=on
  self.panel.Interactable=on
  if on then self.panel.Visible=true end
- self.reopen.Visible=not on
  self.drag=nil
  if self.app.s.reduce or self.app.s.menuTransition=="Off" then
   self.menuProgress=if on then 1 else 0
@@ -563,10 +561,10 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.."   /   "..self.tab.."   /   HD128"
+ self.tag.Text=self.app.mode.."   /   "..self.tab.."   /   HEART128"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
- for _,asset in self.icons do asset:sync(st.iconAtlas) end
+ for _,asset in self.icons do asset:sync(st.iconAtlas,st.iconAtlasTile) end
  for _,f in self.syncs do f() end
  -- Only recolor editor controls, not HUD/3D previews or their own palette.
  for _,obj in self.panel:GetDescendants() do
@@ -945,7 +943,7 @@ function H:setStyle(s)
  self.reticleKey=nil
  self.hpAccent.BackgroundColor3=accent
  self.profileDot.BackgroundColor3=U.hex(s.secondary)
- for _,icon in self.dockIcons do icon:sync(s.iconAtlas) end
+ for _,icon in self.dockIcons do icon:sync(s.iconAtlas,s.iconAtlasTile) end
  for _,item in {{self.clock,21},{self.clockSub,9},{self.hpTitle,10},{self.value,19},{self.stateText,10},{self.name,15},{self.profileTitle,9}} do
   local n=item[1]
   n.FontFace=face
@@ -1026,7 +1024,7 @@ function H:vitals(s,f,dt)
  local mix=if s.reduce or dead then 1 else 1-math.exp(-dt*12);self.tint=(self.tint or a):Lerp(a,mix);self.tint2=(self.tint2 or b):Lerp(b,mix);self.fillG.Color=ColorSequence.new(self.tint,self.tint2)
  local beat=0;if not dead and not s.reduce then local period=if ratio<=.3 then .33+.5*ratio elseif ratio<=.65 then .62+.45*ratio else .91+.62*ratio;self.phase=(self.phase+dt*s.speed/100/period)%1;beat=math.max(0,1-math.abs(self.phase-.12)*9)+.6*math.max(0,1-math.abs(self.phase-.31)*13) else self.phase=0 end
  local bump=if not s.reduce and not dead and (self.effect=="Heal" or self.effect=="Revive") then math.sin(math.pi*q)*(if self.effect=="Revive" then .22 else .09) else 0
- local side=30*(1+beat*(.12+.15*(1-ratio))+bump)
+ local side=35*(1+beat*(.12+.15*(1-ratio))+bump)
  self.heart.root.Size=UDim2.fromOffset(side,side)
  local ha,hm,hb=heartColors(s,ratio,dead,self.time)
  self.heartTint=(self.heartTint or ha):Lerp(ha,mix)
@@ -1115,12 +1113,12 @@ end
 -- BEGIN MODULE Icons
 __aether_factories["Icons"] = function()
 -- The ORIGINAL AETHER desktop icons are 32 PNG images of 224 x 224.
--- Make one 8x4 atlas from assets/icons and upload it as a Roblox image asset.
+-- Upload the original 8x4 atlas to Roblox. Supports 128px or legacy 224px tiles.
 -- The atlas is included separately for importing; Roblox cannot draw GitHub PNG URLs directly.
 local AssetService=game:GetService("AssetService")
 local U=__aether_require("Util")
 local I={}
-I.TILE=224
+I.TILE=128
 I.columns=8
 I.order={
  "Home","Dashboard","HUD","Fonts","Themes","World_FX","Indicators","Simulator",
@@ -1269,7 +1267,13 @@ function I.new(button,tab)
   button.TextTransparency=0
  end
  visual:GetPropertyChangedSignal("IsLoaded"):Connect(refresh)
- function self:sync(asset)
+ function self:sync(asset,tile)
+  tile=if tonumber(tile)==224 then 224 else 128
+  if self.tile~=tile then
+   self.tile=tile
+   visual.ImageRectSize=Vector2.new(tile,tile)
+   if index then visual.ImageRectOffset=Vector2.new(index%8*tile,math.floor(index/8)*tile) end
+  end
   asset=tostring(asset or ""):match("^%d+$") or ""
   if asset~=self.last then
    self.last=asset
@@ -1404,7 +1408,7 @@ local function scripts(ui,a)
  ui:chips({"Save / browse script assets"},function() a.libraryKind="Scripts";a.selection=nil;ui:open("Workshop") end,1)
 end
 function E.render(a,tab,ui)
- if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. RightShift opens Studio; LeftAlt toggles shoulder lock.",43);ui:chips({"Game","Simulator"},function(n) a:modeSet(n) end,2,function() return a.mode end);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme");ui:note("For 32 ORIGINAL desktop icons, upload AETHER_original_icons_atlas.png as a Roblox image and enter its asset ID above. The atlas includes all 32 icons at 224px per tile.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
+ if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. RightShift opens Studio; LeftAlt toggles shoulder lock.",43);ui:chips({"Game","Simulator"},function(n) a:modeSet(n) end,2,function() return a.mode end);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme");ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
  elseif tab=="HUD" then preview(ui,a);preset(ui,a,"HUD");ui:control("locked");ui:control("compact");ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartPalette","heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Unlock layout and drag a widget in the preview, or edit its coordinates below.",29);ui:chips({"hp","clock","profile","dock","cross"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab;for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
   avatarPreview(ui,a)
@@ -1462,7 +1466,7 @@ local function range(g,k,t,v,a,b) def(g,k,t,"number",v,a,b) end
 local function choice(g,k,t,v,opts) def(g,k,t,"choice",v,opts) end
 local function color(g,k,t,v) def(g,k,t,"color",v) end
 local function text(g,k,t,v,n) def(g,k,t,"text",v,0,n) end
-color("Theme","accent","Accent","A68AFF");color("Theme","secondary","Second neon","FF89C7");color("Theme","glassColor","Glass tint","211C35");color("Theme","uiFontColor","Studio text color","F1E6FF");color("Theme","uiMutedColor","Studio secondary text","ADA3C5");def("Theme","iconAtlas","AETHER icon atlas Roblox asset ID","asset","")
+color("Theme","accent","Accent","A68AFF");color("Theme","secondary","Second neon","FF89C7");color("Theme","glassColor","Glass tint","211C35");color("Theme","uiFontColor","Studio text color","F1E6FF");color("Theme","uiMutedColor","Studio secondary text","ADA3C5");def("Theme","iconAtlas","Original icon atlas Roblox asset ID","asset","");choice("Theme","iconAtlasTile","Atlas tile size (pixels)","128",{"128","224"})
 range("Theme","glass","Glass opacity %",81,10,100);range("Theme","rim","Neon rim %",55,0,100);toggle("Theme","sparkles","Floating sparkles",true)
 toggle("Motion","reduce","Reduce motion",false);range("Motion","speed","Animation speed %",100,40,200);range("Motion","duration","Transition (ms)",300,80,1400);choice("Motion","ease","Interpolation","Smooth",{"Smooth","Linear","Sine"});choice("Motion","menuTransition","Menu transition","Glass",{"Glass","Slide","Fade","Off"});range("Motion","menuAnimStrength","Menu motion intensity %",75,0,100);toggle("Motion","tabTransition","Animated page transitions",true);toggle("Motion","navGlow","Animated navigation glow",true)
 toggle("Theme","menuGeometry","Animated geometric background",true);choice("Theme","menuShape","Background style","Mixed",{"Mixed","Rings","Crystals","Triangles","Hexagons"});range("Theme","menuDensity","Background density",12,4,20);range("Theme","menuMotion","Background speed %",65,0,180);range("Theme","menuOpacity","Background intensity %",55,0,100)
@@ -1604,6 +1608,7 @@ end
 __aether_factories["Symbol"] = function()
 -- Native vector masks. Scan-convert once per silhouette/softness, merge identical runs vertically.
 -- No image uploads, EditableImage permissions, or external texture dependencies for built-ins.
+local AssetService=game:GetService("AssetService")
 local U=__aether_require("Util")
 local M={};local masks={};local N=64
 local paths={
@@ -1636,19 +1641,67 @@ local function build(name,round)
   local x=0;local nextRow={};while x<N do if not pixel(x) then x+=1;continue end;local l=x;repeat x+=1 until x==N or not pixel(x);local id=l*64+x;local b=last[id];if b then b.h+=1 else b={x=l,y=y,w=x-l,h=1};table.insert(rows,b) end;nextRow[id]=b end;last=nextRow
  end;return rows
 end
+-- Smooth heart silhouette, with a real 128x128 alpha texture rather than GUI scanline rectangles.
+local function heartImage(parent)
+ local edit
+ local ok,label,gradient=pcall(function()
+  local n=128
+  edit=AssetService:CreateEditableImage({Size=Vector2.new(n,n)})
+  assert(edit,"EditableImage unavailable")
+  local data=buffer.create(n*n*4)
+  -- Four-by-four coverage sampling of a smooth algebraic heart.
+  for y=0,n-1 do
+   for x=0,n-1 do
+    local hits=0
+    for sy=0,3 do
+     local py=1.45-(y+(sy+.5)/4)*2.65/n
+     for sx=0,3 do
+      local px=-1.35+(x+(sx+.5)/4)*2.70/n
+      local q=px*px+py*py-1
+      if q*q*q-px*px*py*py*py<=0 then hits+=1 end
+     end
+    end
+    if hits>0 then
+     local offset=(y*n+x)*4
+     buffer.writeu32(data,offset,0x00FFFFFF)
+     buffer.writeu8(data,offset+3,math.round(hits*255/16))
+    end
+   end
+  end
+  edit:WritePixelsBuffer(Vector2.zero,Vector2.new(n,n),data)
+  local image=U.new("ImageLabel",{Name="HeartHD128",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,
+   Active=false,Selectable=false,Interactable=false,ScaleType=Enum.ScaleType.Fit,
+   ImageContent=Content.fromObject(edit),ResampleMode=Enum.ResamplerMode.Default,ZIndex=parent.ZIndex+1},parent)
+  local grad=U.new("UIGradient",{Rotation=90},image)
+  return image,grad
+ end)
+ if not ok then if edit then edit:Destroy() end;return nil,nil end
+ label.Destroying:Once(function() edit:Destroy() end)
+ return label,gradient
+end
 function M.new(parent,name,round)
  local root=U.new("CanvasGroup",{Name="Glyph",BackgroundTransparency=1,AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromScale(1,1)},parent)
  local outer=U.frame(root,"OuterGlow",nil,nil,nil,.89);U.corner(outer,999);local inner=U.frame(root,"InnerGlow",nil,nil,nil,.80);U.corner(inner,999)
  local ink=U.frame(root,"Ink",nil,nil,nil,1);for _,f in {outer,inner,ink} do f.AnchorPoint=Vector2.new(.5,.5);f.Position=UDim2.fromScale(.5,.5) end
  local self={root=root,ink=ink,parts={},key=""}
+ if name=="Heart" then self.hd,self.hdGradient=heartImage(ink) end
  function self:shape(n,r)
-  r=math.round(r/10)*10;local key=n..r;if self.key==key then return end;self.key=key;local mask=masks[key];if not mask then mask=build(n,r);masks[key]=mask end
+  r=math.round(r/10)*10;local key=n..r;if self.key==key then return end;self.key=key
+  if self.hd then
+   self.hd.Visible=n=="Heart"
+   if n=="Heart" then for _,part in self.parts do part.Visible=false end;self.mask={};self.a=nil;return end
+  end
+  local mask=masks[key];if not mask then mask=build(n,r);masks[key]=mask end
   for i,rect in mask do local part=self.parts[i] or U.frame(ink,"Run",nil,nil,Color3.new(1,1,1));self.parts[i]=part;part.Position=UDim2.fromScale(rect.x/N,rect.y/N);part.Size=UDim2.fromScale(rect.w/N,rect.h/N);part.Visible=true end
   for i=#mask+1,#self.parts do self.parts[i].Visible=false end;self.mask=mask;self.a=nil
  end
  function self:paint(a,b,glow,spread,middle,angle)
   angle=angle or 90
   if self.a~=a or self.b~=b or self.mid~=middle or self.angle~=angle then
+   if self.hdGradient and self.hd.Visible then
+    self.hdGradient.Color=if middle then ColorSequence.new({ColorSequenceKeypoint.new(0,a),ColorSequenceKeypoint.new(.5,middle),ColorSequenceKeypoint.new(1,b)}) else ColorSequence.new(a,b)
+    self.hdGradient.Rotation=angle
+   end
    local rad=math.rad(angle);local dx,dy=math.cos(rad),math.sin(rad)
    local span=math.abs(dx)+math.abs(dy)
    for i,rect in self.mask do
@@ -1658,7 +1711,7 @@ function M.new(parent,name,round)
    end
    outer.BackgroundColor3=b;inner.BackgroundColor3=a;self.a=a;self.b=b;self.mid=middle;self.angle=angle
   end
-  if self.glow~=glow or self.spread~=spread then outer.BackgroundTransparency=1-glow*.0016;inner.BackgroundTransparency=1-glow*.0024;outer.Visible=glow>0;inner.Visible=glow>0;local k=.69+spread*.016;outer.Size=UDim2.fromScale(k,k);inner.Size=UDim2.fromScale(k*.77,k*.77);ink.Size=UDim2.fromScale(.73,.73);self.glow=glow;self.spread=spread end
+  if self.glow~=glow or self.spread~=spread then outer.BackgroundTransparency=1-glow*.0016;inner.BackgroundTransparency=1-glow*.0024;outer.Visible=glow>0;inner.Visible=glow>0;local k=.69+spread*.016;outer.Size=UDim2.fromScale(k,k);inner.Size=UDim2.fromScale(k*.77,k*.77);ink.Size=if self.hd and self.hd.Visible then UDim2.fromScale(.94,.94) else UDim2.fromScale(.73,.73);self.glow=glow;self.spread=spread end
  end
  self:shape(name,round or 30);self:paint(Color3.fromRGB(185,150,255),Color3.fromRGB(255,165,220),50,8);return self
 end

@@ -21,7 +21,6 @@ function UI.new(app,gui,scope)
  end
  self.header=U.frame(self.panel,"Titlebar",nil,UDim2.new(1,0,0,46),nil,1);self.header.Active=true;self.brand=U.label(self.header,"A E T H E R",18,UDim2.fromOffset(16,2),UDim2.fromOffset(135,40));self.tag=U.label(self.header,"",11,UDim2.fromOffset(147,3),UDim2.new(1,-211,0,40));self.tag.TextColor3=dim
  self.close=U.button(self.header,"×");self.close.Modal=true;self.close.Size=UDim2.fromOffset(33,29);self.close.Position=UDim2.new(1,-43,0,8);scope:on(self.close.Activated,function() self:show(false) end)
- self.reopen=U.button(self.stage,"A  /  STUDIO");self.reopen.Size=UDim2.fromOffset(99,31);self.reopen.Position=UDim2.fromOffset(12,10);self.reopen.Visible=false;scope:on(self.reopen.Activated,function() self:show(true) end)
  self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
  self.pageBox=U.new("CanvasGroup",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,GroupTransparency=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
  self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Fonts","Simulator","Scripts","Workshop","Profiles","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
@@ -110,7 +109,6 @@ function UI:show(on)
  self.opened=on
  self.panel.Interactable=on
  if on then self.panel.Visible=true end
- self.reopen.Visible=not on
  self.drag=nil
  if self.app.s.reduce or self.app.s.menuTransition=="Off" then
   self.menuProgress=if on then 1 else 0
@@ -138,10 +136,10 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.."   /   "..self.tab.."   /   HD128"
+ self.tag.Text=self.app.mode.."   /   "..self.tab.."   /   HEART128"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
- for _,asset in self.icons do asset:sync(st.iconAtlas) end
+ for _,asset in self.icons do asset:sync(st.iconAtlas,st.iconAtlasTile) end
  for _,f in self.syncs do f() end
  -- Only recolor editor controls, not HUD/3D previews or their own palette.
  for _,obj in self.panel:GetDescendants() do
