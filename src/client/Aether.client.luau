@@ -143,18 +143,49 @@ function app:onMenu(open)
     if open and self.editingHUD then self.editingHUD=false;self.ui.drag=nil end
     if open and self.view then self.view:releaseLock(self.view:nativeLockAvailable()) end
 end
-function app:drag(input, key, widget, frame)
-    if self.s.locked then return end
-    local start = Vector2.new(input.Position.X, input.Position.Y)
-    local x0, y0 = self.s[key .. "X"], self.s[key .. "Y"]
-    self.ui:begin(input, function(pos)
-        local delta = pos - start
-        local w, h = math.max(frame.AbsoluteSize.X, 1), math.max(frame.AbsoluteSize.Y, 1)
-        local x = math.clamp(math.round(x0 + delta.X / w * 100), 0, 100)
-        local y = math.clamp(math.round(y0 + delta.Y / h * 100), 0, 100)
-        if self.s[key .. "X"] ~= x or self.s[key .. "Y"] ~= y then
-            self:patch({layoutMode="Custom",[key .. "X"] = x, [key .. "Y"] = y})
+function app:drag(input, key, widget, frame, source)
+    local panel=key=="top" or key=="rail"
+    if panel then if not self.s.movePanels then return end
+    elseif self.s.locked then return end
+    if key=="cross" then return end
+    if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
+    local start=Vector2.new(input.Position.X,input.Position.Y)
+    local vp=frame.AbsoluteSize
+    local size=widget.AbsoluteSize
+    local original=widget.AbsolutePosition-frame.AbsolutePosition
+    local centered=key=="input" or key=="wallhop"
+    local function normalized(pos,sz,center)
+        if center then
+            return math.clamp(math.round((pos.X+sz.X*.5)/math.max(1,vp.X)*100),0,100),math.clamp(math.round((pos.Y+sz.Y*.5)/math.max(1,vp.Y)*100),0,100)
         end
+        return math.clamp(math.round(pos.X/math.max(1,vp.X-sz.X)*100),0,100),math.clamp(math.round(pos.Y/math.max(1,vp.Y-sz.Y)*100),0,100)
+    end
+    local migrated=false
+    self.ui:begin(input,function(pos)
+        local delta=pos-start
+        if delta.Magnitude<1 and not migrated then return end
+        local dest=original+delta
+        dest=Vector2.new(math.clamp(dest.X,0,math.max(0,vp.X-size.X)),math.clamp(dest.Y,0,math.max(0,vp.Y-size.Y)))
+        local x,y=normalized(dest,size,centered)
+        local patch={[key.."X"]=x,[key.."Y"]=y}
+        if panel then
+            if not self.s.movePanels then return end
+            patch[key.."Custom"]=true
+        elseif not centered and self.s.layoutMode=="Sketch" then
+            patch.layoutMode="Custom"
+            local preview=source or (self.preview and self.preview.hud)
+            if preview then
+                for _,other in {"hp","clock","profile","dock"} do
+                    if other~=key then
+                        local w=preview.widgets[other].p
+                        local nx,ny=normalized(w.AbsolutePosition-frame.AbsolutePosition,w.AbsoluteSize,false)
+                        patch[other.."X"]=nx;patch[other.."Y"]=ny
+                    end
+                end
+            end
+        end
+        migrated=true
+        self:patch(patch)
     end)
 end
 

@@ -49,7 +49,7 @@ local function setText(label,value)
  if label.Text~=value then label.Text=value end
 end
 local function center(p,t,size) local n=U.label(p,t,size);n.TextXAlignment=Enum.TextXAlignment.Center;return n end
-function H.new(scope,parent,preview,go,drag,close)
+function H.new(scope,parent,preview,go,drag,close,showPanels)
  local self=setmetatable({view=parent,preview=preview,widgets={},markers={},extras={},spark={},time=0,phase=0,paintAt=0,last=-1,dockIcons={}},H)
  self.layer=U.frame(parent,"Directions",nil,nil,nil,1);self.layer.ClipsDescendants=true
  for i=1,9 do
@@ -166,6 +166,29 @@ function H.new(scope,parent,preview,go,drag,close)
  self.wallhopTitle=U.label(self.wallhop,"WALLHOP  /  PRACTICE",10,UDim2.fromOffset(12,7),UDim2.fromOffset(186,16))
  self.wallhopText=U.label(self.wallhop,"READY",15,UDim2.fromOffset(12,27),UDim2.fromOffset(186,23))
  self.wallhopDetail=U.label(self.wallhop,"Jump · camera angle",10,UDim2.fromOffset(12,55),UDim2.fromOffset(186,19))
+ if preview and showPanels then
+  self.previewPanels={}
+  self.previewHandles={}
+  local function makePanel(key,labels,vertical)
+   local panel=U.frame(parent,"Preview_"..key,nil,UDim2.fromOffset(1,1),Color3.fromRGB(26,21,42),.08)
+   panel.ZIndex=7;U.corner(panel,6);local rim=U.stroke(panel,Color3.fromRGB(199,160,255),.3,1)
+   for j,label in labels do
+    local tile=U.frame(panel,"Tile"..j,if vertical then UDim2.new(0,2,(j-1)/#labels,2) else UDim2.new((j-1)/#labels,2,0,2),if vertical then UDim2.new(1,-4,1/#labels,-4) else UDim2.new(1/#labels,-4,1,-4),Color3.fromRGB(54,40,80),.16)
+    tile.ZIndex=8;tile.Active=false;tile.Interactable=false;U.corner(tile,4)
+    local caption=center(tile,label,if vertical then 8 else 7);caption.ZIndex=9;caption.TextScaled=true;caption.Active=false;caption.Interactable=false
+   end
+   self.previewPanels[key]={p=panel,rim=rim}
+  end
+  makePanel("top",{"AI","AETHER","ARCHIVIUM"},false)
+  makePanel("rail",{"CHAT","BAG","LIST","‹"},true)
+  for _,key in {"top","rail","input","wallhop","hp","clock","profile","dock"} do
+   local target=if key=="top" or key=="rail" then self.previewPanels[key].p elseif key=="input" then self.inputRoot elseif key=="wallhop" then self.wallhop else self.widgets[key].p
+   local hit=U.new("TextButton",{Name="PreviewDrag_"..key,Text="",BackgroundTransparency=1,AutoButtonColor=false,Active=true,Visible=false,ZIndex=15},parent)
+   local outline=U.stroke(hit,Color3.fromRGB(224,183,255),0,1.5);U.corner(hit,6)
+   self.previewHandles[key]={p=hit,target=target,rim=outline}
+   if drag then scope:on(hit.InputBegan,function(input) drag(input,key,target,parent,self) end) end
+  end
+ end
  return self
 end
 function H:clearMarkers() for _,m in self.markers do m.root:Destroy() end;table.clear(self.markers) end
@@ -415,7 +438,7 @@ function H:step(s,f,dt)
  local overlay=self.inputRoot
  overlay.Visible=s.inputOverlay
  if overlay.Visible then
-  local k=s.inputScale/100
+  local k=s.inputScale/100*(if self.preview then self.factor else 1)
   local w,h=172*k,(if s.inputMouse then 156 else 114)*k
   local vp=self.view.AbsoluteSize
   overlay.Size=UDim2.fromOffset(172,if s.inputMouse then 156 else 114)
@@ -441,7 +464,7 @@ function H:step(s,f,dt)
  wh.Visible=s.wallhopHelper
  if wh.Visible then
   local vp=self.view.AbsoluteSize
-  local scale=s.wallhopScale/100
+  local scale=s.wallhopScale/100*(if self.preview then self.factor else 1)
   self.wallhopScale.Scale=scale;wh.GroupTransparency=1-s.wallhopOpacity/100
   local halfW,halfH=105*scale,43*scale
   wh.Position=UDim2.fromOffset(math.clamp(vp.X*s.wallhopX/100,halfW,math.max(halfW,vp.X-halfW)),math.clamp(vp.Y*s.wallhopY/100,halfH,math.max(halfH,vp.Y-halfH)))
@@ -465,6 +488,33 @@ function H:step(s,f,dt)
    setText(self.wallhopDetail,"Space · manual camera turn")
   end
  else self.whStart=nil;self.whDown=false;self.whAngle=nil end
+ if self.previewPanels then
+  local vp=self.view.AbsoluteSize
+  local factor=self.factor or .43
+  for _,key in {"top","rail"} do
+   local panel=self.previewPanels[key].p
+   local w,h=if key=="top" then math.min(vp.X*.58,345*factor) else 54*factor,if key=="top" then 38*factor else 176*factor
+   panel.Size=UDim2.fromOffset(w,h);panel.AnchorPoint=Vector2.zero
+   panel.Visible=if key=="top" then s.topCapsule else s.robloxRail
+   local x,y
+   if s[key.."Custom"] then
+    x=math.max(0,vp.X-w)*s[key.."X"]/100;y=math.max(0,vp.Y-h)*s[key.."Y"]/100
+   elseif key=="top" then x=(vp.X-w)/2;y=5
+   else x=5;y=vp.Y*.46-h/2 end
+   panel.Position=UDim2.fromOffset(math.clamp(x,0,math.max(0,vp.X-w)),math.clamp(y,0,math.max(0,vp.Y-h)))
+  end
+  for key,item in self.previewHandles do
+   local panel=key=="top" or key=="rail"
+   local allowed=if panel then s.movePanels else not s.locked
+   item.p.Visible=item.target.Visible and allowed
+   item.p.Active=allowed;item.p.Interactable=allowed
+   if item.p.Visible then
+    local xy=item.target.AbsolutePosition-self.view.AbsolutePosition
+    item.p.Position=UDim2.fromOffset(xy.X,xy.Y);item.p.Size=UDim2.fromOffset(item.target.AbsoluteSize.X,item.target.AbsoluteSize.Y)
+   end
+   if panel then self.previewPanels[key].rim.Color=if allowed then U.hex(s.accent) else Color3.fromRGB(125,116,148) end
+  end
+ end
  if not self.fpsAt or t>=self.fpsAt then
   self.fpsAt=t+.25
   setText(self.name,if f.fps then string.format("%d FPS",math.floor(f.fps+.5)) else "— FPS")

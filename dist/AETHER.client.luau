@@ -946,7 +946,7 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.." / HUD DRAG FIX"
+ self.tag.Text=self.app.mode.." / HUD PREVIEW"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  for key,item in self.quickButtons do item.button.Text=item.label..(if st[key] then "  ON" else "  OFF");item.button.BackgroundColor3=if st[key] then U.hex(st.accent):Lerp(bg,.52) else soft end
@@ -1215,7 +1215,7 @@ local function setText(label,value)
  if label.Text~=value then label.Text=value end
 end
 local function center(p,t,size) local n=U.label(p,t,size);n.TextXAlignment=Enum.TextXAlignment.Center;return n end
-function H.new(scope,parent,preview,go,drag,close)
+function H.new(scope,parent,preview,go,drag,close,showPanels)
  local self=setmetatable({view=parent,preview=preview,widgets={},markers={},extras={},spark={},time=0,phase=0,paintAt=0,last=-1,dockIcons={}},H)
  self.layer=U.frame(parent,"Directions",nil,nil,nil,1);self.layer.ClipsDescendants=true
  for i=1,9 do
@@ -1332,6 +1332,29 @@ function H.new(scope,parent,preview,go,drag,close)
  self.wallhopTitle=U.label(self.wallhop,"WALLHOP  /  PRACTICE",10,UDim2.fromOffset(12,7),UDim2.fromOffset(186,16))
  self.wallhopText=U.label(self.wallhop,"READY",15,UDim2.fromOffset(12,27),UDim2.fromOffset(186,23))
  self.wallhopDetail=U.label(self.wallhop,"Jump · camera angle",10,UDim2.fromOffset(12,55),UDim2.fromOffset(186,19))
+ if preview and showPanels then
+  self.previewPanels={}
+  self.previewHandles={}
+  local function makePanel(key,labels,vertical)
+   local panel=U.frame(parent,"Preview_"..key,nil,UDim2.fromOffset(1,1),Color3.fromRGB(26,21,42),.08)
+   panel.ZIndex=7;U.corner(panel,6);local rim=U.stroke(panel,Color3.fromRGB(199,160,255),.3,1)
+   for j,label in labels do
+    local tile=U.frame(panel,"Tile"..j,if vertical then UDim2.new(0,2,(j-1)/#labels,2) else UDim2.new((j-1)/#labels,2,0,2),if vertical then UDim2.new(1,-4,1/#labels,-4) else UDim2.new(1/#labels,-4,1,-4),Color3.fromRGB(54,40,80),.16)
+    tile.ZIndex=8;tile.Active=false;tile.Interactable=false;U.corner(tile,4)
+    local caption=center(tile,label,if vertical then 8 else 7);caption.ZIndex=9;caption.TextScaled=true;caption.Active=false;caption.Interactable=false
+   end
+   self.previewPanels[key]={p=panel,rim=rim}
+  end
+  makePanel("top",{"AI","AETHER","ARCHIVIUM"},false)
+  makePanel("rail",{"CHAT","BAG","LIST","‹"},true)
+  for _,key in {"top","rail","input","wallhop","hp","clock","profile","dock"} do
+   local target=if key=="top" or key=="rail" then self.previewPanels[key].p elseif key=="input" then self.inputRoot elseif key=="wallhop" then self.wallhop else self.widgets[key].p
+   local hit=U.new("TextButton",{Name="PreviewDrag_"..key,Text="",BackgroundTransparency=1,AutoButtonColor=false,Active=true,Visible=false,ZIndex=15},parent)
+   local outline=U.stroke(hit,Color3.fromRGB(224,183,255),0,1.5);U.corner(hit,6)
+   self.previewHandles[key]={p=hit,target=target,rim=outline}
+   if drag then scope:on(hit.InputBegan,function(input) drag(input,key,target,parent,self) end) end
+  end
+ end
  return self
 end
 function H:clearMarkers() for _,m in self.markers do m.root:Destroy() end;table.clear(self.markers) end
@@ -1581,7 +1604,7 @@ function H:step(s,f,dt)
  local overlay=self.inputRoot
  overlay.Visible=s.inputOverlay
  if overlay.Visible then
-  local k=s.inputScale/100
+  local k=s.inputScale/100*(if self.preview then self.factor else 1)
   local w,h=172*k,(if s.inputMouse then 156 else 114)*k
   local vp=self.view.AbsoluteSize
   overlay.Size=UDim2.fromOffset(172,if s.inputMouse then 156 else 114)
@@ -1607,7 +1630,7 @@ function H:step(s,f,dt)
  wh.Visible=s.wallhopHelper
  if wh.Visible then
   local vp=self.view.AbsoluteSize
-  local scale=s.wallhopScale/100
+  local scale=s.wallhopScale/100*(if self.preview then self.factor else 1)
   self.wallhopScale.Scale=scale;wh.GroupTransparency=1-s.wallhopOpacity/100
   local halfW,halfH=105*scale,43*scale
   wh.Position=UDim2.fromOffset(math.clamp(vp.X*s.wallhopX/100,halfW,math.max(halfW,vp.X-halfW)),math.clamp(vp.Y*s.wallhopY/100,halfH,math.max(halfH,vp.Y-halfH)))
@@ -1631,6 +1654,33 @@ function H:step(s,f,dt)
    setText(self.wallhopDetail,"Space · manual camera turn")
   end
  else self.whStart=nil;self.whDown=false;self.whAngle=nil end
+ if self.previewPanels then
+  local vp=self.view.AbsoluteSize
+  local factor=self.factor or .43
+  for _,key in {"top","rail"} do
+   local panel=self.previewPanels[key].p
+   local w,h=if key=="top" then math.min(vp.X*.58,345*factor) else 54*factor,if key=="top" then 38*factor else 176*factor
+   panel.Size=UDim2.fromOffset(w,h);panel.AnchorPoint=Vector2.zero
+   panel.Visible=if key=="top" then s.topCapsule else s.robloxRail
+   local x,y
+   if s[key.."Custom"] then
+    x=math.max(0,vp.X-w)*s[key.."X"]/100;y=math.max(0,vp.Y-h)*s[key.."Y"]/100
+   elseif key=="top" then x=(vp.X-w)/2;y=5
+   else x=5;y=vp.Y*.46-h/2 end
+   panel.Position=UDim2.fromOffset(math.clamp(x,0,math.max(0,vp.X-w)),math.clamp(y,0,math.max(0,vp.Y-h)))
+  end
+  for key,item in self.previewHandles do
+   local panel=key=="top" or key=="rail"
+   local allowed=if panel then s.movePanels else not s.locked
+   item.p.Visible=item.target.Visible and allowed
+   item.p.Active=allowed;item.p.Interactable=allowed
+   if item.p.Visible then
+    local xy=item.target.AbsolutePosition-self.view.AbsolutePosition
+    item.p.Position=UDim2.fromOffset(xy.X,xy.Y);item.p.Size=UDim2.fromOffset(item.target.AbsoluteSize.X,item.target.AbsoluteSize.Y)
+   end
+   if panel then self.previewPanels[key].rim.Color=if allowed then U.hex(s.accent) else Color3.fromRGB(125,116,148) end
+  end
+ end
  if not self.fpsAt or t>=self.fpsAt then
   self.fpsAt=t+.25
   setText(self.name,if f.fps then string.format("%d FPS",math.floor(f.fps+.5)) else "— FPS")
@@ -1980,9 +2030,9 @@ local function names(t) local a=U.keys(t);return a end
 local function preset(ui,a,group)
  local p=S.presets[group];if p then ui:title("PRESETS");ui:chips(names(p),function(n) a:patch(p[n]);a:log("Preset",n) end,3) end
 end
-local function preview(ui,a)
- local f=ui:row(149,"LivePreview");f.ClipsDescendants=true;f.BackgroundTransparency=0;U.gradient(f,Color3.fromRGB(105,87,145),Color3.fromRGB(49,46,94),36)
- local h=Hud.new(ui.page,f,true,function(tab) ui:open(tab) end,function(i,k,n,v) a:drag(i,k,n,v) end);a.preview={hud=h}
+local function preview(ui,a,showPanels)
+ local f=ui:row(if showPanels then 210 else 149,"LivePreview");f.ClipsDescendants=true;f.BackgroundTransparency=0;U.gradient(f,Color3.fromRGB(105,87,145),Color3.fromRGB(49,46,94),36)
+ local h=Hud.new(ui.page,f,true,function(tab) ui:open(tab) end,function(i,k,n,v,source) a:drag(i,k,n,v,source) end,nil,showPanels);a.preview={hud=h}
 end
 local function avatarPreview(ui,a)
  local f=ui:row(165,"RigPreview");local view=U.new("ViewportFrame",{Size=UDim2.fromScale(1,1),BorderSizePixel=0,BackgroundColor3=Color3.fromRGB(21,19,36),Ambient=Color3.fromRGB(155,145,175),LightColor=Color3.fromRGB(246,222,255),LightDirection=Vector3.new(-1,-1,-.6)},f);U.corner(view,10);local w=U.new("WorldModel",{},view);local rig=Avatar.mannequin(w);local cam=U.new("Camera",{FieldOfView=34,CFrame=CFrame.lookAt(Vector3.new(2.3,3.6,9.3),Vector3.new(0,2.1,0))},view);view.CurrentCamera=cam;local avatar=Avatar.new(w,true);a.preview={avatar=avatar,rig=rig};ui.page:add(function() avatar:clear() end)
@@ -2037,8 +2087,9 @@ local function scripts(ui,a)
 end
 function E.render(a,tab,ui)
  if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. F8 opens Studio. RightShift opens it only when native Shift-Lock is disabled. LeftAlt controls AETHER shoulder lock.",43);ui:chips({"Game","Simulator"},function(n) a:modeSet(n) end,2,function() return a.mode end);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme");ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
- elseif tab=="HUD" then preview(ui,a);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:control("compact");ui:title("TOP / LEFT PANELS");for _,v in {"topCapsule","robloxRail","movePanels"} do ui:control(v) end;ui:note("Enable moving panels here or with PANELS: LOCKED / MOVE in the live editor. Locked panels are outlined but cannot be dragged.",38);ui:chips({"Reset panel positions"},function() a:patch({topCustom=false,railCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartPalette","heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);ui:chips({"hp","clock","profile","dock","cross","input","wallhop"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
-  if k=="input" then for _,v in {"inputOverlay","inputMouse","inputX","inputY","inputScale","inputOpacity","inputColor"} do ui:control(v) end
+ elseif tab=="HUD" then preview(ui,a,true);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);ui:chips({"Unlock widget preview","Move top / left panels"},function(n) if n=="Unlock widget preview" then a:set("locked",not a.s.locked) else a:set("movePanels",not a.s.movePanels) end end,2);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:control("compact");ui:title("TOP / LEFT PANELS");for _,v in {"topCapsule","robloxRail","movePanels"} do ui:control(v) end;ui:note("Enable moving panels to drag AI / AETHER / ARCHIVIUM and CHAT / BAG / LIST directly in the preview or live editor.",38);ui:chips({"Reset panel positions"},function() a:patch({topCustom=false,railCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartPalette","heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);ui:chips({"hp","clock","profile","dock","cross","input","wallhop","top","rail"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
+  if k=="top" or k=="rail" then for _,v in {if k=="top" then "topCapsule" else "robloxRail","movePanels",k.."Custom",k.."X",k.."Y"} do ui:control(v) end
+  elseif k=="input" then for _,v in {"inputOverlay","inputMouse","inputX","inputY","inputScale","inputOpacity","inputColor"} do ui:control(v) end
   elseif k=="wallhop" then for _,v in {"wallhopHelper","wallhopX","wallhopY","wallhopScale","wallhopOpacity"} do ui:control(v) end
   elseif k=="cross" then ui:note("Shift-Lock reticle stays at the center of the game view.",28);for _,v in {"cross","reticleSize","reticleColor","reticleNeon","reticleGlow"} do ui:control(v) end
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
@@ -3464,18 +3515,49 @@ function app:onMenu(open)
     if open and self.editingHUD then self.editingHUD=false;self.ui.drag=nil end
     if open and self.view then self.view:releaseLock(self.view:nativeLockAvailable()) end
 end
-function app:drag(input, key, widget, frame)
-    if self.s.locked then return end
-    local start = Vector2.new(input.Position.X, input.Position.Y)
-    local x0, y0 = self.s[key .. "X"], self.s[key .. "Y"]
-    self.ui:begin(input, function(pos)
-        local delta = pos - start
-        local w, h = math.max(frame.AbsoluteSize.X, 1), math.max(frame.AbsoluteSize.Y, 1)
-        local x = math.clamp(math.round(x0 + delta.X / w * 100), 0, 100)
-        local y = math.clamp(math.round(y0 + delta.Y / h * 100), 0, 100)
-        if self.s[key .. "X"] ~= x or self.s[key .. "Y"] ~= y then
-            self:patch({layoutMode="Custom",[key .. "X"] = x, [key .. "Y"] = y})
+function app:drag(input, key, widget, frame, source)
+    local panel=key=="top" or key=="rail"
+    if panel then if not self.s.movePanels then return end
+    elseif self.s.locked then return end
+    if key=="cross" then return end
+    if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
+    local start=Vector2.new(input.Position.X,input.Position.Y)
+    local vp=frame.AbsoluteSize
+    local size=widget.AbsoluteSize
+    local original=widget.AbsolutePosition-frame.AbsolutePosition
+    local centered=key=="input" or key=="wallhop"
+    local function normalized(pos,sz,center)
+        if center then
+            return math.clamp(math.round((pos.X+sz.X*.5)/math.max(1,vp.X)*100),0,100),math.clamp(math.round((pos.Y+sz.Y*.5)/math.max(1,vp.Y)*100),0,100)
         end
+        return math.clamp(math.round(pos.X/math.max(1,vp.X-sz.X)*100),0,100),math.clamp(math.round(pos.Y/math.max(1,vp.Y-sz.Y)*100),0,100)
+    end
+    local migrated=false
+    self.ui:begin(input,function(pos)
+        local delta=pos-start
+        if delta.Magnitude<1 and not migrated then return end
+        local dest=original+delta
+        dest=Vector2.new(math.clamp(dest.X,0,math.max(0,vp.X-size.X)),math.clamp(dest.Y,0,math.max(0,vp.Y-size.Y)))
+        local x,y=normalized(dest,size,centered)
+        local patch={[key.."X"]=x,[key.."Y"]=y}
+        if panel then
+            if not self.s.movePanels then return end
+            patch[key.."Custom"]=true
+        elseif not centered and self.s.layoutMode=="Sketch" then
+            patch.layoutMode="Custom"
+            local preview=source or (self.preview and self.preview.hud)
+            if preview then
+                for _,other in {"hp","clock","profile","dock"} do
+                    if other~=key then
+                        local w=preview.widgets[other].p
+                        local nx,ny=normalized(w.AbsolutePosition-frame.AbsolutePosition,w.AbsoluteSize,false)
+                        patch[other.."X"]=nx;patch[other.."Y"]=ny
+                    end
+                end
+            end
+        end
+        migrated=true
+        self:patch(patch)
     end)
 end
 
