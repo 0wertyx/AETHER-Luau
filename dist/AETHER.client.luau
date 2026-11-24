@@ -2028,6 +2028,8 @@ end
 -- BEGIN MODULE Pages
 __aether_factories["Pages"] = function()
 local U=__aether_require("Util");local S=__aether_require("Schema");local MotionPacks=__aether_require("MotionPacks");local Symbol=__aether_require("Symbol");local Hud=__aether_require("Hud");local Avatar=__aether_require("Avatar");local Cues=__aether_require("Cues");local Http=game:GetService("HttpService")
+local WalkMotion=__aether_require("WalkMotion")
+local Input=game:GetService("UserInputService")
 local E={}
 local function names(t) local a=U.keys(t);return a end
 local function preset(ui,a,group)
@@ -2043,8 +2045,8 @@ local function preview(ui,a,showPanels)
  end
 end
 local function avatarPreview(ui,a)
- local f=ui:row(165,"RigPreview")
- local view=U.new("ViewportFrame",{Size=UDim2.fromScale(1,1),BorderSizePixel=0,BackgroundColor3=Color3.fromRGB(21,19,36),Ambient=Color3.fromRGB(155,145,175),LightColor=Color3.fromRGB(246,222,255),LightDirection=Vector3.new(-1,-1,-.6)},f)
+ local f=ui:row(230,"RigPreview")
+ local view=U.new("ViewportFrame",{Size=UDim2.fromScale(1,1),Active=true,BorderSizePixel=0,BackgroundColor3=Color3.fromRGB(21,19,36),Ambient=Color3.fromRGB(155,145,175),LightColor=Color3.fromRGB(246,222,255),LightDirection=Vector3.new(-1,-1,-.6)},f)
  U.corner(view,10)
  local w=U.new("WorldModel",{},view)
  local cam=U.new("Camera",{FieldOfView=34},view);view.CurrentCamera=cam
@@ -2056,16 +2058,82 @@ local function avatarPreview(ui,a)
  label.TextXAlignment=Enum.TextXAlignment.Center
  local generation=0
  local characterScope=nil
+ local motion=WalkMotion.new()
+ local rootPart=nil
+ local joints={}
+ local motors={}
+ local center=Vector3.zero
+ local radius=1
+ local yaw,pitch,zoom=.13,.08,1
+ local dragging=false
+ local hovered=false
+ local sc=ui.sc
+ local function applyCamera()
+  if page.dead then return end
+  local aspect=math.max(.1,view.AbsoluteSize.X/math.max(1,view.AbsoluteSize.Y))
+  local half=math.rad(cam.FieldOfView*.5)
+  local angle=math.min(half,math.atan(math.tan(half)*aspect))
+  local distance=radius/math.sin(angle)*1.12*zoom
+  local offset=Vector3.new(math.sin(yaw)*math.cos(pitch),math.sin(pitch),-math.cos(yaw)*math.cos(pitch))
+  cam.CFrame=CFrame.lookAt(center+offset*distance,center)
+ end
  local function fit()
   local rig=previewState.rig
   if page.dead or not rig or not rig.Parent then return end
   local cf,size=rig:GetBoundingBox()
-  local aspect=math.max(.1,view.AbsoluteSize.X/math.max(1,view.AbsoluteSize.Y))
-  local half=math.rad(cam.FieldOfView*.5)
-  local angle=math.min(half,math.atan(math.tan(half)*aspect))
-  local radius=math.max(.5,size.Magnitude*.5)
-  local distance=radius/math.sin(angle)*1.12
-  cam.CFrame=CFrame.lookAt(cf.Position+Vector3.new(.13,.08,-1).Unit*distance,cf.Position)
+  center=cf.Position;radius=math.max(.5,size.Magnitude*.5)
+  applyCamera()
+ end
+ local function prepareRig(rig)
+  motion:bind(nil);rootPart=rig:FindFirstChild("HumanoidRootPart")
+  table.clear(joints);table.clear(motors)
+  if not rootPart then return end
+  -- Anchored viewport rigs need explicit forward kinematics. Cache joints
+  -- once, including accessory welds, and keep the actual character untouched.
+  local adjacency={}
+  local function attach(part,edge)
+   adjacency[part]=adjacency[part] or {}
+   table.insert(adjacency[part],edge)
+  end
+  for _,joint in rig:GetDescendants() do
+   if joint:IsA("Motor6D") or joint:IsA("Weld") or joint:IsA("ManualWeld") then
+    local p0,p1=joint.Part0,joint.Part1
+    if p0 and p1 and p0:IsDescendantOf(rig) and p1:IsDescendantOf(rig) then
+     local edge={joint=joint,p0=p0,p1=p1,motor=joint:IsA("Motor6D")}
+     attach(p0,edge);attach(p1,edge)
+     if edge.motor then table.insert(motors,joint) end
+    end
+   end
+  end
+  local queue={rootPart};local seen={[rootPart]=true};local index=1
+  while index<=#queue do
+   local part=queue[index];index+=1
+   for _,edge in adjacency[part] or {} do
+    local forward=edge.p0==part
+    local other=if forward then edge.p1 else edge.p0
+    if not seen[other] then
+     seen[other]=true;table.insert(queue,other)
+     table.insert(joints,{edge=edge,forward=forward})
+    end
+   end
+  end
+ end
+ previewState.pose=function(settings,dt)
+  local rig=previewState.rig
+  if page.dead or not rootPart or not rootPart.Parent or not rig then return end
+  for _,motor in motors do motor.Transform=CFrame.identity end
+  if ui.tab=="Character" and settings.walkAnimation and not settings.reduce then
+   motion:step(rig,settings,dt,true)
+  else
+   motion:bind(nil)
+  end
+  for _,link in joints do
+   local e=link.edge;local j=e.joint
+   if j.Parent and e.p0.Parent and e.p1.Parent then
+    local offset=j.C0*(if e.motor then j.Transform else CFrame.identity)*j.C1:Inverse()
+    if link.forward then e.p1.CFrame=e.p0.CFrame*offset else e.p0.CFrame=e.p1.CFrame*offset:Inverse() end
+   end
+  end
  end
  local function refresh(char)
   generation+=1
@@ -2096,13 +2164,13 @@ local function avatarPreview(ui,a)
    rig.Name="LocalAvatarPreview"
    avatar:clear()
    if previewState.rig then previewState.rig:Destroy() end
-   rig.Parent=w;previewState.rig=rig;label.Visible=false;fit()
+   rig.Parent=w;previewState.rig=rig;prepareRig(rig);previewState.pose(a.s,0);label.Visible=false;fit()
   end)
  end
  local function bind(char)
   if characterScope then characterScope:clear() end
   characterScope=U.scope()
-  generation+=1;avatar:clear()
+  generation+=1;avatar:clear();motion:bind(nil);rootPart=nil;table.clear(joints);table.clear(motors)
   if previewState.rig then previewState.rig:Destroy();previewState.rig=nil end
   label.Text="Loading avatar...";label.Visible=true
   if not char then return end
@@ -2113,14 +2181,37 @@ local function avatarPreview(ui,a)
   characterScope:on(char.DescendantRemoving,appearanceChanged)
   refresh(char)
  end
- page:on(view:GetPropertyChangedSignal("AbsoluteSize"),fit)
+ page:on(view:GetPropertyChangedSignal("AbsoluteSize"),applyCamera)
+ page:on(view.MouseEnter,function() hovered=true;sc.ScrollingEnabled=false end)
+ page:on(view.MouseLeave,function() hovered=false;if not dragging then sc.ScrollingEnabled=true end end)
+ page:on(view.InputBegan,function(input)
+  if input.UserInputType==Enum.UserInputType.MouseButton1 then dragging=true;sc.ScrollingEnabled=false end
+ end)
+ page:on(Input.InputChanged,function(input)
+  if dragging and input.UserInputType==Enum.UserInputType.MouseMovement then
+   yaw=(yaw-input.Delta.X*.012)%(math.pi*2)
+   pitch=math.clamp(pitch+input.Delta.Y*.009,-1.15,1.15)
+   applyCamera()
+  elseif hovered and input.UserInputType==Enum.UserInputType.MouseWheel then
+   zoom=math.clamp(zoom*math.exp(-input.Position.Z*.15),.35,2.6)
+   applyCamera()
+  end
+ end)
+ page:on(Input.InputEnded,function(input)
+  if input.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false;sc.ScrollingEnabled=not hovered end
+ end)
+ page:on(Input.WindowFocusReleased,function() dragging=false;hovered=false;sc.ScrollingEnabled=true end)
+ ui:note("Drag to orbit · Scroll to zoom · Walking style plays in place",25)
+ ui:chips({"Reset view"},function() yaw,pitch,zoom=.13,.08,1;applyCamera() end,1)
  page:on(player.CharacterAdded,bind)
  page:on(player.CharacterRemoving,function() bind(nil) end)
  page:on(player.CharacterAppearanceLoaded,function(char) if char==player.Character then refresh(char) end end)
  page:add(function()
   generation+=1
+  dragging=false;hovered=false
+  if sc.Parent then sc.ScrollingEnabled=true end
   if characterScope then characterScope:clear() end
-  avatar:clear()
+  motion:destroy();avatar:clear()
  end)
  bind(player.Character)
 end
@@ -3289,24 +3380,24 @@ end
 local function add(j,cf)
  if j and j.Parent then j.Transform=j.Transform*cf end
 end
-function W:step(character,s,dt)
+function W:step(character,s,dt,preview)
  self:bind(character)
  if not character then return end
  local hum=character:FindFirstChildOfClass("Humanoid")
- if not hum or not hum:FindFirstChildOfClass("Animator") then return end
+ if not hum or (not preview and not hum:FindFirstChildOfClass("Animator")) then return end
  dt=math.clamp(dt,0,.07)
  local style=s.walkStyle or "Natural"
  local pack=MotionPacks.get(style)
  local floating=style=="Floating" or style=="Glide" or style=="Ethereal"
- local enabled=s.walkAnimation and not s.reduce and hum.Health>0 and not hum.Sit
- local state=hum:GetState()
+ local enabled=s.walkAnimation and not s.reduce and (preview or (hum.Health>0 and not hum.Sit))
+ local state=if preview then Enum.HumanoidStateType.Running else hum:GetState()
  local jumping=state==Enum.HumanoidStateType.Jumping
  local falling=state==Enum.HumanoidStateType.Freefall
  local climbing=state==Enum.HumanoidStateType.Climbing
  local swimming=state==Enum.HumanoidStateType.Swimming
  local airborne=jumping or falling
- local grounded=hum.FloorMaterial~=Enum.Material.Air
- local movement=hum.MoveDirection.Magnitude
+ local grounded=preview or hum.FloorMaterial~=Enum.Material.Air
+ local movement=if preview then 1 else hum.MoveDirection.Magnitude
  local intensity=math.clamp((s.walkIntensity or 65)/100,0,1)
  local target=0
  if enabled then
@@ -4061,6 +4152,7 @@ local function frame(dt, now)
     view:step(styled, humanoid, ui.opened or app.editingHUD==true, dt, now)
     if app.preview then
         if app.preview.hud then app.preview.hud:step(styled, result, dt) end
+        if app.preview.pose then app.preview.pose(styled, dt) end
         if app.preview.avatar then app.preview.avatar:step(app.preview.rig, styled, now) end
         view:preview(app.preview.cursorHost,styled)
     end
