@@ -297,12 +297,14 @@ app.store = store
 -- during validation remains queued; rollback is not immediately undone.
 local updateRS=game:GetService("ReplicatedStorage")
 local relayConnection=nil
+local relayStatusConnection=nil
 local relayInstance=nil
 local pendingManifest=nil
 local lastManifest=nil
 local function observeRelay(value)
     if value.Name~="AetherLiveManifestV1" or not value:IsA("StringValue") then return end
     if relayConnection then relayConnection:Disconnect() end
+    if relayStatusConnection then relayStatusConnection:Disconnect() end
     relayInstance=value
     updateState.connected=true
     local function receive()
@@ -312,6 +314,12 @@ local function observeRelay(value)
         end
     end
     relayConnection=value:GetPropertyChangedSignal("Value"):Connect(receive)
+    local function refreshRelayStatus()
+        updateState.relayStatus=tostring(value:GetAttribute("RelayStatus") or "CONNECTED / STATUS UNKNOWN")
+        if app.ui then app.ui:sync() end
+    end
+    relayStatusConnection=value:GetAttributeChangedSignal("RelayStatus"):Connect(refreshRelayStatus)
+    refreshRelayStatus()
     receive()
     app:updateStatus("Website update relay connected")
 end
@@ -319,11 +327,13 @@ scope:on(updateRS.ChildAdded,observeRelay)
 scope:on(updateRS.ChildRemoved,function(value)
     if value~=relayInstance then return end
     if relayConnection then relayConnection:Disconnect();relayConnection=nil end
-    relayInstance=nil;pendingManifest=nil;lastManifest=nil;updateState.connected=false
+    if relayStatusConnection then relayStatusConnection:Disconnect();relayStatusConnection=nil end
+    relayInstance=nil;pendingManifest=nil;lastManifest=nil;updateState.connected=false;updateState.relayStatus=nil
     app:updateStatus("Website update relay disconnected")
 end)
 scope:add(function()
     if relayConnection then relayConnection:Disconnect() end
+    if relayStatusConnection then relayStatusConnection:Disconnect() end
 end)
 local existingRelay=updateRS:FindFirstChild("AetherLiveManifestV1")
 if existingRelay then observeRelay(existingRelay) end
