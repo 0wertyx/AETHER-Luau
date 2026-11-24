@@ -15,6 +15,20 @@ local function is(style,...)
  for _,v in {...} do if style==v then return true end end
  return false
 end
+local wingFigures={["Prism Wings"]=3,["Triad Wings"]=3,["Hex Wings"]=6,["Star Wings"]=10,["Orbital Wings"]=16,["Diamond Wings"]=4}
+local haloFigures={Triangle=3,Square=4,Pentagon=5,Hexagon=6,Octagon=8,Star=10,["Double Diamond"]=4,Infinity=40}
+local function outlinePoint(index,sides,radius,star,phase)
+ local angle=phase+index/sides*math.pi*2
+ local r=radius*(if star and index%2==1 then .48 else 1)
+ return Vector3.new(math.cos(angle)*r,math.sin(angle)*r,0)
+end
+local function segment(p,a,b,thick)
+ local d=b-a
+ if d.Magnitude<.001 then p.Transparency=1;return end
+ p.Transparency=0
+ p.Size=Vector3.new(thick,thick,d.Magnitude)
+ p.CFrame=CFrame.lookAt((a+b)*.5,b)
+end
 local function config(detail)
  if detail=="Balanced" then return 8,5,24,12
  elseif detail=="Ultra" then return 15,9,48,32
@@ -23,7 +37,7 @@ end
 function A.new(parent,preview)
  return setmetatable({
   parent=parent,preview=preview,feathers={},trims={},beads={},ornaments={},
-  parts={},frames={},key="",paintAt=-1,walk=0,phase=0,lastAt=nil
+  parts={},frames={},geoWings={},geoHalos={},key="",paintAt=-1,walk=0,phase=0,lastAt=nil
  },A)
 end
 function A:clear()
@@ -31,7 +45,7 @@ function A:clear()
  self.root=nil;self.highlight=nil;self.emitter=nil;self.trail=nil;self.light=nil
  self.key="";self.char=nil;self.lastAt=nil;self.walk=0;self.phase=0
  table.clear(self.feathers);table.clear(self.trims);table.clear(self.beads)
- table.clear(self.ornaments);table.clear(self.parts);table.clear(self.frames)
+ table.clear(self.ornaments);table.clear(self.parts);table.clear(self.frames);table.clear(self.geoWings);table.clear(self.geoHalos)
 end
 function A:add(partInstance)
  table.insert(self.parts,partInstance)
@@ -49,7 +63,18 @@ function A:bind(char,body,head,s)
  self.key=key;self.char=char;self.scope=U.scope()
  self.root=self.scope:add(U.new("Folder",{Name="AetherAvatarFX"},self.parent))
  self.paintAt=-1
- if s.wings then
+ if s.wings and wingFigures[s.wingStyle] then
+  local sides=wingFigures[s.wingStyle]
+  local count=if wdetail=="Ultra" then 5 elseif wdetail=="Balanced" then 3 else 4
+  for _,side in {-1,1} do
+   for tier=1,count do
+    local edges={}
+    for i=1,sides do edges[i]=self:add(part(self.root,"GeometricWingEdge",Vector3.one,Enum.PartType.Block,true)) end
+    local gem=self:add(part(self.root,"GeometricWingCore",Vector3.one,Enum.PartType.Ball,true))
+    table.insert(self.geoWings,{side=side,tier=tier,count=count,edges=edges,gem=gem,sides=sides})
+   end
+  end
+ elseif s.wings then
   local primary,secondary=config(wdetail)
   for _,side in {-1,1} do
    for layer,count in {primary,secondary} do
@@ -69,7 +94,19 @@ function A:bind(char,body,head,s)
    end
   end
  end
- if s.halo then
+ if s.halo and haloFigures[s.haloStyle] then
+  local sides=haloFigures[s.haloStyle]
+  if s.haloStyle=="Infinity" then sides=if hdetail=="Balanced" then 24 elseif hdetail=="Ultra" then 48 else 40 end
+  for ring=1,(if s.haloStyle=="Double Diamond" then 2 else 1) do
+   local edges={}
+   for i=1,sides do edges[i]=self:add(part(self.root,"GeometricHaloEdge",Vector3.one,Enum.PartType.Block,true)) end
+   table.insert(self.geoHalos,{ring=ring,edges=edges,sides=sides})
+  end
+  for i=1,math.min(sides,8) do
+   local p=self:add(part(self.root,"HaloOrbitGem",Vector3.one,Enum.PartType.Block,true))
+   table.insert(self.ornaments,{p=p,index=i,count=math.min(sides,8)})
+  end
+ elseif s.halo then
   local _,_,outer,inner=config(hdetail)
   local second=is(s.haloStyle,"Binary","Double Ring","Solar","Lunar","Orbitals","Prism","Eclipse","Lotus")
   for ring,count in {outer,if second then inner else 0} do
@@ -179,6 +216,26 @@ function A:step(char,s,t)
    submit(f.tip,orientation*CFrame.new(0,len*.73,thick*.18))
   end
  end
+ for _,f in self.geoWings do
+  local v=(f.tier-1)/math.max(1,f.count-1)
+  local phase=time*(s.wingBeat/100)*.72+f.tier*.42
+  local drift=if s.reduce then 0 else math.sin(phase)*.12
+  local basis=mount*CFrame.Angles(0,f.side*(beat+gait*.18-math.rad(s.wingSweep)*.35),0)
+   *CFrame.new(f.side*(.85+v*2.35)*scale,(.05+v*.75+drift)*scale,.35*scale)
+   *CFrame.Angles(.1+drift,f.side*.18,-f.side*(.38+v*.65))
+  local radius=(.83-v*.31)*scale*(1+drift*.24)
+  local spin=if s.reduce then 0 else f.side*phase*.55
+  local function point(i)
+   local p=outlinePoint(i,f.sides,radius,s.wingStyle=="Star Wings",spin)
+   if s.wingStyle=="Prism Wings" then p=Vector3.new(p.X,p.Y,p.Y*.28) end
+   if s.wingStyle=="Triad Wings" then p=Vector3.new(p.X*.75,p.Y*1.35,0) end
+   return basis:PointToWorldSpace(p)
+  end
+  local previous=point(0)
+  for i,p in f.edges do local nextPoint=point(i);segment(p,previous,nextPoint,.055*scale);previous=nextPoint end
+  f.gem.Size=Vector3.one*(.12+.025*math.sin(phase))*scale
+  f.gem.CFrame=basis*CFrame.Angles(phase*.5,phase*.7,0)
+ end
  for _,f in self.trims do
   local v=(f.index-1)/4
   local a=mount*CFrame.Angles(0,f.side*(beat+gait*.15-math.rad(s.wingSweep)),0)
@@ -189,6 +246,19 @@ function A:step(char,s,t)
   +math.sin(time*1.8)*.045
   +bob*.11
  local hRadius=s.haloRadius/100
+ for _,g in self.geoHalos do
+  local spin=time*s.haloSpin*.012*(if g.ring==2 then -1 else 1)
+  local r=hRadius*(if g.ring==2 then .65 else 1)
+  local basis=head.CFrame*CFrame.new(0,haloY+(g.ring-1)*.12,0)*CFrame.Angles(.12+math.sin(time*.7)*.12,spin+(g.ring-1)*math.pi/4,0)
+  local function point(i)
+   local angle=i/g.sides*math.pi*2
+   if s.haloStyle=="Infinity" then return basis:PointToWorldSpace(Vector3.new(math.sin(angle)*r*1.2,math.sin(angle*2)*.10,math.sin(angle*2)*r*.55)) end
+   local p=outlinePoint(i,g.sides,r,s.haloStyle=="Star",math.pi/2)
+   return basis:PointToWorldSpace(Vector3.new(p.X,0,p.Y))
+  end
+  local previous=point(0)
+  for i,p in g.edges do local nextPoint=point(i);segment(p,previous,nextPoint,.075);previous=nextPoint end
+ end
  for _,b in self.beads do
   local style=s.haloStyle
   local ring=b.ring
@@ -248,6 +318,13 @@ function A:step(char,s,t)
   end
   for _,f in self.trims do f.p.Color=accent:Lerp(wingColor,f.index*.1) end
   local haloColor=U.hex(s.haloColor)
+  for _,g in self.geoWings do
+   for i,p in g.edges do p.Color=if s.wingRainbow then Color3.fromHSV((time*.09+i/#g.edges+g.tier*.13)%1,.55,1) else wingColor:Lerp(accent,(i/#g.edges)*.6) end
+   g.gem.Color=accent
+  end
+  for _,g in self.geoHalos do
+   for i,p in g.edges do p.Color=if s.haloRainbow then Color3.fromHSV((time*.10+i/#g.edges)%1,.55,1) else haloColor:Lerp(accent,i/#g.edges*.5) end
+  end
   for _,b in self.beads do
    b.p.Color=if s.haloRainbow then Color3.fromHSV((time*.1+b.index/b.count+(.23*(b.ring-1)))%1,.58,1)
     else haloColor:Lerp(accent,if b.ring==2 then .46 else .12)
