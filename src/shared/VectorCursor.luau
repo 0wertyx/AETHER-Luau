@@ -243,6 +243,26 @@ function M.new(parent)
    end
   end
  end
+ -- Symbol's ink is centered inside a 73% square, unlike the full-size SVG.
+ -- Return the actual normalized rendered tip, not just the source SVG coordinate.
+ function self:hotspot(s)
+  local x,y=s.hotX/100,s.hotY/100
+  local native=self.display~=nil and paths[s.cursorShape]~=nil
+  if s.cursorShape=="Image" then return x,y end
+  if s.hotX==19 and s.hotY==8 then
+   local tips={
+    ["Rounded Triangle"]={6/32,3/32},["Soft Arrow"]={6/32,4/32},
+    Diamond={.5,2/32},Orbit={.5,2/32},Spark={.5,2/32},Chevron={4/32,7/32},
+    ["Neon Pointer"]={.5,1/32},Arrowhead={.5,2/32},
+    ["Split Arrow"]={.5,2/32},Needle={.5,1/32},Crystal={.5,1/32},Spear={.5,1/32},
+    ["Star Pointer"]={.5,1/32},Compass={.5,1/32},Crosshair={.5,.5},Heart={.5,.5},
+   }
+   local tip=tips[s.cursorShape]
+   if tip then x,y=tip[1],tip[2] end
+  end
+  if not native then x=.135+.73*x;y=.135+.73*y end
+  return x,y
+ end
  function self:destroy()
   self:preview(nil)
   if self.display then self.display:Destroy() end

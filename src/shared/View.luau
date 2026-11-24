@@ -4,9 +4,9 @@ function V.new(player,layer)
  local self=setmetatable({player=player,angle=0,clock=0,trails={},trailPoints={}},V)
  -- This anchor marks the exact click pixel. Animated skin always rotates AROUND it.
  self.pointer=U.frame(layer,"MouseHotspot",nil,UDim2.fromOffset(1,1),nil,1)
- self.pointer.Active=false;self.pointer.Visible=false;self.pointer.ZIndex=10
+ self.pointer.Active=false;self.pointer.Interactable=false;self.pointer.Visible=false;self.pointer.ZIndex=10
  self.skin=U.frame(self.pointer,"CursorSkin",nil,UDim2.fromOffset(32,32),nil,1)
- self.skin.Active=false;self.skin.ZIndex=10
+ self.skin.Active=false;self.skin.Interactable=false;self.skin.ZIndex=10
  self.glyph=VectorCursor.new(self.skin)
  self.image=U.new("ImageLabel",{
   Name="Asset",BackgroundTransparency=1,Active=false,Selectable=false,
@@ -55,9 +55,15 @@ function V:preview(host,s)
   host.Size=UDim2.fromOffset(size,size)
  end
 end
+function V:restoreCursor()
+ if self.pointer and self.pointer.Parent then self.pointer.Visible=false end
+ for _,tail in self.trails do if tail.Parent then tail.Visible=false end end
+ table.clear(self.trailPoints)
+ if self.icon~=nil then Input.MouseIconEnabled=self.icon;self.icon=nil end
+end
 function V:destroy()
  self:releaseCamera()
- if self.icon~=nil then Input.MouseIconEnabled=self.icon;self.icon=nil end
+ self:restoreCursor()
  if self.previewImage then self.previewImage:Destroy();self.previewImage=nil end
  self.glyph:destroy()
  for _,tail in self.trails do tail:Destroy() end
@@ -74,37 +80,35 @@ function V:cursorStep(s)
  self.shiftReticleActive=locked==true
  local show=s.cursor and not locked and Input.MouseEnabled and not Gui.MenuIsOpen
   and (not image or s.image~="") and Input:GetLastInputType()~=Enum.UserInputType.Touch
- if show or locked then
+ if locked then
+  self.pointer.Visible=false
+  self.hotspotDebug.Visible=false
+  for _,tail in self.trails do tail.Visible=false end
+  table.clear(self.trailPoints)
   if self.icon==nil then self.icon=Input.MouseIconEnabled end
   Input.MouseIconEnabled=false
- elseif self.icon~=nil then
-  Input.MouseIconEnabled=self.icon;self.icon=nil
- end
- self.pointer.Visible=show
- self.hotspotDebug.Visible=show and s.cursorDebug==true
- for _,tail in self.trails do tail.Visible=show and s.cursorTrail==true and not s.reduce end
- if not show then
-  table.clear(self.trailPoints)
   return
  end
+ if not show then self:restoreCursor();return end
+ -- Prepare the visible artwork first. If an imported asset has not loaded,
+ -- keep the original cursor instead of leaving the player with no pointer.
+ self.image.Visible=image
+ if image then
+  local asset="rbxassetid://"..s.image
+  if self.image.Image~=asset then self.image.Image=asset end
+  if not self.image.IsLoaded then self:restoreCursor();return end
+ end
+ self.glyph:step(s,os.clock())
 
- -- Viewport/screen coordinates use ScreenInsets=None. Avoid GuiInset subtraction.
- -- Cursor offset is for manual calibration in experiences with an unusual cursor.
+ -- GetMouseLocation is screen-relative; AbsolutePosition is CoreUISafeInsets-
+ -- relative even when ScreenInsets=None. Convert both to the same space once.
  local mouse=Input:GetMouseLocation()
+ local inset=Gui:GetGuiInset()
  local origin=self.pointer.Parent.AbsolutePosition
- local hit=Vector2.new(
-  mouse.X-origin.X+(s.cursorOffsetX or 0),
-  mouse.Y-origin.Y+(s.cursorOffsetY or 0))
+ local hit=mouse-inset-origin+Vector2.new(s.cursorOffsetX or 0,s.cursorOffsetY or 0)
  self.pointer.Position=UDim2.fromOffset(hit.X,hit.Y)
 
- -- Values in SVG viewBox (32x32), giving exact tip for built-in cursor silhouettes.
- local hx,hy=s.hotX/100,s.hotY/100
- if s.hotX==19 and s.hotY==8 then
-  local tip={["Rounded Triangle"]={.1875,.09375},["Soft Arrow"]={.1875,.125},
-   Diamond={.5,.0625},Orbit={.5,.0625},Spark={.5,.0625},Chevron={.125,.25}}
-  local p=tip[s.cursorShape]
-  if p then hx,hy=p[1],p[2] end
- end
+ local hx,hy=self.glyph:hotspot(s)
 
  local anim=if s.reduce then "Off" else (s.cursorAnimation or "Off")
  local t=os.clock()*(s.cursorMotionSpeed or 100)/100
@@ -130,8 +134,12 @@ function V:cursorStep(s)
  local cx=dx*math.cos(rad)-dy*math.sin(rad)
  local cy=dx*math.sin(rad)+dy*math.cos(rad)
  self.skin.Position=UDim2.fromOffset(-cx-size*.5,-cy-size*.5)
- self.image.Visible=image
- if image then self.image.Image="rbxassetid://"..s.image end
+ self.pointer.Visible=true
+ self.hotspotDebug.Visible=s.cursorDebug==true
+ for _,tail in self.trails do tail.Visible=s.cursorTrail==true and not s.reduce end
+ -- Only suppress the native cursor after the custom cursor is ready and placed.
+ if self.icon==nil then self.icon=Input.MouseIconEnabled end
+ Input.MouseIconEnabled=false
  if s.cursorTrail and not s.reduce then
   local tint=U.hex(s.cursorA or "B78AFF")
   local previous=hit
@@ -170,7 +178,7 @@ function V:step(s,hum,menu,dt,t)
   end
  end
  -- Rasterization and gradient work is independent of pointer position.
- if self.pointer.Visible or self.previewHost then self.glyph:step(s,t) end
+ if self.previewHost and not self.pointer.Visible then self.glyph:step(s,os.clock()) end
  self.settings=s
 end
 return V

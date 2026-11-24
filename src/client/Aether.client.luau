@@ -45,6 +45,7 @@ local pointerGui = scope:add(U.new("ScreenGui", {
     ZIndexBehavior = Enum.ZIndexBehavior.Global,
 }, pg))
 local pointer = U.frame(pointerGui, "PointerLayer", nil, nil, nil, 1)
+pointer.Active=false;pointer.Interactable=false
 local studioLayer = U.frame(gui, "StudioLayer", nil, nil, nil, 1)
 
 local app = {
@@ -279,9 +280,14 @@ local pointerRenderBinding = "AETHER_Pointer_" .. game:GetService("HttpService")
 RunService:BindToRenderStep(pointerRenderBinding, Enum.RenderPriority.Last.Value, function()
     if not gui.Parent then return end
     local ok, err = pcall(view.cursorStep, view, app.s)
-    if not ok and not app.pointerError then
-        app.pointerError = true
-        warn("AETHER cursor position:", err)
+    if not ok then
+        pcall(view.restoreCursor,view)
+        if not app.pointerError then
+            app.pointerError = true
+            warn("AETHER cursor position:", err)
+        end
+    else
+        app.pointerError = false
     end
 end)
 scope:add(function() RunService:UnbindFromRenderStep(pointerRenderBinding) end)
