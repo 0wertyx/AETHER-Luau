@@ -497,14 +497,15 @@ function UI:animateBackground(t)
  self.geoLayer.Visible=s.menuGeometry and self.panel.Visible
  if not self.geoLayer.Visible then return end
  local tm=if s.reduce then 0 else t*s.menuMotion/100
- local key=s.menuShape..":"..s.accent..":"..s.secondary..":"..s.menuOpacity
- if self.geoLast and tm==self.geoLast and self.geoSettings==s then return end
- self.geoLast=tm;self.geoSettings=s
+ local key=s.menuShape..":"..s.accent..":"..s.secondary..":"..s.menuOpacity..":"..s.menuDensity
+ if self.geoLast==tm and self.geoSettings==key then return end
+ self.geoLast=tm;self.geoSettings=key
  local a,b=U.hex(s.accent),U.hex(s.secondary)
+ local mixed={3,4,6,12}
  for i,g in self.geo do
   g.root.Visible=i<=s.menuDensity
   if i>s.menuDensity then continue end
-  local count=if s.menuShape=="Rings" then 12 elseif s.menuShape=="Crystals" then 4 elseif s.menuShape=="Triangles" then 3 elseif s.menuShape=="Hexagons" then 6 else ({3,4,6,12})[i%4+1]
+  local count=if s.menuShape=="Rings" then 12 elseif s.menuShape=="Crystals" then 4 elseif s.menuShape=="Triangles" then 3 elseif s.menuShape=="Hexagons" then 6 else mixed[i%4+1]
   local size=(34+(i*19)%73)*(1+.05*math.sin(tm*.4+i))
   g.root.Size=UDim2.fromOffset(size,size)
   g.root.Position=UDim2.fromScale(.08+((i*.618)%1)*.84+math.sin(tm*.17+i)*.035,.08+((i*.381)%1)*.84+math.cos(tm*.21+i)*.045)
@@ -561,7 +562,7 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.."   /   "..self.tab.."   /   HEART128"
+ self.tag.Text=self.app.mode.."   /   "..self.tab.."   /   SMOOTH240"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  for _,asset in self.icons do asset:sync(st.iconAtlas,st.iconAtlasTile) end
@@ -819,6 +820,14 @@ local function heartColors(s,ratio,dead,t)
  local q=math.clamp((.82-ratio)/.17,0,1)
  return a:Lerp(yellowA,q),m:Lerp(yellowM,q),b:Lerp(yellowB,q)
 end
+local function smoothPulse(phase,center,width)
+ local distance=math.abs((phase-center+.5)%1-.5)
+ if distance>=width then return 0 end
+ return .5+.5*math.cos(math.pi*distance/width)
+end
+local function setText(label,value)
+ if label.Text~=value then label.Text=value end
+end
 local function center(p,t,size) local n=U.label(p,t,size);n.TextXAlignment=Enum.TextXAlignment.Center;return n end
 function H.new(scope,parent,preview,go,drag)
  local self=setmetatable({view=parent,preview=preview,widgets={},markers={},extras={},spark={},time=0,phase=0,paintAt=0,last=-1,dockIcons={}},H)
@@ -1017,12 +1026,37 @@ function H:vitals(s,f,dt)
  if self.last~=hp or self.gen~=f.gen or self.maximum~=max then
   self.effect=if self.gen~=nil and (f.gen~=self.gen or self.last==0 and hp>0) then "Revive" elseif self.last>=0 and hp<self.last then "Damage" elseif self.last>=0 and hp>self.last then "Heal" else "None";self.age=0;self.from=self.shown or hp;self.fromRatio=self.bar or ratio;self.fromTrail=math.max(self.trailRatio or ratio,self.bar or ratio);self.last=hp;self.gen=f.gen;self.maximum=max;w.p:SetAttribute("Effect",self.effect);w.p:SetAttribute("Health",hp);w.p:SetAttribute("MaxHealth",max);w.p:SetAttribute("Life",band)
  end
- self.age+=dt;local dur=s.duration/1000*100/s.speed;local q=if dead or s.reduce then 1 else U.ease(self.age/dur,s.ease);self.shown=self.from+(hp-self.from)*q;self.bar=self.fromRatio+(ratio-self.fromRatio)*q
- self.trailRatio=if self.effect=="Damage" and not s.reduce and not dead then self.fromTrail+(ratio-self.fromTrail)*U.ease((self.age-.20)/dur,s.ease) else self.bar
- self.fill.Size=UDim2.fromScale(self.bar,1);self.trail.Size=UDim2.fromScale(self.trailRatio,1);self.value.Text=string.format("%d / %d HP",math.ceil(self.shown-.00001),math.ceil(max));self.stateText.Text=band
+ self.age+=dt
+ local dur=s.hudSmoothness/1000*100/s.speed
+ local q=if dead or s.reduce then 1 else U.ease(self.age/math.max(.01,dur),s.ease)
+ -- Exponential smoothing preserves continuous motion even during rapid HP changes.
+ if dead or s.reduce or self.effect=="Revive" and self.age<=dt then
+  self.shown=hp;self.bar=ratio;self.trailRatio=ratio
+ else
+  self.shown=U.approach(self.shown or hp,hp,dt,dur/4.6)
+  self.bar=U.approach(self.bar or ratio,ratio,dt,dur/4.6)
+  if self.effect=="Damage" then
+   if self.age<=.18 then self.trailRatio=math.max(self.fromTrail,self.bar)
+   else self.trailRatio=math.max(self.bar,U.approach(self.trailRatio or self.fromTrail,ratio,dt,dur/2.6)) end
+  else self.trailRatio=self.bar end
+ end
+ self.fill.Size=UDim2.fromScale(self.bar,1)
+ self.trail.Size=UDim2.fromScale(self.trailRatio,1)
+ local number=math.ceil(self.shown-.00001)
+ if self.displayHP~=number or self.displayMax~=max then
+  self.displayHP=number;self.displayMax=max
+  setText(self.value,string.format("%d / %d HP",number,math.ceil(max)))
+ end
+ setText(self.stateText,band)
  local a,b;if dead then a,b=Color3.fromRGB(91,85,102),Color3.fromRGB(104,98,115) elseif ratio<=.3 then a,b=Color3.fromRGB(245,46,78),Color3.fromRGB(255,109,169) elseif ratio<=.65 then a,b=Color3.fromRGB(255,225,99),Color3.fromRGB(255,144,60) else a,b=U.hex(s.accent),U.hex(s.secondary) end
  local mix=if s.reduce or dead then 1 else 1-math.exp(-dt*12);self.tint=(self.tint or a):Lerp(a,mix);self.tint2=(self.tint2 or b):Lerp(b,mix);self.fillG.Color=ColorSequence.new(self.tint,self.tint2)
- local beat=0;if not dead and not s.reduce then local period=if ratio<=.3 then .33+.5*ratio elseif ratio<=.65 then .62+.45*ratio else .91+.62*ratio;self.phase=(self.phase+dt*s.speed/100/period)%1;beat=math.max(0,1-math.abs(self.phase-.12)*9)+.6*math.max(0,1-math.abs(self.phase-.31)*13) else self.phase=0 end
+ local beat=0
+ if not dead and not s.reduce then
+  local period=.43+1.06*ratio^1.2
+  self.beatPeriod=U.approach(self.beatPeriod or period,period,dt,.14)
+  self.phase=(self.phase+dt*s.speed/100/self.beatPeriod)%1
+  beat=smoothPulse(self.phase,.14,.13)+.55*smoothPulse(self.phase,.36,.105)
+ else self.phase=0;self.beatPeriod=nil end
  local bump=if not s.reduce and not dead and (self.effect=="Heal" or self.effect=="Revive") then math.sin(math.pi*q)*(if self.effect=="Revive" then .22 else .09) else 0
  local side=35*(1+beat*(.12+.15*(1-ratio))+bump)
  self.heart.root.Size=UDim2.fromOffset(side,side)
@@ -1037,7 +1071,7 @@ function H:vitals(s,f,dt)
  self.shine.Visible=s.hudShine and not dead and not s.reduce and self.bar>.02 and s.hudMotion~="Off"
  if self.shine.Visible then
   local progress=(self.time*s.speed/100*.42)%1
-  self.shineGradient.Offset=Vector2.new(-.82+progress*1.64,0)
+  self.shineGradient.Offset=Vector2.new(-1.15+progress*2.3,0)
  end
  local reaction=if s.hudReaction and not s.reduce and s.hudMotion~="Off" and self.effect~="None" and not dead then math.exp(-self.age*5)*s.hudMotionStrength/100 else 0
  self.reactionStroke.Enabled=reaction>.01
@@ -1050,7 +1084,7 @@ end
 function H:animateWidgets(s,f,dt,t)
  local enabled=not s.reduce and s.hudMotion~="Off"
  local strength=s.hudMotionStrength/100
- local dur=math.max(.08,s.duration/1000*100/s.speed)
+ local dur=math.max(.08,s.hudSmoothness/1000*100/s.speed)
  local time=t*s.speed/100
  for index,key in {"hp","clock","profile","dock"} do
   local w=self.widgets[key]
@@ -1100,8 +1134,21 @@ function H:directions(s,f,dt,t,paint)
 end
 function H:step(s,f,dt)
  if self.settings~=s or self.width~=self.view.AbsoluteSize.X then self:setStyle(s) end;self.time+=dt;local t=self.time;local paint=t>=self.paintAt;if paint then self.paintAt=t+.075 end
- self:reticle(s,f,t);self:vitals(s,f,dt);self:animateWidgets(s,f,dt,t);self:directions(s,f,dt,t,paint);self.name.Text=f.name;self.clock.Text=os.date("%H:%M");self.clockSub.Text=f.mode
- if paint then for i,n in self.spark do n.Visible=s.sparkles;if s.sparkles then n.BackgroundColor3=U.hex(s.secondary);n.Position=UDim2.fromScale((i*.617)%1,(i*.349-(if s.reduce then 0 else t*.014))%1) end end end
+ self:reticle(s,f,t);self:vitals(s,f,dt);self:animateWidgets(s,f,dt,t);self:directions(s,f,dt,t,paint)
+ setText(self.name,f.name);setText(self.clockSub,f.mode)
+ if not self.clockAt or t>=self.clockAt then
+  self.clockAt=t+.25
+  setText(self.clock,os.date("%H:%M"))
+ end
+ -- Decorative motion is evaluated every render frame, not on the text refresh timer.
+ local sparkleTint=U.hex(s.secondary)
+ for i,n in self.spark do
+  n.Visible=s.sparkles
+  if s.sparkles then
+   if paint then n.BackgroundColor3=sparkleTint end
+   if not s.reduce or paint then n.Position=UDim2.fromScale((i*.617)%1,(i*.349-(if s.reduce then 0 else t*.014))%1) end
+  end
+ end
  for id,n in self.extras do if not f.widgets[id] then n:Destroy();self.extras[id]=nil end end
  for id,w in f.widgets do local n=self.extras[id];if not n then n=U.label(self.view,"",14,nil,UDim2.fromOffset(150,25));n.Name="Cue_"..id;n.ZIndex=4;self.extras[id]=n end;n.Text=w.text;n.FontFace=U.font(s);n.TextColor3=U.hex(s.fontA);n.TextStrokeTransparency=.4;local wave=if s.reduce then 0 else math.sin(t*3);n.Position=UDim2.new(w.x/100,0,w.y/100,if w.animation=="float" then wave*5 else 0);n.TextTransparency=if w.animation=="pulse" then .17+wave*.16 else 0 end
 end
@@ -1468,9 +1515,9 @@ local function color(g,k,t,v) def(g,k,t,"color",v) end
 local function text(g,k,t,v,n) def(g,k,t,"text",v,0,n) end
 color("Theme","accent","Accent","A68AFF");color("Theme","secondary","Second neon","FF89C7");color("Theme","glassColor","Glass tint","211C35");color("Theme","uiFontColor","Studio text color","F1E6FF");color("Theme","uiMutedColor","Studio secondary text","ADA3C5");def("Theme","iconAtlas","Original icon atlas Roblox asset ID","asset","");choice("Theme","iconAtlasTile","Atlas tile size (pixels)","128",{"128","224"})
 range("Theme","glass","Glass opacity %",81,10,100);range("Theme","rim","Neon rim %",55,0,100);toggle("Theme","sparkles","Floating sparkles",true)
-toggle("Motion","reduce","Reduce motion",false);range("Motion","speed","Animation speed %",100,40,200);range("Motion","duration","Transition (ms)",300,80,1400);choice("Motion","ease","Interpolation","Smooth",{"Smooth","Linear","Sine"});choice("Motion","menuTransition","Menu transition","Glass",{"Glass","Slide","Fade","Off"});range("Motion","menuAnimStrength","Menu motion intensity %",75,0,100);toggle("Motion","tabTransition","Animated page transitions",true);toggle("Motion","navGlow","Animated navigation glow",true)
+toggle("Motion","reduce","Reduce motion",false);range("Motion","speed","Animation speed %",100,40,200);range("Motion","duration","Transition (ms)",380,80,1400);choice("Motion","ease","Interpolation","Smooth",{"Smooth","Linear","Sine"});choice("Motion","menuTransition","Menu transition","Glass",{"Glass","Slide","Fade","Off"});range("Motion","menuAnimStrength","Menu motion intensity %",75,0,100);toggle("Motion","tabTransition","Animated page transitions",true);toggle("Motion","navGlow","Animated navigation glow",true)
 toggle("Theme","menuGeometry","Animated geometric background",true);choice("Theme","menuShape","Background style","Mixed",{"Mixed","Rings","Crystals","Triangles","Hexagons"});range("Theme","menuDensity","Background density",12,4,20);range("Theme","menuMotion","Background speed %",65,0,180);range("Theme","menuOpacity","Background intensity %",55,0,100)
-toggle("HUD","locked","Lock widget positions",true);toggle("HUD","compact","Compact health panel",false);choice("HUD","hudMotion","Widget animation","Glass",{"Glass","Float","Pulse","Off"});range("HUD","hudMotionStrength","Widget motion intensity %",65,0,100);toggle("HUD","hudShine","Health bar shimmer",true);toggle("HUD","hudReaction","Damage and healing glow",true)
+toggle("HUD","locked","Lock widget positions",true);toggle("HUD","compact","Compact health panel",false);choice("HUD","hudMotion","Widget animation","Glass",{"Glass","Float","Pulse","Off"});range("HUD","hudMotionStrength","Widget motion intensity %",65,0,100);toggle("HUD","hudShine","Health bar shimmer",true);toggle("HUD","hudReaction","Damage and healing glow",true);range("HUD","hudSmoothness","HUD smoothing (ms)",320,100,900)
 choice("HUD","heartPalette","Heart gradient","Adaptive",{"Adaptive","Aurora","Amethyst","Ocean","Sakura","Sunset","Ember","Mint","Ice","Galaxy","Rainbow","Custom"});choice("HUD","heartDirection","Heart gradient direction","Vertical",{"Vertical","Horizontal","Diagonal","Reverse","Orbit"});range("HUD","heartGradientSpeed","Heart gradient speed %",60,0,150);color("HUD","heartA","Heart custom start","BA99FF");color("HUD","heartMid","Heart custom middle","F8CCFF");color("HUD","heartB","Heart custom end","69D9FA");range("HUD","heartGlow","Heart glow %",65,0,100)
 for _,row in {{"hp","Health",3,9},{"clock","Clock",3,96},{"profile","Player card",97,9},{"dock","Studio dock",50,96},{"cross","Reticle",50,50}} do
  local k,t=row[1],row[2];toggle("HUD",k,t,true); range("HUD",k.."X",t.." · horizontal %",row[3],0,100);range("HUD",k.."Y",t.." · vertical %",row[4],0,100)
@@ -1542,6 +1589,8 @@ for _,v in S.defs.neonMotion.min do S.presets.Neon[v]={neon=true,neonMotion=v,ne
 S.presets.HUD.GlassMotion={hudMotion="Glass",hudMotionStrength=65,hudShine=true,hudReaction=true}
 S.presets.HUD.FloatMotion={hudMotion="Float",hudMotionStrength=75,hudShine=true,hudReaction=true}
 S.presets.HUD.PulseMotion={hudMotion="Pulse",hudMotionStrength=80,hudShine=true,hudReaction=true}
+S.presets.HUD.SilkyMotion={hudMotion="Glass",hudMotionStrength=70,hudSmoothness=420,hudShine=true,hudReaction=true,reduce=false}
+S.presets.Motion.HighRefresh={speed=100,duration=380,ease="Smooth",menuTransition="Glass",tabTransition=true,navGlow=true,reduce=false}
 S.presets.Motion.Glass={menuTransition="Glass",menuAnimStrength=75,tabTransition=true,navGlow=true,reduce=false}
 S.presets.Motion.Slide={menuTransition="Slide",menuAnimStrength=85,tabTransition=true,navGlow=true,reduce=false}
 S.presets.Motion.Minimal={menuTransition="Fade",menuAnimStrength=30,tabTransition=false,navGlow=false,reduce=false}
@@ -1699,8 +1748,10 @@ function M.new(parent,name,round)
   angle=angle or 90
   if self.a~=a or self.b~=b or self.mid~=middle or self.angle~=angle then
    if self.hdGradient and self.hd.Visible then
-    self.hdGradient.Color=if middle then ColorSequence.new({ColorSequenceKeypoint.new(0,a),ColorSequenceKeypoint.new(.5,middle),ColorSequenceKeypoint.new(1,b)}) else ColorSequence.new(a,b)
-    self.hdGradient.Rotation=angle
+    if self.a~=a or self.b~=b or self.mid~=middle then
+     self.hdGradient.Color=if middle then ColorSequence.new({ColorSequenceKeypoint.new(0,a),ColorSequenceKeypoint.new(.5,middle),ColorSequenceKeypoint.new(1,b)}) else ColorSequence.new(a,b)
+    end
+    if self.angle~=angle then self.hdGradient.Rotation=angle end
    end
    local rad=math.rad(angle);local dx,dy=math.cos(rad),math.sin(rad)
    local span=math.abs(dx)+math.abs(dy)
@@ -1741,7 +1792,16 @@ function U.label(p,text,sz,pos,size) return U.new("TextLabel",{BackgroundTranspa
 function U.button(p,text) local b=U.new("TextButton",{Text=text,Font=Enum.Font.GothamMedium,TextSize=13,TextColor3=Color3.fromRGB(241,234,255),BackgroundColor3=Color3.fromRGB(52,40,77),BorderSizePixel=0,AutoButtonColor=true},p);U.corner(b,8);return b end
 function U.hex(s) return Color3.fromHex(s) end
 function U.font(s) local w=Enum.FontWeight[s.weight];if s.fontAsset~="" then return Font.new("rbxassetid://"..s.fontAsset,w) end;local base=Font.fromEnum(Enum.Font[s.font]);return Font.new(base.Family,w,base.Style) end
-function U.ease(t,name) t=math.clamp(t,0,1);if name=="Linear" then return t elseif name=="Sine" then return .5-.5*math.cos(math.pi*t) else return t*t*(3-2*t) end end
+function U.ease(t,name)
+ t=math.clamp(t,0,1)
+ if name=="Linear" then return t elseif name=="Sine" then return .5-.5*math.cos(math.pi*t) end
+ -- Quintic smootherstep: continuous velocity and acceleration at both endpoints.
+ return t*t*t*(t*(t*6-15)+10)
+end
+function U.approach(current,target,dt,seconds)
+ if math.abs(current-target)<.0001 then return target end
+ return target+(current-target)*math.exp(-dt/math.max(.001,seconds))
+end
 function U.keys(t) local a={};for k in t do table.insert(a,k) end;table.sort(a);return a end
 function U.count(t) local n=0;for _ in t do n+=1 end;return n end
 return U

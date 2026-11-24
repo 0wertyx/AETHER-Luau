@@ -17,7 +17,16 @@ function U.label(p,text,sz,pos,size) return U.new("TextLabel",{BackgroundTranspa
 function U.button(p,text) local b=U.new("TextButton",{Text=text,Font=Enum.Font.GothamMedium,TextSize=13,TextColor3=Color3.fromRGB(241,234,255),BackgroundColor3=Color3.fromRGB(52,40,77),BorderSizePixel=0,AutoButtonColor=true},p);U.corner(b,8);return b end
 function U.hex(s) return Color3.fromHex(s) end
 function U.font(s) local w=Enum.FontWeight[s.weight];if s.fontAsset~="" then return Font.new("rbxassetid://"..s.fontAsset,w) end;local base=Font.fromEnum(Enum.Font[s.font]);return Font.new(base.Family,w,base.Style) end
-function U.ease(t,name) t=math.clamp(t,0,1);if name=="Linear" then return t elseif name=="Sine" then return .5-.5*math.cos(math.pi*t) else return t*t*(3-2*t) end end
+function U.ease(t,name)
+ t=math.clamp(t,0,1)
+ if name=="Linear" then return t elseif name=="Sine" then return .5-.5*math.cos(math.pi*t) end
+ -- Quintic smootherstep: continuous velocity and acceleration at both endpoints.
+ return t*t*t*(t*(t*6-15)+10)
+end
+function U.approach(current,target,dt,seconds)
+ if math.abs(current-target)<.0001 then return target end
+ return target+(current-target)*math.exp(-dt/math.max(.001,seconds))
+end
 function U.keys(t) local a={};for k in t do table.insert(a,k) end;table.sort(a);return a end
 function U.count(t) local n=0;for _ in t do n+=1 end;return n end
 return U

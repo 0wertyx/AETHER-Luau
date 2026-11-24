@@ -72,14 +72,15 @@ function UI:animateBackground(t)
  self.geoLayer.Visible=s.menuGeometry and self.panel.Visible
  if not self.geoLayer.Visible then return end
  local tm=if s.reduce then 0 else t*s.menuMotion/100
- local key=s.menuShape..":"..s.accent..":"..s.secondary..":"..s.menuOpacity
- if self.geoLast and tm==self.geoLast and self.geoSettings==s then return end
- self.geoLast=tm;self.geoSettings=s
+ local key=s.menuShape..":"..s.accent..":"..s.secondary..":"..s.menuOpacity..":"..s.menuDensity
+ if self.geoLast==tm and self.geoSettings==key then return end
+ self.geoLast=tm;self.geoSettings=key
  local a,b=U.hex(s.accent),U.hex(s.secondary)
+ local mixed={3,4,6,12}
  for i,g in self.geo do
   g.root.Visible=i<=s.menuDensity
   if i>s.menuDensity then continue end
-  local count=if s.menuShape=="Rings" then 12 elseif s.menuShape=="Crystals" then 4 elseif s.menuShape=="Triangles" then 3 elseif s.menuShape=="Hexagons" then 6 else ({3,4,6,12})[i%4+1]
+  local count=if s.menuShape=="Rings" then 12 elseif s.menuShape=="Crystals" then 4 elseif s.menuShape=="Triangles" then 3 elseif s.menuShape=="Hexagons" then 6 else mixed[i%4+1]
   local size=(34+(i*19)%73)*(1+.05*math.sin(tm*.4+i))
   g.root.Size=UDim2.fromOffset(size,size)
   g.root.Position=UDim2.fromScale(.08+((i*.618)%1)*.84+math.sin(tm*.17+i)*.035,.08+((i*.381)%1)*.84+math.cos(tm*.21+i)*.045)
@@ -136,7 +137,7 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.."   /   "..self.tab.."   /   HEART128"
+ self.tag.Text=self.app.mode.."   /   "..self.tab.."   /   SMOOTH240"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  for _,asset in self.icons do asset:sync(st.iconAtlas,st.iconAtlasTile) end

@@ -91,8 +91,10 @@ function M.new(parent,name,round)
   angle=angle or 90
   if self.a~=a or self.b~=b or self.mid~=middle or self.angle~=angle then
    if self.hdGradient and self.hd.Visible then
-    self.hdGradient.Color=if middle then ColorSequence.new({ColorSequenceKeypoint.new(0,a),ColorSequenceKeypoint.new(.5,middle),ColorSequenceKeypoint.new(1,b)}) else ColorSequence.new(a,b)
-    self.hdGradient.Rotation=angle
+    if self.a~=a or self.b~=b or self.mid~=middle then
+     self.hdGradient.Color=if middle then ColorSequence.new({ColorSequenceKeypoint.new(0,a),ColorSequenceKeypoint.new(.5,middle),ColorSequenceKeypoint.new(1,b)}) else ColorSequence.new(a,b)
+    end
+    if self.angle~=angle then self.hdGradient.Rotation=angle end
    end
    local rad=math.rad(angle);local dx,dy=math.cos(rad),math.sin(rad)
    local span=math.abs(dx)+math.abs(dy)

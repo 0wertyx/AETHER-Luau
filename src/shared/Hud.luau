@@ -39,6 +39,14 @@ local function heartColors(s,ratio,dead,t)
  local q=math.clamp((.82-ratio)/.17,0,1)
  return a:Lerp(yellowA,q),m:Lerp(yellowM,q),b:Lerp(yellowB,q)
 end
+local function smoothPulse(phase,center,width)
+ local distance=math.abs((phase-center+.5)%1-.5)
+ if distance>=width then return 0 end
+ return .5+.5*math.cos(math.pi*distance/width)
+end
+local function setText(label,value)
+ if label.Text~=value then label.Text=value end
+end
 local function center(p,t,size) local n=U.label(p,t,size);n.TextXAlignment=Enum.TextXAlignment.Center;return n end
 function H.new(scope,parent,preview,go,drag)
  local self=setmetatable({view=parent,preview=preview,widgets={},markers={},extras={},spark={},time=0,phase=0,paintAt=0,last=-1,dockIcons={}},H)
@@ -237,12 +245,37 @@ function H:vitals(s,f,dt)
  if self.last~=hp or self.gen~=f.gen or self.maximum~=max then
   self.effect=if self.gen~=nil and (f.gen~=self.gen or self.last==0 and hp>0) then "Revive" elseif self.last>=0 and hp<self.last then "Damage" elseif self.last>=0 and hp>self.last then "Heal" else "None";self.age=0;self.from=self.shown or hp;self.fromRatio=self.bar or ratio;self.fromTrail=math.max(self.trailRatio or ratio,self.bar or ratio);self.last=hp;self.gen=f.gen;self.maximum=max;w.p:SetAttribute("Effect",self.effect);w.p:SetAttribute("Health",hp);w.p:SetAttribute("MaxHealth",max);w.p:SetAttribute("Life",band)
  end
- self.age+=dt;local dur=s.duration/1000*100/s.speed;local q=if dead or s.reduce then 1 else U.ease(self.age/dur,s.ease);self.shown=self.from+(hp-self.from)*q;self.bar=self.fromRatio+(ratio-self.fromRatio)*q
- self.trailRatio=if self.effect=="Damage" and not s.reduce and not dead then self.fromTrail+(ratio-self.fromTrail)*U.ease((self.age-.20)/dur,s.ease) else self.bar
- self.fill.Size=UDim2.fromScale(self.bar,1);self.trail.Size=UDim2.fromScale(self.trailRatio,1);self.value.Text=string.format("%d / %d HP",math.ceil(self.shown-.00001),math.ceil(max));self.stateText.Text=band
+ self.age+=dt
+ local dur=s.hudSmoothness/1000*100/s.speed
+ local q=if dead or s.reduce then 1 else U.ease(self.age/math.max(.01,dur),s.ease)
+ -- Exponential smoothing preserves continuous motion even during rapid HP changes.
+ if dead or s.reduce or self.effect=="Revive" and self.age<=dt then
+  self.shown=hp;self.bar=ratio;self.trailRatio=ratio
+ else
+  self.shown=U.approach(self.shown or hp,hp,dt,dur/4.6)
+  self.bar=U.approach(self.bar or ratio,ratio,dt,dur/4.6)
+  if self.effect=="Damage" then
+   if self.age<=.18 then self.trailRatio=math.max(self.fromTrail,self.bar)
+   else self.trailRatio=math.max(self.bar,U.approach(self.trailRatio or self.fromTrail,ratio,dt,dur/2.6)) end
+  else self.trailRatio=self.bar end
+ end
+ self.fill.Size=UDim2.fromScale(self.bar,1)
+ self.trail.Size=UDim2.fromScale(self.trailRatio,1)
+ local number=math.ceil(self.shown-.00001)
+ if self.displayHP~=number or self.displayMax~=max then
+  self.displayHP=number;self.displayMax=max
+  setText(self.value,string.format("%d / %d HP",number,math.ceil(max)))
+ end
+ setText(self.stateText,band)
  local a,b;if dead then a,b=Color3.fromRGB(91,85,102),Color3.fromRGB(104,98,115) elseif ratio<=.3 then a,b=Color3.fromRGB(245,46,78),Color3.fromRGB(255,109,169) elseif ratio<=.65 then a,b=Color3.fromRGB(255,225,99),Color3.fromRGB(255,144,60) else a,b=U.hex(s.accent),U.hex(s.secondary) end
  local mix=if s.reduce or dead then 1 else 1-math.exp(-dt*12);self.tint=(self.tint or a):Lerp(a,mix);self.tint2=(self.tint2 or b):Lerp(b,mix);self.fillG.Color=ColorSequence.new(self.tint,self.tint2)
- local beat=0;if not dead and not s.reduce then local period=if ratio<=.3 then .33+.5*ratio elseif ratio<=.65 then .62+.45*ratio else .91+.62*ratio;self.phase=(self.phase+dt*s.speed/100/period)%1;beat=math.max(0,1-math.abs(self.phase-.12)*9)+.6*math.max(0,1-math.abs(self.phase-.31)*13) else self.phase=0 end
+ local beat=0
+ if not dead and not s.reduce then
+  local period=.43+1.06*ratio^1.2
+  self.beatPeriod=U.approach(self.beatPeriod or period,period,dt,.14)
+  self.phase=(self.phase+dt*s.speed/100/self.beatPeriod)%1
+  beat=smoothPulse(self.phase,.14,.13)+.55*smoothPulse(self.phase,.36,.105)
+ else self.phase=0;self.beatPeriod=nil end
  local bump=if not s.reduce and not dead and (self.effect=="Heal" or self.effect=="Revive") then math.sin(math.pi*q)*(if self.effect=="Revive" then .22 else .09) else 0
  local side=35*(1+beat*(.12+.15*(1-ratio))+bump)
  self.heart.root.Size=UDim2.fromOffset(side,side)
@@ -257,7 +290,7 @@ function H:vitals(s,f,dt)
  self.shine.Visible=s.hudShine and not dead and not s.reduce and self.bar>.02 and s.hudMotion~="Off"
  if self.shine.Visible then
   local progress=(self.time*s.speed/100*.42)%1
-  self.shineGradient.Offset=Vector2.new(-.82+progress*1.64,0)
+  self.shineGradient.Offset=Vector2.new(-1.15+progress*2.3,0)
  end
  local reaction=if s.hudReaction and not s.reduce and s.hudMotion~="Off" and self.effect~="None" and not dead then math.exp(-self.age*5)*s.hudMotionStrength/100 else 0
  self.reactionStroke.Enabled=reaction>.01
@@ -270,7 +303,7 @@ end
 function H:animateWidgets(s,f,dt,t)
  local enabled=not s.reduce and s.hudMotion~="Off"
  local strength=s.hudMotionStrength/100
- local dur=math.max(.08,s.duration/1000*100/s.speed)
+ local dur=math.max(.08,s.hudSmoothness/1000*100/s.speed)
  local time=t*s.speed/100
  for index,key in {"hp","clock","profile","dock"} do
   local w=self.widgets[key]
@@ -320,8 +353,21 @@ function H:directions(s,f,dt,t,paint)
 end
 function H:step(s,f,dt)
  if self.settings~=s or self.width~=self.view.AbsoluteSize.X then self:setStyle(s) end;self.time+=dt;local t=self.time;local paint=t>=self.paintAt;if paint then self.paintAt=t+.075 end
- self:reticle(s,f,t);self:vitals(s,f,dt);self:animateWidgets(s,f,dt,t);self:directions(s,f,dt,t,paint);self.name.Text=f.name;self.clock.Text=os.date("%H:%M");self.clockSub.Text=f.mode
- if paint then for i,n in self.spark do n.Visible=s.sparkles;if s.sparkles then n.BackgroundColor3=U.hex(s.secondary);n.Position=UDim2.fromScale((i*.617)%1,(i*.349-(if s.reduce then 0 else t*.014))%1) end end end
+ self:reticle(s,f,t);self:vitals(s,f,dt);self:animateWidgets(s,f,dt,t);self:directions(s,f,dt,t,paint)
+ setText(self.name,f.name);setText(self.clockSub,f.mode)
+ if not self.clockAt or t>=self.clockAt then
+  self.clockAt=t+.25
+  setText(self.clock,os.date("%H:%M"))
+ end
+ -- Decorative motion is evaluated every render frame, not on the text refresh timer.
+ local sparkleTint=U.hex(s.secondary)
+ for i,n in self.spark do
+  n.Visible=s.sparkles
+  if s.sparkles then
+   if paint then n.BackgroundColor3=sparkleTint end
+   if not s.reduce or paint then n.Position=UDim2.fromScale((i*.617)%1,(i*.349-(if s.reduce then 0 else t*.014))%1) end
+  end
+ end
  for id,n in self.extras do if not f.widgets[id] then n:Destroy();self.extras[id]=nil end end
  for id,w in f.widgets do local n=self.extras[id];if not n then n=U.label(self.view,"",14,nil,UDim2.fromOffset(150,25));n.Name="Cue_"..id;n.ZIndex=4;self.extras[id]=n end;n.Text=w.text;n.FontFace=U.font(s);n.TextColor3=U.hex(s.fontA);n.TextStrokeTransparency=.4;local wave=if s.reduce then 0 else math.sin(t*3);n.Position=UDim2.new(w.x/100,0,w.y/100,if w.animation=="float" then wave*5 else 0);n.TextTransparency=if w.animation=="pulse" then .17+wave*.16 else 0 end
 end
