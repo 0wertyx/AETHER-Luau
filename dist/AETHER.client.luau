@@ -423,12 +423,62 @@ end
 
 -- BEGIN MODULE Controls
 __aether_factories["Controls"] = function()
-local Input=game:GetService("UserInputService");local Tween=game:GetService("TweenService");local U=__aether_require("Util");local S=__aether_require("Schema");local Icons=__aether_require("Icons")
+local StarterGui=game:GetService("StarterGui");local Chat=game:GetService("TextChatService");local Input=game:GetService("UserInputService");local Tween=game:GetService("TweenService");local U=__aether_require("Util");local S=__aether_require("Schema");local Icons=__aether_require("Icons")
 local UI={};UI.__index=UI
 local bg=Color3.fromRGB(19,16,32);local dim=Color3.fromRGB(173,163,197);local soft=Color3.fromRGB(43,35,60)
 function UI.new(app,gui,scope)
  local self=setmetatable({app=app,gui=gui,scope=scope,syncs={},icons={},tab="Dashboard",opened=true,seq=0,menuProgress=0,pageProgress=0,navHover={},navAmount={}},UI)
- self.stage=U.frame(gui,"StudioArea",nil,nil,nil,1);self.panel=U.new("CanvasGroup",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=.035,BorderSizePixel=0,Size=UDim2.fromScale(1,1),GroupTransparency=1,Visible=false,Active=true},self.stage);U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3);self.panel.BackgroundTransparency=1;self.panel.GroupColor3=Color3.new(1,1,1)
+ self.stage=U.frame(gui,"StudioArea",nil,nil,nil,1)
+ -- The backdrop is deliberately not a fullscreen CanvasGroup: each particle fades separately.
+ self.screenFX=U.frame(self.stage,"MenuScreenEffects",nil,nil,nil,1)
+ self.screenFX.Active=false;self.screenFX.Interactable=false
+ self.screenFX.Visible=false
+ self.screenDim=U.frame(self.screenFX,"Veil",nil,nil,Color3.fromRGB(19,12,38),1)
+ self.screenDim.Active=false;self.screenDim.Interactable=false
+ self.stars={}
+ for i=1,48 do
+  local root=U.frame(self.screenFX,"Particle"..i,nil,UDim2.fromOffset(12,12),nil,1)
+  root.Active=false;root.Interactable=false;root.AnchorPoint=Vector2.new(.5,.5)
+  local bars={}
+  for j=1,4 do
+   local line=U.frame(root,"Ray",UDim2.fromScale(.5,.5),UDim2.fromScale(1,.13),Color3.new(1,1,1),1)
+   line.AnchorPoint=Vector2.new(.5,.5);line.Active=false;line.Interactable=false;line.Rotation=(j-1)*45;U.corner(line,9);bars[j]=line
+  end
+  local dot=U.frame(root,"Core",UDim2.fromScale(.5,.5),UDim2.fromScale(.5,.5),Color3.new(1,1,1),1)
+  dot.AnchorPoint=Vector2.new(.5,.5);dot.Active=false;dot.Interactable=false;U.corner(dot,99)
+  self.stars[i]={root=root,bars=bars,dot=dot}
+ end
+ self.top=U.frame(self.stage,"TopCapsule",nil,UDim2.fromOffset(345,38),bg,.12)
+ self.top.AnchorPoint=Vector2.new(.5,0);U.corner(self.top,18);self.topRim=U.stroke(self.top,Color3.fromRGB(166,138,255),.42)
+ self.topButtons={}
+ for index,item in {{"AI · OFFLINE","Scripts"},{"AETHER","Toggle"},{"ARCHIVIUM","Workshop"}} do
+  local button=U.button(self.top,item[1]);button.BackgroundTransparency=.42;button.TextSize=11
+  button.Position=UDim2.new((index-1)/3,4,0,4);button.Size=UDim2.new(1/3,-8,1,-8)
+  self.topButtons[index]=button
+  scope:on(button.Activated,function() if item[2]=="Toggle" then self:show(not self.opened) else self:open(item[2]) end end)
+ end
+ self.rail=U.frame(self.stage,"RobloxShortcuts",nil,UDim2.fromOffset(54,176),bg,.16);U.corner(self.rail,14);self.railRim=U.stroke(self.rail,Color3.fromRGB(166,138,255),.48)
+ self.rail.AnchorPoint=Vector2.new(0,.5)
+ self.railButtons={}
+ for index,item in {{"CHAT",Enum.CoreGuiType.Chat},{"BAG",Enum.CoreGuiType.Backpack},{"LIST",Enum.CoreGuiType.PlayerList}} do
+  local button=U.button(self.rail,item[1]);button.TextSize=10;button.Size=UDim2.fromOffset(44,38);button.Position=UDim2.fromOffset(5,5+(index-1)*43)
+  self.railButtons[index]=button
+  scope:on(button.Activated,function()
+   self:action(function()
+    if item[2]==Enum.CoreGuiType.Chat then
+     local config=Chat:FindFirstChildOfClass("ChatWindowConfiguration")
+     if config then config.Enabled=not config.Enabled;button.BackgroundTransparency=if config.Enabled then .12 else .6;return end
+    end
+    local enabled=StarterGui:GetCoreGuiEnabled(item[2])
+    StarterGui:SetCoreGuiEnabled(item[2],not enabled)
+    button.BackgroundTransparency=if enabled then .6 else .12
+   end)
+  end)
+ end
+ local collapse=U.button(self.rail,"‹");collapse.Size=UDim2.fromOffset(44,34);collapse.Position=UDim2.fromOffset(5,136)
+ scope:on(collapse.Activated,function() self.railCollapsed=not self.railCollapsed;self:layout() end)
+ self.railCollapse=collapse
+ self.panel=U.new("CanvasGroup",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=.035,BorderSizePixel=0,Size=UDim2.fromScale(1,1),GroupTransparency=1,Visible=false,Active=true},self.stage);U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3);self.panel.BackgroundTransparency=1;self.panel.GroupColor3=Color3.new(1,1,1)
  self.panelBackground=U.frame(self.panel,"GlassBackground",nil,nil,Color3.new(1,1,1),.035);self.panelBackground.Active=false;self.panelBackground.Interactable=false;self.panelBackground.ZIndex=1;U.corner(self.panelBackground,17)
  U.gradient(self.panelBackground,bg,Color3.fromRGB(39,30,58),82)
  self.geoLayer=U.frame(self.panel,"GeometryBackground",UDim2.fromOffset(3,3),UDim2.new(1,-6,1,-6),nil,1)
@@ -444,18 +494,44 @@ function UI.new(app,gui,scope)
   end
   table.insert(self.geo,{root=root,edges=edges})
  end
- self.header=U.frame(self.panel,"Titlebar",nil,UDim2.new(1,0,0,46),nil,1);self.header.Active=true;self.brand=U.label(self.header,"A E T H E R",18,UDim2.fromOffset(16,2),UDim2.fromOffset(135,40));self.tag=U.label(self.header,"",11,UDim2.fromOffset(147,3),UDim2.new(1,-211,0,40));self.tag.TextColor3=dim
+ self.header=U.frame(self.panel,"Titlebar",nil,UDim2.new(1,0,0,46),nil,1);self.header.Active=true;self.brand=U.label(self.header,"A E T H E R",18,UDim2.fromOffset(16,2),UDim2.fromOffset(135,40));self.tag=U.label(self.header,"",10,UDim2.fromOffset(147,3),UDim2.new(1,-190,0,40));self.tag.TextColor3=dim
  self.close=U.button(self.header,"×");self.close.Modal=true;self.close.Size=UDim2.fromOffset(33,29);self.close.Position=UDim2.new(1,-43,0,8);scope:on(self.close.Activated,function() self:show(false) end)
+ self.quick=U.frame(self.panel,"QuickEffects",nil,nil,nil,1)
+ self.quickButtons={}
+ for index,item in {{"HALO","halo"},{"WINGS","wings"},{"PARTICLES","aura"}} do
+  local button=U.button(self.quick,item[1]);button.TextSize=11;button.Position=UDim2.new((index-1)/3,2,0,0);button.Size=UDim2.new(1/3,-4,1,0)
+  self.quickButtons[item[2]]={button=button,label=item[1]}
+  scope:on(button.Activated,function() self.app:set(item[2],not self.app.s[item[2]]) end)
+ end
+ self.place=U.label(self.panel,"PLACE  /  "..tostring(game.PlaceId),10,nil,nil);self.place.TextColor3=dim
  self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
  self.pageBox=U.new("CanvasGroup",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,GroupTransparency=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
  self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Fonts","Simulator","Scripts","Workshop","Profiles","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
  function self:layout()
-  local sz=self.stage.AbsoluteSize;if sz.X<2 or sz.Y<2 then return end;local w,h=math.min(776,sz.X-16),math.min(526,sz.Y-24);local narrow=w<560;local p=self.panel;p.Size=UDim2.fromOffset(w,h);local xy=self.xy or Vector2.new((sz.X-w)*.5,(sz.Y-h)*.47);self.xy=Vector2.new(math.clamp(xy.X,0,sz.X-w),math.clamp(xy.Y,0,sz.Y-h));p.Position=UDim2.fromOffset(self.xy.X,self.xy.Y)
-  self.nav.Position=UDim2.fromOffset(10,49);self.nav.Size=if narrow then UDim2.new(1,-20,0,35) else UDim2.new(0,122,1,-85);self.navList.FillDirection=if narrow then Enum.FillDirection.Horizontal else Enum.FillDirection.Vertical;self.nav.AutomaticCanvasSize=if narrow then Enum.AutomaticSize.X else Enum.AutomaticSize.Y;self.nav.ScrollingDirection=if narrow then Enum.ScrollingDirection.X else Enum.ScrollingDirection.Y
-  for _,b in self.buttons do b.Size=if narrow then UDim2.fromOffset(91,30) else UDim2.new(1,-5,0,32) end;self.pageBox.Position=UDim2.fromOffset(if narrow then 12 else 145,if narrow then 90 else 50);self.pageBox.Size=if narrow then UDim2.new(1,-24,1,-126) else UDim2.new(1,-158,1,-88)
+  local sz=self.stage.AbsoluteSize
+  if sz.X<2 or sz.Y<2 then return end
+  local narrow=sz.X<740
+  local w=math.min(if narrow then 368 else 438,sz.X-(if narrow then 32 else 92))
+  local h=math.max(160,math.min(600,sz.Y-(if narrow then 118 else 196)))
+  local x=sz.X-w-16;local y=if narrow then 58 else 104
+  self.panel.Size=UDim2.fromOffset(w,h);self.xy=Vector2.new(x,y)
+  self.panel.Position=UDim2.fromOffset(x,y)
+  self.top.Size=UDim2.fromOffset(math.min(345,math.max(156,sz.X-(if narrow then 120 else 510))),38)
+  self.top.Position=UDim2.new(.5,0,0,if narrow then 48 else 12)
+  self.rail.Position=UDim2.new(0,12,.46,0)
+  self.rail.Size=UDim2.fromOffset(54,if self.railCollapsed then 44 else 176)
+  for _,button in self.railButtons do button.Visible=not self.railCollapsed end
+  self.railCollapse.Position=UDim2.fromOffset(5,if self.railCollapsed then 5 else 136)
+  self.railCollapse.Text=if self.railCollapsed then "›" else "‹"
+  self.quick.Position=UDim2.fromOffset(10,47);self.quick.Size=UDim2.new(1,-20,0,34)
+  self.place.Position=UDim2.fromOffset(12,83);self.place.Size=UDim2.new(1,-24,0,17)
+  self.nav.Position=UDim2.fromOffset(10,104);self.nav.Size=UDim2.new(1,-20,0,37)
+  self.navList.FillDirection=Enum.FillDirection.Horizontal
+  self.nav.AutomaticCanvasSize=Enum.AutomaticSize.X;self.nav.ScrollingDirection=Enum.ScrollingDirection.X
+  for _,b in self.buttons do b.Size=UDim2.fromOffset(106,32) end
+  self.pageBox.Position=UDim2.fromOffset(10,149);self.pageBox.Size=UDim2.new(1,-20,1,-180)
  end
  scope:on(self.stage:GetPropertyChangedSignal("AbsoluteSize"),function() self:layout() end);self:layout()
- scope:on(self.header.InputBegan,function(i) self:begin(i,function(point,start,origin) self.xy=origin+point-start;self:layout() end,self.xy) end)
  scope:on(Input.InputChanged,function(i) local d=self.drag;if d and (i==d.i or d.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseMovement) then d.fn(Vector2.new(i.Position.X,i.Position.Y),d.start,d.origin) end end)
  scope:on(Input.InputEnded,function(i) if self.drag and (self.drag.i==i or self.drag.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseButton1) then self.drag=nil end end)
  scope:on(Input.WindowFocusReleased,function() self.drag=nil end);scope:add(function() if self.page then self.page:clear() end;Icons.clear() end);return self
@@ -475,9 +551,44 @@ function UI:animateBackground(t)
  self.panel.GroupTransparency=1-q
  local strength=s.menuAnimStrength/100
  local offset=if immediate or s.menuTransition=="Fade" then 0 elseif s.menuTransition=="Slide" then (1-q)*48*strength else (1-q)*18*strength
- if self.xy then self.panel.Position=UDim2.fromOffset(self.xy.X,self.xy.Y+offset) end
- if not self.panel.Visible then return end
+ if self.xy then self.panel.Position=UDim2.fromOffset(self.xy.X+offset,self.xy.Y) end
  local accent=U.hex(s.accent)
+ local secondary=U.hex(s.secondary)
+ self.top.Visible=s.topCapsule;self.rail.Visible=s.robloxRail
+ self.topRim.Color=accent;self.railRim.Color=accent
+ self.topButtons[2].BackgroundColor3=if self.opened then accent:Lerp(bg,.55) else soft
+ local visible=s.screenParticles and q>.001
+ self.screenFX.Visible=visible
+ if visible then
+  local motion=if s.reduce then 0 else t*s.menuMotion/100
+  local alpha=q*s.screenParticleOpacity/100
+  self.screenDim.BackgroundTransparency=1-alpha*.12
+  local style=s.screenParticleStyle
+  for index,particle in self.stars do
+   local active=index<=s.screenParticleCount
+   particle.root.Visible=active
+   if not active then continue end
+   local kind=if style=="Mixed" then ({"Stars","Dust","Diamonds"})[index%3+1] else style
+   local phase=motion*.64+index*1.73
+   local twinkle=if s.reduce then .7 else .54+.46*math.sin(phase)
+   local size=(if kind=="Dust" then 3+index%4 else 7+index%10)*( .82+.18*twinkle)
+   particle.root.Size=UDim2.fromOffset(size,size)
+   particle.root.Position=UDim2.fromScale(.03+((index*.618)%1)*.94+math.sin(phase*.43)*.014,(index*.381+1-motion*.012)%1)
+   particle.root.Rotation=if kind=="Diamonds" then 45+motion*4 elseif kind=="Stars" then motion*5+index*19 else 0
+   local color=accent:Lerp(secondary,(index%7)/6)
+   particle.dot.BackgroundColor3=color
+   particle.dot.BackgroundTransparency=1-alpha*twinkle*.65
+   particle.dot.Size=if kind=="Diamonds" then UDim2.fromScale(.65,.65) else UDim2.fromScale(.45,.45)
+   for j,bar in particle.bars do
+    bar.Visible=kind=="Stars"
+    if bar.Visible then
+     bar.Size=UDim2.fromScale(if j%2==1 then 1 else .63, .13)
+     bar.BackgroundColor3=color;bar.BackgroundTransparency=1-alpha*twinkle*.77
+    end
+   end
+  end
+ end
+ if not self.panel.Visible then return end
  local tm=if s.reduce then 0 else t*s.speed/100
  self.outline.Color=accent:Lerp(U.hex(s.secondary),if s.reduce or not s.navGlow then 0 else .18+.15*math.sin(tm*1.6))
  self.outline.Transparency=1-math.clamp(s.rim/100*(if s.reduce or not s.navGlow then 1 else .85+.15*math.sin(tm*1.8)),0,1)
@@ -562,9 +673,10 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.."   /   "..self.tab.."   /   SMOOTH240"
+ self.tag.Text=self.app.mode.." / EDGE"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
+ for key,item in self.quickButtons do item.button.Text=item.label..(if st[key] then "  ON" else "  OFF");item.button.BackgroundColor3=if st[key] then U.hex(st.accent):Lerp(bg,.52) else soft end
  for _,asset in self.icons do asset:sync(st.iconAtlas,st.iconAtlasTile) end
  for _,f in self.syncs do f() end
  -- Only recolor editor controls, not HUD/3D previews or their own palette.
@@ -1516,8 +1628,8 @@ local function text(g,k,t,v,n) def(g,k,t,"text",v,0,n) end
 color("Theme","accent","Accent","A68AFF");color("Theme","secondary","Second neon","FF89C7");color("Theme","glassColor","Glass tint","211C35");color("Theme","uiFontColor","Studio text color","F1E6FF");color("Theme","uiMutedColor","Studio secondary text","ADA3C5");def("Theme","iconAtlas","Original icon atlas Roblox asset ID","asset","");choice("Theme","iconAtlasTile","Atlas tile size (pixels)","128",{"128","224"})
 range("Theme","glass","Glass opacity %",81,10,100);range("Theme","rim","Neon rim %",55,0,100);toggle("Theme","sparkles","Floating sparkles",true)
 toggle("Motion","reduce","Reduce motion",false);range("Motion","speed","Animation speed %",100,40,200);range("Motion","duration","Transition (ms)",380,80,1400);choice("Motion","ease","Interpolation","Smooth",{"Smooth","Linear","Sine"});choice("Motion","menuTransition","Menu transition","Glass",{"Glass","Slide","Fade","Off"});range("Motion","menuAnimStrength","Menu motion intensity %",75,0,100);toggle("Motion","tabTransition","Animated page transitions",true);toggle("Motion","navGlow","Animated navigation glow",true)
-toggle("Theme","menuGeometry","Animated geometric background",true);choice("Theme","menuShape","Background style","Mixed",{"Mixed","Rings","Crystals","Triangles","Hexagons"});range("Theme","menuDensity","Background density",12,4,20);range("Theme","menuMotion","Background speed %",65,0,180);range("Theme","menuOpacity","Background intensity %",55,0,100)
-toggle("HUD","locked","Lock widget positions",true);toggle("HUD","compact","Compact health panel",false);choice("HUD","hudMotion","Widget animation","Glass",{"Glass","Float","Pulse","Off"});range("HUD","hudMotionStrength","Widget motion intensity %",65,0,100);toggle("HUD","hudShine","Health bar shimmer",true);toggle("HUD","hudReaction","Damage and healing glow",true);range("HUD","hudSmoothness","HUD smoothing (ms)",320,100,900)
+toggle("Theme","menuGeometry","Animated geometric background",true);choice("Theme","menuShape","Background style","Mixed",{"Mixed","Rings","Crystals","Triangles","Hexagons"});range("Theme","menuDensity","Background density",12,4,20);range("Theme","menuMotion","Background speed %",65,0,180);range("Theme","menuOpacity","Background intensity %",55,0,100);toggle("Theme","screenParticles","Menu screen particles",true);choice("Theme","screenParticleStyle","Screen particle style","Mixed",{"Mixed","Stars","Dust","Diamonds"});range("Theme","screenParticleCount","Screen particle count",24,8,48);range("Theme","screenParticleOpacity","Screen particle intensity %",55,0,100);toggle("Theme","robloxRail","Roblox shortcuts rail",true);toggle("Theme","topCapsule","Interactive top capsule",true)
+toggle("HUD","locked","Lock widget positions",true);toggle("HUD","compact","Compact health panel",true);choice("HUD","layoutMode","HUD layout","Sketch",{"Sketch","Custom"});choice("HUD","hudMotion","Widget animation","Glass",{"Glass","Float","Pulse","Off"});range("HUD","hudMotionStrength","Widget motion intensity %",65,0,100);toggle("HUD","hudShine","Health bar shimmer",true);toggle("HUD","hudReaction","Damage and healing glow",true);range("HUD","hudSmoothness","HUD smoothing (ms)",320,100,900)
 choice("HUD","heartPalette","Heart gradient","Adaptive",{"Adaptive","Aurora","Amethyst","Ocean","Sakura","Sunset","Ember","Mint","Ice","Galaxy","Rainbow","Custom"});choice("HUD","heartDirection","Heart gradient direction","Vertical",{"Vertical","Horizontal","Diagonal","Reverse","Orbit"});range("HUD","heartGradientSpeed","Heart gradient speed %",60,0,150);color("HUD","heartA","Heart custom start","BA99FF");color("HUD","heartMid","Heart custom middle","F8CCFF");color("HUD","heartB","Heart custom end","69D9FA");range("HUD","heartGlow","Heart glow %",65,0,100)
 for _,row in {{"hp","Health",3,9},{"clock","Clock",3,96},{"profile","Player card",97,9},{"dock","Studio dock",50,96},{"cross","Reticle",50,50}} do
  local k,t=row[1],row[2];toggle("HUD",k,t,true); range("HUD",k.."X",t.." · horizontal %",row[3],0,100);range("HUD",k.."Y",t.." · vertical %",row[4],0,100)
