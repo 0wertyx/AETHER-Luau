@@ -138,7 +138,7 @@ function app:runCue()
 end
 -- Live updates are bounded data packages, never downloaded executable Luau.
 local updateHttp=game:GetService("HttpService")
-local updateState={version="1.0.0",revision=0,status="Ready",busy=false,history={},generation=0}
+local updateState={version="1.0.0",revision=0,status="Waiting for update relay",busy=false,history={},generation=0,connected=false}
 app.liveUpdate=updateState
 local function validateUpdate(raw)
     assert(type(raw)=="table" and raw.format=="aether.live/1","Invalid update format")
@@ -279,6 +279,50 @@ local ui = Controls.new(app, studioLayer, scope)
 app.ui = ui
 local store = Storage.new(app, scope)
 app.store = store
+
+-- Observe the first-party replicated manifest. A revision that arrives
+-- during validation remains queued; rollback is not immediately undone.
+local updateRS=game:GetService("ReplicatedStorage")
+local relayConnection=nil
+local relayInstance=nil
+local pendingManifest=nil
+local lastManifest=nil
+local function observeRelay(value)
+    if value.Name~="AetherLiveManifestV1" or not value:IsA("StringValue") then return end
+    if relayConnection then relayConnection:Disconnect() end
+    relayInstance=value
+    updateState.connected=true
+    local function receive()
+        if value.Value~="" and value.Value~=lastManifest then
+            lastManifest=value.Value
+            pendingManifest=value.Value
+        end
+    end
+    relayConnection=value:GetPropertyChangedSignal("Value"):Connect(receive)
+    receive()
+    app:updateStatus("Website update relay connected")
+end
+scope:on(updateRS.ChildAdded,observeRelay)
+scope:on(updateRS.ChildRemoved,function(value)
+    if value~=relayInstance then return end
+    if relayConnection then relayConnection:Disconnect();relayConnection=nil end
+    relayInstance=nil;pendingManifest=nil;lastManifest=nil;updateState.connected=false
+    app:updateStatus("Website update relay disconnected")
+end)
+scope:add(function()
+    if relayConnection then relayConnection:Disconnect() end
+end)
+local existingRelay=updateRS:FindFirstChild("AetherLiveManifestV1")
+if existingRelay then observeRelay(existingRelay) end
+scope:on(RunService.Heartbeat,function()
+    if app.stopping or updateState.busy or not pendingManifest then return end
+    local body=pendingManifest;pendingManifest=nil
+    if #body>32000 then app:updateStatus("Manifest too large");return end
+    local ok,raw=pcall(function() return updateHttp:JSONDecode(body) end)
+    if not ok then app:updateStatus("Invalid manifest JSON");return end
+    if type(raw)=="table" and type(raw.revision)=="number" and raw.revision<=updateState.revision then return end
+    app:applyLiveUpdate(raw,false)
+end)
 
 -- Non-persistent editing session. Handles exist only while arranging the live HUD.
 local editorGui=scope:add(U.new("ScreenGui",{Name="AETHER_HUD_Editor",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=100002,ZIndexBehavior=Enum.ZIndexBehavior.Global,Enabled=false},pg))
