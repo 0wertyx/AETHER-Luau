@@ -177,10 +177,13 @@ U.corner(header,12);U.stroke(header,Color3.fromRGB(188,151,255),.3)
 local instruction=U.label(header,"HUD EDIT · Drag a widget",11,UDim2.fromOffset(10,0),UDim2.fromOffset(188,38))
 local done=U.button(header,"DONE");done.Position=UDim2.fromOffset(201,4);done.Size=UDim2.fromOffset(78,30);done.Modal=true;done.ZIndex=12
 local handles={}
-local positions={"hp","clock","profile","dock","input","wallhop"}
+local positions={"hp","clock","profile","dock","input","wallhop","top","rail"}
+local function isPanel(key) return key=="top" or key=="rail" end
 local function widgetFor(key)
     if key=="input" then return hud.inputRoot end
     if key=="wallhop" then return hud.wallhop end
+    if key=="top" then return ui.top end
+    if key=="rail" then return ui.rail end
     return hud.widgets[key].p
 end
 local function coord(key,topLeft,size,vp)
@@ -212,13 +215,13 @@ for _,key in positions do
     scope:on(b.InputBegan,function(input)
         if not app.editingHUD or (input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch) then return end
         local target=widgetFor(key)
-        if not target.Visible then return end
+        if not target.Visible or (isPanel(key) and not app.s.movePanels) then return end
         local vp=overlay.AbsoluteSize
         local size=target.AbsoluteSize
         local original=target.AbsolutePosition-overlay.AbsolutePosition
         -- Preserve all currently visible classic widget positions before leaving Sketch.
         local patch={}
-        if app.s.layoutMode=="Sketch" and key~="input" and key~="wallhop" then
+        if app.s.layoutMode=="Sketch" and key~="input" and key~="wallhop" and not isPanel(key) then
             patch.layoutMode="Custom"
             for _,other in {"hp","clock","profile","dock"} do
                 local w=widgetFor(other)
@@ -233,7 +236,10 @@ for _,key in positions do
             local dest=original+(pos-start)
             dest=Vector2.new(math.clamp(dest.X,0,math.max(0,vp.X-size.X)),math.clamp(dest.Y,0,math.max(0,vp.Y-size.Y)))
             local x,y=coord(key,dest,size,vp)
-            if app.s[key.."X"]~=x or app.s[key.."Y"]~=y then app:patch({[key.."X"]=x,[key.."Y"]=y}) end
+            if isPanel(key) then
+                if not app.s.movePanels then return end
+                if not app.s[key.."Custom"] or app.s[key.."X"]~=x or app.s[key.."Y"]~=y then app:patch({[key.."Custom"]=true,[key.."X"]=x,[key.."Y"]=y}) end
+            elseif app.s[key.."X"]~=x or app.s[key.."Y"]~=y then app:patch({[key.."X"]=x,[key.."Y"]=y}) end
         end)
     end)
 end
@@ -242,7 +248,7 @@ function app:updateEditor()
     if not self.editingHUD then return end
     for _,key in positions do
         local b,target=handles[key],widgetFor(key)
-        b.Visible=target.Visible and (if key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
+        b.Visible=target.Visible and (if key=="top" then self.s.movePanels and self.s.topCapsule elseif key=="rail" then self.s.movePanels and self.s.robloxRail elseif key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
         if b.Visible then
             local xy=target.AbsolutePosition-editor.AbsolutePosition
             local sz=target.AbsoluteSize

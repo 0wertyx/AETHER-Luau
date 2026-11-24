@@ -609,6 +609,7 @@ function UI.new(app,gui,scope)
   self.railButtons[index]=button
   scope:on(button.Activated,function()
    self:action(function()
+    if item[2]==Enum.CoreGuiType.PlayerList then self:open("List");return end
     if item[2]==Enum.CoreGuiType.Chat then
      local config=Chat:FindFirstChildOfClass("ChatWindowConfiguration")
      if config then if chatConfig~=config then chatConfig=config;chatOriginal=config.Enabled end;config.Enabled=not config.Enabled;chatApplied=config.Enabled;button.BackgroundTransparency=if config.Enabled then .12 else .6;return end
@@ -617,8 +618,16 @@ function UI.new(app,gui,scope)
     if coreOriginal[item[2]]==nil then coreOriginal[item[2]]=enabled end
     StarterGui:SetCoreGuiEnabled(item[2],not enabled);coreApplied[item[2]]=not enabled
     button.BackgroundTransparency=if enabled then .6 else .12
+    if item[2]==Enum.CoreGuiType.Backpack and not enabled then self:message("Roblox backpack enabled; use the native inventory control to expand it.") end
    end)
   end)
+ end
+ function self:togglePlayerList()
+  local kind=Enum.CoreGuiType.PlayerList
+  local enabled=StarterGui:GetCoreGuiEnabled(kind)
+  if coreOriginal[kind]==nil then coreOriginal[kind]=enabled end
+  StarterGui:SetCoreGuiEnabled(kind,not enabled);coreApplied[kind]=not enabled
+  self:message(if enabled then "Roblox player list hidden" else "Roblox player list enabled")
  end
  local collapse=U.button(self.rail,"‹");collapse.Size=UDim2.fromOffset(44,34);collapse.Position=UDim2.fromOffset(5,136)
  scope:on(collapse.Activated,function() self.railCollapsed=not self.railCollapsed;self:layout() end)
@@ -658,7 +667,7 @@ function UI.new(app,gui,scope)
  self.place=U.label(self.panel,"PLACE  /  "..tostring(game.PlaceId),10,nil,nil);self.place.TextColor3=dim
  self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
  self.pageBox=U.new("CanvasGroup",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,GroupTransparency=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
- self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Interaction","Fonts","Simulator","Scripts","Workshop","Profiles","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
+ self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Interaction","Fonts","Simulator","Scripts","Workshop","Profiles","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
  function self:layout()
   local sz=self.stage.AbsoluteSize
   if sz.X<2 or sz.Y<2 then return end
@@ -701,6 +710,15 @@ function UI.new(app,gui,scope)
   self.rail.Position=UDim2.new(0,12,.46,0)
   self.rail.Size=UDim2.fromOffset(54,if self.railCollapsed then 44 else 176)
   for _,button in self.railButtons do button.Visible=not self.railCollapsed end
+  for _,spec in {{self.top,"top"},{self.rail,"rail"}} do
+   local panel,key=spec[1],spec[2]
+   if s[key.."Custom"] then
+    panel.AnchorPoint=Vector2.zero
+    panel.Position=UDim2.fromOffset(math.max(0,sz.X-panel.Size.X.Offset)*s[key.."X"]/100,math.max(0,sz.Y-panel.Size.Y.Offset)*s[key.."Y"]/100)
+   else
+    panel.AnchorPoint=if key=="top" then Vector2.new(.5,0) else Vector2.new(0,.5)
+   end
+  end
   self.railCollapse.Position=UDim2.fromOffset(5,if self.railCollapsed then 5 else 136)
   self.railCollapse.Text=if self.railCollapsed then "›" else "‹"
   self.quick.Position=UDim2.fromOffset(10,47);self.quick.Size=UDim2.new(1,-20,0,34)
@@ -710,7 +728,7 @@ function UI.new(app,gui,scope)
   self.nav.AutomaticCanvasSize=Enum.AutomaticSize.X;self.nav.ScrollingDirection=Enum.ScrollingDirection.X
   for _,b in self.buttons do b.Size=UDim2.fromOffset(106,32) end
   self.pageBox.Position=UDim2.fromOffset(10,149);self.pageBox.Size=UDim2.new(1,-20,1,-180)
-  self.layoutKey=table.concat({s.menuDock,s.menuWidth,s.menuHeight,s.menuFloatX,s.menuFloatY,tostring(s.menuResize),tostring(s.robloxRail)},":")
+  self.layoutKey=table.concat({s.menuDock,s.menuWidth,s.menuHeight,s.menuFloatX,s.menuFloatY,tostring(s.menuResize),tostring(s.robloxRail),tostring(s.topCustom),s.topX,s.topY,tostring(s.railCustom),s.railX,s.railY},":")
  end
  function self:finishMenuDrag(point,resize)
   local s=self.app.s;local d=self.menuDraft
@@ -922,13 +940,13 @@ function UI:watch(fn) table.insert(self.syncs,fn);fn() end
 function UI:sync()
  if not self.panel.Parent then return end
  local st=self.app.s
- local layoutKey=table.concat({st.menuDock,st.menuWidth,st.menuHeight,st.menuFloatX,st.menuFloatY,tostring(st.menuResize),tostring(st.robloxRail)},":")
+ local layoutKey=table.concat({st.menuDock,st.menuWidth,st.menuHeight,st.menuFloatX,st.menuFloatY,tostring(st.menuResize),tostring(st.robloxRail),tostring(st.topCustom),st.topX,st.topY,tostring(st.railCustom),st.railX,st.railY},":")
  if self.layoutKey~=layoutKey and not self.menuDraft then self:layout() end
  local primary=U.hex(st.uiFontColor or "F1E6FF")
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.." / HUD EDIT"
+ self.tag.Text=self.app.mode.." / PANELS"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  for key,item in self.quickButtons do item.button.Text=item.label..(if st[key] then "  ON" else "  OFF");item.button.BackgroundColor3=if st[key] then U.hex(st.accent):Lerp(bg,.52) else soft end
@@ -1658,7 +1676,7 @@ I.order={
 I.tabs={
  Dashboard="Dashboard",HUD="HUD",Character="Profile",Wings="Favorites",
  Halos="AI_Assistant",Neon="Themes",Ambient="World_FX",Indicators="Indicators",
- Cursor="Assets",Camera="Media",Interaction="Games",Fonts="Fonts",Simulator="Simulator",
+ Cursor="Assets",Camera="Media",Interaction="Games",List="Update",Fonts="Fonts",Simulator="Simulator",
  Scripts="Console",Workshop="Workshop",Profiles="Cloud",Diagnostics="Debug"
 }
 -- Procedural silhouettes supply HD textures and offline line-art fallback.
@@ -1754,6 +1772,7 @@ function I.drawing(name) return drawings[name] or drawings.Assets end
 -- The texture is shared by the main menu, HUD and simulator preview.
 I.RES=128
 drawings.Games={{4,9,8,5,16,5,20,9,22,17,19,20,15,16,9,16,5,20,2,17,4,9},{5,11,11,11},{8,8,8,14},{15,10,17,10},{18,13,20,13}}
+drawings.Update={{4,5,20,5,20,21,4,21,4,5},{7,9,17,9},{7,13,17,13},{7,17,14,17},{8,2,8,5},{16,2,16,5}}
 local textures={}
 local function raster(name,glow)
  local key=name..(if glow then ":glow" else "")
@@ -2018,7 +2037,7 @@ local function scripts(ui,a)
 end
 function E.render(a,tab,ui)
  if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. F8 opens Studio. RightShift opens it only when native Shift-Lock is disabled. LeftAlt controls AETHER shoulder lock.",43);ui:chips({"Game","Simulator"},function(n) a:modeSet(n) end,2,function() return a.mode end);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme");ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
- elseif tab=="HUD" then preview(ui,a);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:control("compact");ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartPalette","heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);ui:chips({"hp","clock","profile","dock","cross","input","wallhop"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
+ elseif tab=="HUD" then preview(ui,a);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:control("compact");ui:title("TOP / LEFT PANELS");for _,v in {"topCapsule","robloxRail","movePanels"} do ui:control(v) end;ui:note("Enable moving panels, then use Edit HUD on screen. Disabling movement locks the saved locations.",38);ui:chips({"Reset panel positions"},function() a:patch({topCustom=false,railCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartPalette","heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);ui:chips({"hp","clock","profile","dock","cross","input","wallhop"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
   if k=="input" then for _,v in {"inputOverlay","inputMouse","inputX","inputY","inputScale","inputOpacity","inputColor"} do ui:control(v) end
   elseif k=="wallhop" then for _,v in {"wallhopHelper","wallhopX","wallhopY","wallhopScale","wallhopOpacity"} do ui:control(v) end
   elseif k=="cross" then ui:note("Shift-Lock reticle stays at the center of the game view.",28);for _,v in {"cross","reticleSize","reticleColor","reticleNeon","reticleGlow"} do ui:control(v) end
@@ -2059,6 +2078,17 @@ function E.render(a,tab,ui)
  elseif tab=="Simulator" then preview(ui,a);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
  elseif tab=="Scripts" then scripts(ui,a)
  elseif tab=="Workshop" or tab=="Profiles" then library(ui,a,tab=="Profiles")
+ elseif tab=="List" then
+  ui:title("ROBLOX PLAYER LIST")
+  ui:chips({"Toggle native player list"},function() ui:togglePlayerList() end,1)
+  ui:note("Roblox updates its own player list automatically as players join or leave.",36)
+  ui:title("AETHER UPDATE LIST")
+  ui:note("PANELS — Movable top capsule and Roblox shortcut rail; release notes.",44)
+  ui:note("HUD EDIT — Live widget positioning and full session unload.",42)
+  ui:note("WALLHOP — Read-only practice display and camera angle measurement.",42)
+  ui:note("INTERACT — Separate Shift-Lock settings and input visualization.",42)
+  ui:note("WING6 — Six sketch-inspired wings and counter-rotating diamonds.",42)
+  ui:note("SKETCH — HD outline icons and ECG heart.",36)
  elseif tab=="Diagnostics" then local info=ui:note("",54);local log=ui:box("Session events","",165);log.TextEditable=false;local function refresh() info.Text=string.format("%s  ·  HP %s / %s  ·  %d tracked\n%s",a.mode,tostring(a.frame.hp),tostring(a.frame.max),#a.frame.targets,a.store.status);log.Text=table.concat(a.logs,"\n") end;ui:chips({"Refresh","Clear log","Reset settings"},function(n) if n=="Clear log" then table.clear(a.logs) elseif n=="Reset settings" then a:replace(S.defaults()) end;refresh() end,3);refresh();ui:title("SESSION");ui:note("Unload stops AETHER, removes its HUD and effects, and releases its camera and mouse controls. Export a bank first to retain local-only settings.",52);ui:chips({"Unload AETHER"},function() ui:message("Press Confirm unload to remove AETHER.");ui:chips({"Confirm unload"},function() a:unload() end,1) end,1) end
 end
 return E
@@ -2096,7 +2126,7 @@ range("Theme","glass","Glass opacity %",81,10,100);range("Theme","rim","Neon rim
 toggle("Motion","reduce","Reduce motion",false);range("Motion","speed","Animation speed %",100,40,200);range("Motion","duration","Transition (ms)",380,80,1400);choice("Motion","ease","Interpolation","Smooth",{"Smooth","Linear","Sine"});choice("Motion","menuTransition","Menu transition","Glass",{"Glass","Slide","Fade","Off"});range("Motion","menuAnimStrength","Menu motion intensity %",75,0,100);toggle("Motion","tabTransition","Animated page transitions",true);toggle("Motion","navGlow","Animated navigation glow",true)
 toggle("Theme","menuGeometry","Animated geometric background",true);choice("Theme","menuShape","Background style","Mixed",{"Mixed","Rings","Crystals","Triangles","Hexagons"});range("Theme","menuDensity","Background density",12,4,20);range("Theme","menuMotion","Background speed %",65,0,180);range("Theme","menuOpacity","Background intensity %",55,0,100);toggle("Theme","screenParticles","Menu screen particles",true);choice("Theme","screenParticleStyle","Screen particle style","Mixed",{"Mixed","Stars","Dust","Diamonds"});range("Theme","screenParticleCount","Screen particle count",24,8,48);range("Theme","screenParticleOpacity","Screen particle intensity %",55,0,100);toggle("Theme","robloxRail","Roblox shortcuts rail",true);toggle("Theme","topCapsule","Interactive top capsule",true)
 choice("Theme","menuDock","Menu docking side","Left",{"Left","Right","Top","Bottom","Floating"});range("Theme","menuWidth","Menu width (px)",438,280,1600);range("Theme","menuHeight","Menu height (px)",600,260,1200);toggle("Theme","menuDrag","Drag / snap menu",true);toggle("Theme","menuResize","Resize with corner grip",true);range("Theme","menuFloatX","Floating horizontal %",35,0,100);range("Theme","menuFloatY","Floating vertical %",40,0,100)
-toggle("HUD","locked","Lock widget positions",true);toggle("HUD","compact","Compact health panel",true);choice("HUD","layoutMode","HUD layout","Sketch",{"Sketch","Custom"});choice("HUD","hudMotion","Widget animation","Glass",{"Glass","Float","Pulse","Off"});range("HUD","hudMotionStrength","Widget motion intensity %",65,0,100);toggle("HUD","hudShine","Health bar shimmer",true);toggle("HUD","hudReaction","Damage and healing glow",true);range("HUD","hudSmoothness","HUD smoothing (ms)",320,100,900)
+toggle("HUD","locked","Lock widget positions",true);toggle("HUD","movePanels","Allow moving top and left panels",false);toggle("HUD","topCustom","Custom top panel position",false);range("HUD","topX","Top panel X %",50,0,100);range("HUD","topY","Top panel Y %",2,0,100);toggle("HUD","railCustom","Custom left panel position",false);range("HUD","railX","Left panel X %",1,0,100);range("HUD","railY","Left panel Y %",46,0,100);toggle("HUD","compact","Compact health panel",true);choice("HUD","layoutMode","HUD layout","Sketch",{"Sketch","Custom"});choice("HUD","hudMotion","Widget animation","Glass",{"Glass","Float","Pulse","Off"});range("HUD","hudMotionStrength","Widget motion intensity %",65,0,100);toggle("HUD","hudShine","Health bar shimmer",true);toggle("HUD","hudReaction","Damage and healing glow",true);range("HUD","hudSmoothness","HUD smoothing (ms)",320,100,900)
 choice("HUD","heartPalette","Heart gradient","Adaptive",{"Adaptive","Aurora","Amethyst","Ocean","Sakura","Sunset","Ember","Mint","Ice","Galaxy","Rainbow","Custom"});choice("HUD","heartDirection","Heart gradient direction","Vertical",{"Vertical","Horizontal","Diagonal","Reverse","Orbit"});range("HUD","heartGradientSpeed","Heart gradient speed %",60,0,150);color("HUD","heartA","Heart custom start","BA99FF");color("HUD","heartMid","Heart custom middle","F8CCFF");color("HUD","heartB","Heart custom end","69D9FA");range("HUD","heartGlow","Heart glow %",65,0,100)
 for _,row in {{"hp","Health",3,9},{"clock","Clock",3,96},{"profile","Player card",97,9},{"dock","Studio dock",50,96},{"cross","Reticle",50,50}} do
  local k,t=row[1],row[2];toggle("HUD",k,t,true); range("HUD",k.."X",t.." · horizontal %",row[3],0,100);range("HUD",k.."Y",t.." · vertical %",row[4],0,100)
@@ -3468,10 +3498,13 @@ U.corner(header,12);U.stroke(header,Color3.fromRGB(188,151,255),.3)
 local instruction=U.label(header,"HUD EDIT · Drag a widget",11,UDim2.fromOffset(10,0),UDim2.fromOffset(188,38))
 local done=U.button(header,"DONE");done.Position=UDim2.fromOffset(201,4);done.Size=UDim2.fromOffset(78,30);done.Modal=true;done.ZIndex=12
 local handles={}
-local positions={"hp","clock","profile","dock","input","wallhop"}
+local positions={"hp","clock","profile","dock","input","wallhop","top","rail"}
+local function isPanel(key) return key=="top" or key=="rail" end
 local function widgetFor(key)
     if key=="input" then return hud.inputRoot end
     if key=="wallhop" then return hud.wallhop end
+    if key=="top" then return ui.top end
+    if key=="rail" then return ui.rail end
     return hud.widgets[key].p
 end
 local function coord(key,topLeft,size,vp)
@@ -3503,13 +3536,13 @@ for _,key in positions do
     scope:on(b.InputBegan,function(input)
         if not app.editingHUD or (input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch) then return end
         local target=widgetFor(key)
-        if not target.Visible then return end
+        if not target.Visible or (isPanel(key) and not app.s.movePanels) then return end
         local vp=overlay.AbsoluteSize
         local size=target.AbsoluteSize
         local original=target.AbsolutePosition-overlay.AbsolutePosition
         -- Preserve all currently visible classic widget positions before leaving Sketch.
         local patch={}
-        if app.s.layoutMode=="Sketch" and key~="input" and key~="wallhop" then
+        if app.s.layoutMode=="Sketch" and key~="input" and key~="wallhop" and not isPanel(key) then
             patch.layoutMode="Custom"
             for _,other in {"hp","clock","profile","dock"} do
                 local w=widgetFor(other)
@@ -3524,7 +3557,10 @@ for _,key in positions do
             local dest=original+(pos-start)
             dest=Vector2.new(math.clamp(dest.X,0,math.max(0,vp.X-size.X)),math.clamp(dest.Y,0,math.max(0,vp.Y-size.Y)))
             local x,y=coord(key,dest,size,vp)
-            if app.s[key.."X"]~=x or app.s[key.."Y"]~=y then app:patch({[key.."X"]=x,[key.."Y"]=y}) end
+            if isPanel(key) then
+                if not app.s.movePanels then return end
+                if not app.s[key.."Custom"] or app.s[key.."X"]~=x or app.s[key.."Y"]~=y then app:patch({[key.."Custom"]=true,[key.."X"]=x,[key.."Y"]=y}) end
+            elseif app.s[key.."X"]~=x or app.s[key.."Y"]~=y then app:patch({[key.."X"]=x,[key.."Y"]=y}) end
         end)
     end)
 end
@@ -3533,7 +3569,7 @@ function app:updateEditor()
     if not self.editingHUD then return end
     for _,key in positions do
         local b,target=handles[key],widgetFor(key)
-        b.Visible=target.Visible and (if key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
+        b.Visible=target.Visible and (if key=="top" then self.s.movePanels and self.s.topCapsule elseif key=="rail" then self.s.movePanels and self.s.robloxRail elseif key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
         if b.Visible then
             local xy=target.AbsolutePosition-editor.AbsolutePosition
             local sz=target.AbsoluteSize

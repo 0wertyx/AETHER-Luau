@@ -46,6 +46,7 @@ function UI.new(app,gui,scope)
   self.railButtons[index]=button
   scope:on(button.Activated,function()
    self:action(function()
+    if item[2]==Enum.CoreGuiType.PlayerList then self:open("List");return end
     if item[2]==Enum.CoreGuiType.Chat then
      local config=Chat:FindFirstChildOfClass("ChatWindowConfiguration")
      if config then if chatConfig~=config then chatConfig=config;chatOriginal=config.Enabled end;config.Enabled=not config.Enabled;chatApplied=config.Enabled;button.BackgroundTransparency=if config.Enabled then .12 else .6;return end
@@ -54,8 +55,16 @@ function UI.new(app,gui,scope)
     if coreOriginal[item[2]]==nil then coreOriginal[item[2]]=enabled end
     StarterGui:SetCoreGuiEnabled(item[2],not enabled);coreApplied[item[2]]=not enabled
     button.BackgroundTransparency=if enabled then .6 else .12
+    if item[2]==Enum.CoreGuiType.Backpack and not enabled then self:message("Roblox backpack enabled; use the native inventory control to expand it.") end
    end)
   end)
+ end
+ function self:togglePlayerList()
+  local kind=Enum.CoreGuiType.PlayerList
+  local enabled=StarterGui:GetCoreGuiEnabled(kind)
+  if coreOriginal[kind]==nil then coreOriginal[kind]=enabled end
+  StarterGui:SetCoreGuiEnabled(kind,not enabled);coreApplied[kind]=not enabled
+  self:message(if enabled then "Roblox player list hidden" else "Roblox player list enabled")
  end
  local collapse=U.button(self.rail,"‹");collapse.Size=UDim2.fromOffset(44,34);collapse.Position=UDim2.fromOffset(5,136)
  scope:on(collapse.Activated,function() self.railCollapsed=not self.railCollapsed;self:layout() end)
@@ -95,7 +104,7 @@ function UI.new(app,gui,scope)
  self.place=U.label(self.panel,"PLACE  /  "..tostring(game.PlaceId),10,nil,nil);self.place.TextColor3=dim
  self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
  self.pageBox=U.new("CanvasGroup",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,GroupTransparency=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
- self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Interaction","Fonts","Simulator","Scripts","Workshop","Profiles","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
+ self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Interaction","Fonts","Simulator","Scripts","Workshop","Profiles","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
  function self:layout()
   local sz=self.stage.AbsoluteSize
   if sz.X<2 or sz.Y<2 then return end
@@ -138,6 +147,15 @@ function UI.new(app,gui,scope)
   self.rail.Position=UDim2.new(0,12,.46,0)
   self.rail.Size=UDim2.fromOffset(54,if self.railCollapsed then 44 else 176)
   for _,button in self.railButtons do button.Visible=not self.railCollapsed end
+  for _,spec in {{self.top,"top"},{self.rail,"rail"}} do
+   local panel,key=spec[1],spec[2]
+   if s[key.."Custom"] then
+    panel.AnchorPoint=Vector2.zero
+    panel.Position=UDim2.fromOffset(math.max(0,sz.X-panel.Size.X.Offset)*s[key.."X"]/100,math.max(0,sz.Y-panel.Size.Y.Offset)*s[key.."Y"]/100)
+   else
+    panel.AnchorPoint=if key=="top" then Vector2.new(.5,0) else Vector2.new(0,.5)
+   end
+  end
   self.railCollapse.Position=UDim2.fromOffset(5,if self.railCollapsed then 5 else 136)
   self.railCollapse.Text=if self.railCollapsed then "›" else "‹"
   self.quick.Position=UDim2.fromOffset(10,47);self.quick.Size=UDim2.new(1,-20,0,34)
@@ -147,7 +165,7 @@ function UI.new(app,gui,scope)
   self.nav.AutomaticCanvasSize=Enum.AutomaticSize.X;self.nav.ScrollingDirection=Enum.ScrollingDirection.X
   for _,b in self.buttons do b.Size=UDim2.fromOffset(106,32) end
   self.pageBox.Position=UDim2.fromOffset(10,149);self.pageBox.Size=UDim2.new(1,-20,1,-180)
-  self.layoutKey=table.concat({s.menuDock,s.menuWidth,s.menuHeight,s.menuFloatX,s.menuFloatY,tostring(s.menuResize),tostring(s.robloxRail)},":")
+  self.layoutKey=table.concat({s.menuDock,s.menuWidth,s.menuHeight,s.menuFloatX,s.menuFloatY,tostring(s.menuResize),tostring(s.robloxRail),tostring(s.topCustom),s.topX,s.topY,tostring(s.railCustom),s.railX,s.railY},":")
  end
  function self:finishMenuDrag(point,resize)
   local s=self.app.s;local d=self.menuDraft
@@ -359,13 +377,13 @@ function UI:watch(fn) table.insert(self.syncs,fn);fn() end
 function UI:sync()
  if not self.panel.Parent then return end
  local st=self.app.s
- local layoutKey=table.concat({st.menuDock,st.menuWidth,st.menuHeight,st.menuFloatX,st.menuFloatY,tostring(st.menuResize),tostring(st.robloxRail)},":")
+ local layoutKey=table.concat({st.menuDock,st.menuWidth,st.menuHeight,st.menuFloatX,st.menuFloatY,tostring(st.menuResize),tostring(st.robloxRail),tostring(st.topCustom),st.topX,st.topY,tostring(st.railCustom),st.railX,st.railY},":")
  if self.layoutKey~=layoutKey and not self.menuDraft then self:layout() end
  local primary=U.hex(st.uiFontColor or "F1E6FF")
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.." / HUD EDIT"
+ self.tag.Text=self.app.mode.." / PANELS"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  for key,item in self.quickButtons do item.button.Text=item.label..(if st[key] then "  ON" else "  OFF");item.button.BackgroundColor3=if st[key] then U.hex(st.accent):Lerp(bg,.52) else soft end

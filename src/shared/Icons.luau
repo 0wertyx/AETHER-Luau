@@ -15,7 +15,7 @@ I.order={
 I.tabs={
  Dashboard="Dashboard",HUD="HUD",Character="Profile",Wings="Favorites",
  Halos="AI_Assistant",Neon="Themes",Ambient="World_FX",Indicators="Indicators",
- Cursor="Assets",Camera="Media",Interaction="Games",Fonts="Fonts",Simulator="Simulator",
+ Cursor="Assets",Camera="Media",Interaction="Games",List="Update",Fonts="Fonts",Simulator="Simulator",
  Scripts="Console",Workshop="Workshop",Profiles="Cloud",Diagnostics="Debug"
 }
 -- Procedural silhouettes supply HD textures and offline line-art fallback.
@@ -111,6 +111,7 @@ function I.drawing(name) return drawings[name] or drawings.Assets end
 -- The texture is shared by the main menu, HUD and simulator preview.
 I.RES=128
 drawings.Games={{4,9,8,5,16,5,20,9,22,17,19,20,15,16,9,16,5,20,2,17,4,9},{5,11,11,11},{8,8,8,14},{15,10,17,10},{18,13,20,13}}
+drawings.Update={{4,5,20,5,20,21,4,21,4,5},{7,9,17,9},{7,13,17,13},{7,17,14,17},{8,2,8,5},{16,2,16,5}}
 local textures={}
 local function raster(name,glow)
  local key=name..(if glow then ":glow" else "")
