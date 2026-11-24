@@ -24,6 +24,15 @@ function UI.new(app,gui,scope)
   self.stars[i]={root=root,bars=bars,dot=dot}
  end
  self.top,self.topRim,self.topButtons=U.topPanel(self.stage)
+ self.updateChip=U.button(self.top,"v1.0.0")
+ self.updateChip.Name="LiveVersion"
+ self.updateChip.AnchorPoint=Vector2.new(.5,0)
+ self.updateChip.Position=UDim2.new(.5,0,1,6)
+ self.updateChip.Size=UDim2.fromOffset(112,22)
+ self.updateChip.TextSize=10;self.updateChip.ZIndex=self.top.ZIndex+2
+ self.updateChip.BackgroundTransparency=.15
+ self.updateRim=U.stroke(self.updateChip,Color3.fromRGB(166,138,255),.45)
+ scope:on(self.updateChip.Activated,function() self:open("Updates") end)
  for index,action in {"Scripts","Toggle","Workshop"} do
   scope:on(self.topButtons[index].Activated,function() if action=="Toggle" then self:show(not self.opened) else self:open(action) end end)
  end
@@ -252,6 +261,18 @@ function UI:animateBackground(t)
  local accent=U.hex(s.accent)
  local secondary=U.hex(s.secondary)
  self.top.Visible=s.topCapsule;self.rail.Visible=s.robloxRail
+ local live=self.app.liveUpdate
+ if live then
+  local unread=live.unread==true
+  local version=live.version..(if (live.testCount or 0)>0 and live.isTest then " · TEST "..tostring(live.testCount) else "")
+  local text=if unread then "v"..version.."  |  VERSION UPDATED  |  CHECK UPDATE LIST" else "v"..version
+  if self.updateChip.Text~=text then self.updateChip.Text=text end
+  local width=if unread then math.min(370,math.max(150,self.stage.AbsoluteSize.X-24)) else math.min(180,math.max(90,#text*7+20))
+  self.updateChip.Size=UDim2.fromOffset(width,if unread then 28 else 22)
+  self.updateChip.BackgroundColor3=if unread then accent:Lerp(Color3.fromRGB(22,17,35),.65) else Color3.fromRGB(24,20,40)
+  self.updateRim.Color=accent
+  self.updateRim.Transparency=if unread then .15 else .55
+ end
  self.topRim.Color=accent;self.railRim.Color=accent
  self.topButtons[2].BackgroundColor3=if self.opened then accent:Lerp(bg,.55) else soft
  local visible=s.screenParticles and q>.001
