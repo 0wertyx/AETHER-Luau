@@ -1,0 +1,22 @@
+{
+  "format": "aether.live/1",
+  "revision": 1,
+  "version": "1.1.0",
+  "notes": "Live release test: Aurora theme and Lunar halo. Settings stay unchanged.",
+  "presets": {
+    "Theme": {
+      "Live Aurora": {
+        "accent": "8DEBFF",
+        "secondary": "D8ACFF",
+        "glassColor": "22243E"
+      }
+    },
+    "Halos": {
+      "Live Lunar": {
+        "halo": true,
+        "haloStyle": "Lunar",
+        "haloColor": "C4B5FF"
+      }
+    }
+  }
+}
