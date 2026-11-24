@@ -14,7 +14,86 @@ local function preview(ui,a,showPanels)
  end
 end
 local function avatarPreview(ui,a)
- local f=ui:row(165,"RigPreview");local view=U.new("ViewportFrame",{Size=UDim2.fromScale(1,1),BorderSizePixel=0,BackgroundColor3=Color3.fromRGB(21,19,36),Ambient=Color3.fromRGB(155,145,175),LightColor=Color3.fromRGB(246,222,255),LightDirection=Vector3.new(-1,-1,-.6)},f);U.corner(view,10);local w=U.new("WorldModel",{},view);local rig=Avatar.mannequin(w);local cam=U.new("Camera",{FieldOfView=34,CFrame=CFrame.lookAt(Vector3.new(2.3,3.6,9.3),Vector3.new(0,2.1,0))},view);view.CurrentCamera=cam;local avatar=Avatar.new(w,true);a.preview={avatar=avatar,rig=rig};ui.page:add(function() avatar:clear() end)
+ local f=ui:row(165,"RigPreview")
+ local view=U.new("ViewportFrame",{Size=UDim2.fromScale(1,1),BorderSizePixel=0,BackgroundColor3=Color3.fromRGB(21,19,36),Ambient=Color3.fromRGB(155,145,175),LightColor=Color3.fromRGB(246,222,255),LightDirection=Vector3.new(-1,-1,-.6)},f)
+ U.corner(view,10)
+ local w=U.new("WorldModel",{},view)
+ local cam=U.new("Camera",{FieldOfView=34},view);view.CurrentCamera=cam
+ local player=game:GetService("Players").LocalPlayer
+ local page=ui.page
+ local avatar=Avatar.new(w,true)
+ local previewState={avatar=avatar,rig=nil};a.preview=previewState
+ local label=U.label(view,"Loading avatar...",12)
+ label.TextXAlignment=Enum.TextXAlignment.Center
+ local generation=0
+ local characterScope=nil
+ local function fit()
+  local rig=previewState.rig
+  if page.dead or not rig or not rig.Parent then return end
+  local cf,size=rig:GetBoundingBox()
+  local aspect=math.max(.1,view.AbsoluteSize.X/math.max(1,view.AbsoluteSize.Y))
+  local half=math.rad(cam.FieldOfView*.5)
+  local angle=math.min(half,math.atan(math.tan(half)*aspect))
+  local radius=math.max(.5,size.Magnitude*.5)
+  local distance=radius/math.sin(angle)*1.12
+  cam.CFrame=CFrame.lookAt(cf.Position+Vector3.new(.13,.08,-1).Unit*distance,cf.Position)
+ end
+ local function refresh(char)
+  generation+=1
+  local current=generation
+  task.delay(.18,function()
+   if page.dead or current~=generation or not char or char~=player.Character then return end
+   if not char:FindFirstChildOfClass("Humanoid") or not char:FindFirstChild("HumanoidRootPart") or not char:FindFirstChild("Head") then return end
+   local previous=char.Archivable
+   local ok,rig=pcall(function() char.Archivable=true;return char:Clone() end)
+   char.Archivable=previous
+   if not ok or not rig then
+    label.Text="Avatar unavailable";label.Visible=not previewState.rig
+    return
+   end
+   for _,obj in rig:GetDescendants() do
+    if not obj.Parent then continue end
+    if obj:IsA("LuaSourceContainer") or obj:IsA("Tool") or obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Highlight") or obj:IsA("Sound") then
+     obj:Destroy()
+    elseif obj:IsA("BasePart") then
+     obj.Anchored=true;obj.CanCollide=false;obj.CanTouch=false;obj.CanQuery=false;obj.LocalTransparencyModifier=0
+     if obj.Name=="HumanoidRootPart" then obj.Transparency=1 end
+    end
+   end
+   local humanoid=rig:FindFirstChildOfClass("Humanoid")
+   if humanoid then humanoid.DisplayDistanceType=Enum.HumanoidDisplayDistanceType.None end
+   local root=rig:FindFirstChild("HumanoidRootPart")
+   if root then rig:PivotTo(root.CFrame:ToObjectSpace(rig:GetPivot())) end
+   rig.Name="LocalAvatarPreview"
+   avatar:clear()
+   if previewState.rig then previewState.rig:Destroy() end
+   rig.Parent=w;previewState.rig=rig;label.Visible=false;fit()
+  end)
+ end
+ local function bind(char)
+  if characterScope then characterScope:clear() end
+  characterScope=U.scope()
+  generation+=1;avatar:clear()
+  if previewState.rig then previewState.rig:Destroy();previewState.rig=nil end
+  label.Text="Loading avatar...";label.Visible=true
+  if not char then return end
+  local function appearanceChanged(obj)
+   if obj:IsA("Accessory") or obj:IsA("Clothing") or obj:IsA("ShirtGraphic") or obj:IsA("BodyColors") or obj:IsA("BasePart") or obj:IsA("Humanoid") or obj:IsA("Decal") or obj:IsA("CharacterMesh") or obj:IsA("SurfaceAppearance") then refresh(char) end
+  end
+  characterScope:on(char.DescendantAdded,appearanceChanged)
+  characterScope:on(char.DescendantRemoving,appearanceChanged)
+  refresh(char)
+ end
+ page:on(view:GetPropertyChangedSignal("AbsoluteSize"),fit)
+ page:on(player.CharacterAdded,bind)
+ page:on(player.CharacterRemoving,function() bind(nil) end)
+ page:on(player.CharacterAppearanceLoaded,function(char) if char==player.Character then refresh(char) end end)
+ page:add(function()
+  generation+=1
+  if characterScope then characterScope:clear() end
+  avatar:clear()
+ end)
+ bind(player.Character)
 end
 local function gallery(ui,a)
  ui:title("24 DIRECTION STYLES · HD");for i=1,#S.shapes,4 do local r=ui:row(72,"ShapeGallery");for j=0,3 do local n=S.shapes[i+j];local b=U.button(r,"");b.Name=n;b.Position=UDim2.fromScale(j/4,0);b.Size=UDim2.new(.25,-3,1,0);local g=Symbol.gallery(b,n,30);g.root.Position=UDim2.fromScale(.5,.37);g.root.Size=UDim2.fromOffset(47,47);local l=U.label(b,n,10,UDim2.fromScale(0,.65),UDim2.fromScale(1,.3));l.TextXAlignment=Enum.TextXAlignment.Center;ui.page:on(b.Activated,function() a:set("shape",n) end);ui:watch(function() b.BackgroundColor3=if a.s.shape==n then U.hex("624785") else U.hex("30273E");g:paint(U.hex(a.s.arrowA),U.hex(a.s.arrowB),a.s.ink,a.s.spread) end) end end
