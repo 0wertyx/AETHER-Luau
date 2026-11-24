@@ -321,6 +321,19 @@ local bg=Color3.fromRGB(19,16,32);local dim=Color3.fromRGB(173,163,197);local so
 function UI.new(app,gui,scope)
  local self=setmetatable({app=app,gui=gui,scope=scope,syncs={},icons={},tab="Dashboard",opened=true,seq=0},UI)
  self.stage=U.frame(gui,"StudioArea",nil,nil,nil,1);self.panel=U.frame(self.stage,"Studio",nil,nil,bg,.035);self.panel.Active=true;U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3);U.gradient(self.panel,Color3.new(1,1,1),Color3.fromRGB(192,180,215),82)
+ self.geoLayer=U.frame(self.panel,"GeometryBackground",UDim2.fromOffset(3,3),UDim2.new(1,-6,1,-6),nil,1)
+ self.geoLayer.ClipsDescendants=true;self.geoLayer.Active=false;self.geoLayer.ZIndex=1
+ self.geo={}
+ for i=1,20 do
+  local root=U.frame(self.geoLayer,"FloatingShape"..i,nil,UDim2.fromOffset(48,48),nil,1)
+  root.AnchorPoint=Vector2.new(.5,.5);root.Active=false
+  local edges={}
+  for j=1,12 do
+   local edge=U.frame(root,"Edge",nil,UDim2.fromOffset(1,1),Color3.new(1,1,1),1)
+   edge.AnchorPoint=Vector2.new(.5,.5);edge.Active=false;U.corner(edge,3);edges[j]=edge
+  end
+  table.insert(self.geo,{root=root,edges=edges})
+ end
  self.header=U.frame(self.panel,"Titlebar",nil,UDim2.new(1,0,0,46),nil,1);self.header.Active=true;self.brand=U.label(self.header,"A E T H E R",18,UDim2.fromOffset(16,2),UDim2.fromOffset(135,40));self.tag=U.label(self.header,"",11,UDim2.fromOffset(147,3),UDim2.new(1,-211,0,40));self.tag.TextColor3=dim
  self.close=U.button(self.header,"×");self.close.Modal=true;self.close.Size=UDim2.fromOffset(33,29);self.close.Position=UDim2.new(1,-43,0,8);scope:on(self.close.Activated,function() self:show(false) end)
  self.reopen=U.button(self.stage,"A  /  STUDIO");self.reopen.Size=UDim2.fromOffset(99,31);self.reopen.Position=UDim2.fromOffset(12,10);self.reopen.Visible=false;scope:on(self.reopen.Activated,function() self:show(true) end)
@@ -337,6 +350,43 @@ function UI.new(app,gui,scope)
  scope:on(Input.InputChanged,function(i) local d=self.drag;if d and (i==d.i or d.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseMovement) then d.fn(Vector2.new(i.Position.X,i.Position.Y),d.start,d.origin) end end)
  scope:on(Input.InputEnded,function(i) if self.drag and (self.drag.i==i or self.drag.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseButton1) then self.drag=nil end end)
  scope:on(Input.WindowFocusReleased,function() self.drag=nil end);scope:add(function() if self.page then self.page:clear() end end);return self
+end
+function UI:animateBackground(t)
+ local s=self.app.s
+ self.geoLayer.Visible=s.menuGeometry and self.opened
+ if not self.geoLayer.Visible then return end
+ local tm=if s.reduce then 0 else t*s.menuMotion/100
+ local key=s.menuShape..":"..s.accent..":"..s.secondary..":"..s.menuOpacity
+ if self.geoLast and tm==self.geoLast and self.geoSettings==s then return end
+ self.geoLast=tm;self.geoSettings=s
+ local a,b=U.hex(s.accent),U.hex(s.secondary)
+ for i,g in self.geo do
+  g.root.Visible=i<=s.menuDensity
+  if i>s.menuDensity then continue end
+  local count=if s.menuShape=="Rings" then 12 elseif s.menuShape=="Crystals" then 4 elseif s.menuShape=="Triangles" then 3 elseif s.menuShape=="Hexagons" then 6 else ({3,4,6,12})[i%4+1]
+  local size=(34+(i*19)%73)*(1+.05*math.sin(tm*.4+i))
+  g.root.Size=UDim2.fromOffset(size,size)
+  g.root.Position=UDim2.fromScale(.08+((i*.618)%1)*.84+math.sin(tm*.17+i)*.035,.08+((i*.381)%1)*.84+math.cos(tm*.21+i)*.045)
+  g.root.Rotation=i*31+tm*(if i%2==0 then 11 else -8)
+  if g.key~=key then
+   g.key=key
+   for j,p in g.edges do
+    p.Visible=j<=count
+    if j<=count then
+     local q0=(j-1)/count*math.pi*2
+     local q1=j/count*math.pi*2
+     local u=Vector2.new(math.cos(q0),math.sin(q0))*.44
+     local v=Vector2.new(math.cos(q1),math.sin(q1))*.44
+     local d=v-u
+     p.Position=UDim2.fromScale(.5+(u.X+v.X)*.5,.5+(u.Y+v.Y)*.5)
+     p.Size=UDim2.new(d.Magnitude,0,0,1.5)
+     p.Rotation=math.deg(math.atan2(d.Y,d.X))
+     p.BackgroundColor3=a:Lerp(b,(i%7)/6)
+     p.BackgroundTransparency=1-s.menuOpacity/100*.42
+    end
+   end
+  end
+ end
 end
 function UI:begin(i,fn,origin) if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end;local v=Vector2.new(i.Position.X,i.Position.Y);self.drag={i=i,start=v,fn=fn,origin=origin};fn(v,v,origin) end
 function UI:show(on) self.opened=on;self.panel.Visible=on;self.reopen.Visible=not on;self.drag=nil;if self.app.onMenu then self.app:onMenu(on) end end
@@ -969,6 +1019,7 @@ local function text(g,k,t,v,n) def(g,k,t,"text",v,0,n) end
 color("Theme","accent","Accent","A68AFF");color("Theme","secondary","Second neon","FF89C7");color("Theme","glassColor","Glass tint","211C35");color("Theme","uiFontColor","Studio text color","F1E6FF");color("Theme","uiMutedColor","Studio secondary text","ADA3C5");def("Theme","iconAtlas","AETHER icon atlas Roblox asset ID","asset","")
 range("Theme","glass","Glass opacity %",81,10,100);range("Theme","rim","Neon rim %",55,0,100);toggle("Theme","sparkles","Floating sparkles",true)
 toggle("Motion","reduce","Reduce motion",false);range("Motion","speed","Animation speed %",100,40,200);range("Motion","duration","Transition (ms)",300,80,1400);choice("Motion","ease","Interpolation","Smooth",{"Smooth","Linear","Sine"})
+toggle("Theme","menuGeometry","Animated geometric background",true);choice("Theme","menuShape","Background style","Mixed",{"Mixed","Rings","Crystals","Triangles","Hexagons"});range("Theme","menuDensity","Background density",12,4,20);range("Theme","menuMotion","Background speed %",65,0,180);range("Theme","menuOpacity","Background intensity %",55,0,100)
 toggle("HUD","locked","Lock widget positions",true);toggle("HUD","compact","Compact health panel",false)
 for _,row in {{"hp","Health",3,9},{"clock","Clock",3,96},{"profile","Player card",97,9},{"dock","Studio dock",50,96},{"cross","Reticle",50,50}} do
  local k,t=row[1],row[2];toggle("HUD",k,t,true); range("HUD",k.."X",t.." · horizontal %",row[3],0,100);range("HUD",k.."Y",t.." · vertical %",row[4],0,100)
@@ -979,7 +1030,7 @@ toggle("Character","walkAnimation","Custom walking animation",false);choice("Cha
 toggle("Wings","wings","Show wings",false);choice("Wings","wingStyle","Silhouette","Seraph",{"Seraph","Blade","Sylph","Phoenix","Frost","Butterfly","Raven","Celestial","Crystal","Dusk","Petal","Storm","Royal","Eclipse"});range("Wings","wingSpan","Span %",100,50,175);range("Wings","wingSweep","Sweep (degrees)",24,-25,65);range("Wings","wingBeat","Flap speed %",90,0,200);color("Wings","wingColor","Feather color","B49BFF");toggle("Wings","wingRainbow","Prismatic feathers",false);choice("Wings","wingDetail","Feather detail","High",{"Balanced","High","Ultra"});toggle("Wings","wingWalk","Walking wing reaction",true)
 toggle("Halos","halo","Show halo",false);choice("Halos","haloStyle","Orbit form","Ring",{"Ring","Binary","Crown","Double Ring","Spiral","Starfall","Solar","Lunar","Orbitals","Thorns","Prism","Eclipse","Comet","Lotus"});range("Halos","haloRadius","Radius %",88,45,175);range("Halos","haloHeight","Height above head %",105,55,220);range("Halos","haloSpin","Orbit speed %",75,0,200);color("Halos","haloColor","Halo color","FFB4D6");toggle("Halos","haloRainbow","Prismatic halo",false);choice("Halos","haloDetail","Halo geometry detail","High",{"Balanced","High","Ultra"});toggle("Halos","haloWalk","Walking halo reaction",true)
 toggle("Neon","neon","Character outline",true);range("Neon","neonFill","Body tint %",10,0,65);range("Neon","neonLight","Light intensity %",40,0,100);color("Neon","neonColor","Neon color","AB87FF");toggle("Neon","neonRainbow","Rainbow neon",false)
-toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA","High sky","282057");color("Ambient","skyB","Horizon","8C70C2");color("Ambient","skyC","Ground light","EAB6CD");range("Ambient","fog","Fog density %",35,0,90);range("Ambient","bloom","Bloom %",40,0,100);range("Ambient","time","Time (tenths of an hour)",166,0,239);range("Ambient","light","Brightness %",105,25,180);range("Ambient","saturation","Saturation %",9,-85,85);range("Ambient","blur","Depth blur",0,0,16);range("Ambient","fade","Atmosphere fade (ms)",700,0,3500)
+toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA","High sky","282057");color("Ambient","skyB","Horizon","8C70C2");color("Ambient","skyC","Ground light","EAB6CD");range("Ambient","fog","Fog density %",35,0,90);range("Ambient","bloom","Bloom %",40,0,100);range("Ambient","time","Time (tenths of an hour)",166,0,239);range("Ambient","light","Brightness %",105,25,180);range("Ambient","saturation","Saturation %",9,-85,85);range("Ambient","blur","Depth blur",0,0,16);range("Ambient","fade","Atmosphere fade (ms)",700,0,3500);range("Ambient","worldContrast","Contrast %",0,-80,80);range("Ambient","worldExposure","Exposure %",0,-100,100);range("Ambient","worldGlare","Atmospheric glare %",0,0,100);range("Ambient","worldRays","Sun rays %",0,0,100);range("Ambient","worldFocus","Depth of field %",0,0,100);range("Ambient","worldFocusDistance","Focus distance (studs)",60,8,250);range("Ambient","worldBloomSize","Bloom radius",26,0,56)
 toggle("Indicators","indicators","Directional indicators",true);choice("Indicators","shape","Indicator shape","Soft Triangle",S.shapes);range("Indicators","size","Size (px)",31,14,72);range("Indicators","corners","Corner softness %",30,0,100);range("Indicators","edge","Distance from edges %",11,4,30);range("Indicators","turn","Rotation smoothing (ms)",180,0,800);range("Indicators","ink","Neon intensity %",60,0,100);range("Indicators","spread","Neon spread (px)",6,0,18);range("Indicators","arrowAlpha","Opacity %",95,10,100);range("Indicators","arrowSpeed","Animation speed %",100,40,220);color("Indicators","arrowA","Gradient start","BFA2FF");color("Indicators","arrowB","Gradient end","FF9ECE");toggle("Indicators","arrowRainbow","Rainbow gradient",false);toggle("Indicators","pulse","Pulsation",true);choice("Indicators","labels","Arrow labels","Both",{"Off","Name","Distance","Both"});toggle("Indicators","nearby","Nearby nameplates",false);range("Indicators","reach","Tracking range (studs)",800,50,2500)
 toggle("Cursor","cursor","Custom game pointer",false);choice("Cursor","cursorShape","Pointer shape","Rounded Triangle",{"Rounded Triangle","Soft Arrow","Diamond","Orbit","Spark","Chevron","Neon Pointer","Arrowhead","Split Arrow","Needle","Crystal","Spear","Star Pointer","Compass","Crosshair","Heart","Image"});range("Cursor","cursorSize","Pointer size",30,12,72);range("Cursor","cursorGlow","Pointer glow %",55,0,100);choice("Cursor","cursorPalette","Desktop AETHER palette","Aurora",{"Aurora","Sunset","Ocean","Rainbow","Mono","Custom"});range("Cursor","hotX","Hotspot X %",19,0,100);range("Cursor","hotY","Hotspot Y %",8,0,100);color("Cursor","cursorA","Gradient start","BA99FF");color("Cursor","cursorB","Gradient end","69D9FA");toggle("Cursor","cursorRainbow","Rainbow pointer",true);range("Cursor","cursorSpeed","Gradient speed %",65,10,200);choice("Cursor","cursorAnimation","Cursor animation","Sway",{"Off","Breathe","Sway","Spin","Pulse"});range("Cursor","cursorMotionSpeed","Animation speed %",100,20,200);toggle("Cursor","cursorTrail","Soft cursor trail",false);range("Cursor","cursorOffsetX","Pointer offset X (px)",0,-120,120);range("Cursor","cursorOffsetY","Pointer offset Y (px)",0,-120,120);toggle("Cursor","cursorDebug","Show hotspot marker",false);def("Cursor","image","Roblox image asset ID","asset","")
 toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Camera","lock","Shift-lock · LeftAlt",false)
@@ -1019,7 +1070,21 @@ function S.bank(v)
  local n=0;assert(type(v.profiles)=="table" and type(v.assets)=="table","Invalid library");for k,x in v.profiles do n+=1;assert(n<=10 and name(k),"Invalid profile name/count");r.profiles[k]=S.settings(x) end
  n=0;for k,x in v.assets do n+=1;assert(n<=40 and name(k),"Invalid asset name/count");r.assets[k]=S.asset(x);assert(k==r.assets[k].name,"Asset name mismatch") end;return r
 end
-function S.sky(row) return {ambient=true,skyA=row[2],skyB=row[3],skyC=row[4],fog=row[5],bloom=row[6],time=row[7],light=row[8],saturation=row[9]} end
+for _,row in {
+ {"Amethyst Void","15102C","573B93","C1A5F9",58,72,20,70,-5,20,-15,35,10,22},
+ {"Glass Dawn","778ECA","E0AFE0","FFE7CA",18,42,63,115,6,-8,12,16,35,15},
+ {"Arctic Prism","132B56","7198DA","E7F4FF",35,55,122,109,-12,14,7,22,35,18},
+ {"Crimson Eclipse","1C0B22","762238","EF837F",43,70,185,70,28,28,-10,18,12,15},
+ {"Mint Dream","163B42","67B4A9","D7FFE8",24,50,145,105,-7,-10,10,15,28,22},
+ {"Rose Nebula","30152C","B6639E","FFD3E2",49,72,197,92,18,12,0,24,14,20},
+ {"Deep Space","03081A","202B6C","9EBBFF",25,46,0,52,-20,25,-24,12,0,5},
+ {"Soft Cinema","3C405C","BCA8A0","FFE9D6",20,35,155,96,-22,15,-5,8,18,33},
+ {"Electric Violet","160C37","7448E3","C4B1FF",33,85,225,90,35,32,2,35,7,15},
+ {"Pearl Mist","67718D","C2D7E7","FFF8EC",63,42,110,119,-26,-15,14,12,22,27},
+ {"Emerald Night","071E25","247B65","A6FFD1",37,60,13,78,21,18,-12,21,6,14},
+ {"Amber Horizon","442C35","DF8652","FFE0A6",26,56,176,114,14,12,8,22,45,20},
+ } do table.insert(S.skies,row) end
+function S.sky(row) return {ambient=true,skyA=row[2],skyB=row[3],skyC=row[4],fog=row[5],bloom=row[6],time=row[7],light=row[8],saturation=row[9],worldContrast=row[10] or 0,worldExposure=row[11] or 0,worldGlare=row[12] or 0,worldRays=row[13] or 0,worldFocus=row[14] or 0,worldFocusDistance=60,worldBloomSize=26} end
 S.presets={Theme={Violet={accent="A68AFF",secondary="FF89C7",glassColor="211C35"},Ocean={accent="68CEF4",secondary="9B91FF",glassColor="112636"},Rose={accent="F699C6",secondary="D8A5FF",glassColor="301B31"}},HUD={Classic={hpX=82,hpY=13,clockX=3,clockY=93,compact=false},Broadcast={hpX=3,hpY=78,clockX=95,clockY=5,hpScale=115},Compact={compact=true,hpX=96,hpY=16,hpScale=80}},Motion={Calm={speed=70,duration=520},Swift={speed=155,duration=150},Still={reduce=true}},Wings={Seraph={wings=true,wingStyle="Seraph",wingSpan=115},Blade={wings=true,wingStyle="Blade",wingColor="76E3FF"},Sylph={wings=true,wingStyle="Sylph",wingRainbow=true}},Halos={Crown={halo=true,haloStyle="Crown"},Binary={halo=true,haloStyle="Binary",haloColor="82D9FF"}},Character={Comet={aura=true,trail=true,auraColor="AA89FE"}},Neon={Pulse={neon=true,neonRainbow=true,neonLight=65}},Cursor={Aurora={cursor=true,cursorShape="Rounded Triangle",cursorRainbow=true},Diamond={cursor=true,cursorShape="Diamond",hotX=50,hotY=50}},Camera={Portrait={camera=true,cameraMode="Orbit",fov=55,radius=8,lock=false},Shoulder={camera=true,cameraMode="Follow",lock=true}},Fonts={Terminal={font="Code",weight="Bold",fontAsset="",fontGradient=false},Soft={font="FredokaOne",weight="Regular",fontAsset=""}},Indicators={},Ambient={},Scripts={Vitals={cue=S.example}}}
 for _,v in S.shapes do S.presets.Indicators[v]={shape=v,indicators=true} end
 S.presets.Character.NaturalWalk={walkAnimation=true,walkStyle="Natural",walkIntensity=65}
@@ -1982,14 +2047,14 @@ function W:clear()
 end
 function W:apply(s)
  if not s.ambient then if self.atmo then self:clear() end;return end
- local key=table.concat({s.skyA,s.skyB,s.skyC,s.fog,s.bloom,s.time,s.light,s.saturation,s.blur,s.fade,tostring(s.reduce)},":");if self.key==key then return end;self.key=key;self:stop()
+ local key=table.concat({s.skyA,s.skyB,s.skyC,s.fog,s.bloom,s.time,s.light,s.saturation,s.blur,s.fade,s.worldContrast,s.worldExposure,s.worldGlare,s.worldRays,s.worldFocus,s.worldFocusDistance,s.worldBloomSize,tostring(s.reduce)},":");if self.key==key then return end;self.key=key;self:stop()
  local function own(class) local o=U.new(class,{Name="Aether"..class},L);table.insert(self.owned,o);return o end
- if not self.atmo then self.atmo=L:FindFirstChildOfClass("Atmosphere") or own("Atmosphere");self.bloom=own("BloomEffect");self.grade=own("ColorCorrectionEffect");self.blur=own("BlurEffect") end
+ if not self.atmo then self.atmo=L:FindFirstChildOfClass("Atmosphere") or own("Atmosphere");self.bloom=own("BloomEffect");self.grade=own("ColorCorrectionEffect");self.blur=own("BlurEffect");self.rays=own("SunRaysEffect");self.focus=own("DepthOfFieldEffect") end
  local function set(o,p)
-  if not self.saved[o] then self.saved[o]={};for k in p do self.saved[o][k]=o[k] end end
+  if not self.saved[o] then self.saved[o]={} end;for k in p do if self.saved[o][k]==nil then self.saved[o][k]=o[k] end end
   if s.reduce or s.fade==0 then for k,v in p do o[k]=v end else local tw=T:Create(o,TweenInfo.new(s.fade/1000,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),p);table.insert(self.tweens,tw);tw:Play() end
  end
- set(L,{Ambient=U.hex(s.skyA),OutdoorAmbient=U.hex(s.skyB),Brightness=s.light/40,ClockTime=s.time/10});set(self.atmo,{Color=U.hex(s.skyC),Decay=U.hex(s.skyB),Density=s.fog/150,Haze=s.fog/30});set(self.bloom,{Intensity=s.bloom/50,Size=26,Threshold=1.2});set(self.grade,{Saturation=s.saturation/100,TintColor=Color3.new(1,1,1):Lerp(U.hex(s.skyC),.13)});set(self.blur,{Size=s.blur})
+ set(L,{Ambient=U.hex(s.skyA),OutdoorAmbient=U.hex(s.skyB),Brightness=s.light/40,ClockTime=s.time/10,ExposureCompensation=s.worldExposure/50});set(self.atmo,{Color=U.hex(s.skyC),Decay=U.hex(s.skyB),Density=s.fog/150,Haze=s.fog/30,Glare=s.worldGlare*.03});set(self.bloom,{Intensity=s.bloom/50,Size=s.worldBloomSize,Threshold=1.2});set(self.grade,{Saturation=s.saturation/100,Contrast=s.worldContrast/100,TintColor=Color3.new(1,1,1):Lerp(U.hex(s.skyC),.13)});set(self.blur,{Size=s.blur});set(self.rays,{Intensity=s.worldRays/100,Spread=.8});set(self.focus,{FarIntensity=s.worldFocus/100,NearIntensity=s.worldFocus*.003,FocusDistance=s.worldFocusDistance,InFocusRadius=25})
 end
 return W
 end
@@ -2255,6 +2320,7 @@ local function frame(dt, now)
         styled = table.clone(app.s)
         for k,v in app.cues.overrides do styled[k] = v end
     end
+    ui:animateBackground(now)
     hud:step(styled, result, dt)
     avatar:step(if app.mode == "Game" then character else nil, styled, now)
     world:apply(styled)

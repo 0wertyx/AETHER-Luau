@@ -260,6 +260,7 @@ local function frame(dt, now)
         styled = table.clone(app.s)
         for k,v in app.cues.overrides do styled[k] = v end
     end
+    ui:animateBackground(now)
     hud:step(styled, result, dt)
     avatar:step(if app.mode == "Game" then character else nil, styled, now)
     world:apply(styled)
