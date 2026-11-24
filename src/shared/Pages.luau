@@ -594,7 +594,7 @@ function E.render(a,tab,ui)
   local status=ui:note("",48)
   local notes=ui:note("",52)
   local function sync()
-   version.Text="RUNNING VERSION  /  "..state.version..(if state.isTest then " · TEST "..tostring(state.testCount) else "").."\nWEBSITE  /  "..(if state.connected then "CONNECTED · AUTO" else "RELAY OFFLINE")
+   version.Text="RUNNING VERSION  /  "..state.version..(if state.isTest then " · TEST "..tostring(state.testCount) else "").."\nWEBSITE  /  "..(if state.connected then (state.relayStatus or "CONNECTED · AUTO") else "RELAY OFFLINE")
    status.Text=state.status
    notes.Text=state.notes or "No update applied. Your HUD, configs and menu stay active during an update."
   end
@@ -602,7 +602,7 @@ function E.render(a,tab,ui)
   ui:chips({"Test update","Check updates","Rollback"},function(n)
    if n=="Test update" then a:testLiveUpdate() elseif n=="Check updates" then a:checkLiveUpdate() else a:rollbackLiveUpdate() end
   end,3)
-  ui:note("Website releases apply automatically through the first-party relay. Local test and manual check remain available. No remote executable code is loaded.",54)
+  ui:note("RELAY OFFLINE: install the server relay in your own place. HTTP DISABLED: enable Allow HTTP Requests in experience settings. ONLINE: website releases apply automatically.",65)
   ui:chips({"Browse new presets"},function() a.libraryKind="Theme";a.selection=nil;ui:open("Workshop") end,1)
   ui:title("UPDATE LIST")
   local changelog=ui:note("",280)
