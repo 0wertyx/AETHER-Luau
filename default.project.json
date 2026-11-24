@@ -13,6 +13,9 @@
         "Schema": {
           "$path": "src/shared/Schema.luau"
         }
+      },
+      "AetherLiveUpdates": {
+        "$path": "src/server/LiveUpdates.server.luau"
       }
     },
     "StarterPlayer": {
