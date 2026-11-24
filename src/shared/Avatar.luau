@@ -1,4 +1,5 @@
 local U=require(script.Parent.Util)
+local S=require(script.Parent.Schema)
 local A={};A.__index=A
 
 -- Cosmetic, anchored geometry. The character's own joints, collision and animations
@@ -79,10 +80,52 @@ local function config(detail)
  elseif detail=="Ultra" then return 15,9,48,32
  else return 11,7,36,24 end
 end
+-- Original outlined geometry, independently layered over the legacy halo.
+local function haloV2Paths(index,count)
+ local paths={}
+ local function ring(x,z,r,y,segments)
+  local pts={}
+  for i=0,segments do local t=i/segments*math.pi*2;pts[#pts+1]=Vector3.new(x+math.cos(t)*r,y,z+math.sin(t)*r) end
+  paths[#paths+1]=pts
+ end
+ local function triangle(x,z,r,rot,y)
+  local pts={}
+  for i=0,3 do local t=rot+i/3*math.pi*2;pts[#pts+1]=Vector3.new(x+math.cos(t)*r,y,z+math.sin(t)*r) end
+  paths[#paths+1]=pts
+ end
+ if index==1 or index==6 then
+  for n=1,count do
+   local t=(n-1)/count*math.pi*2
+   local r=if n%2==0 then .65 else 1.03
+   local size=if n%2==0 then .24 else .43
+   triangle(math.cos(t)*r,math.sin(t)*r,size,t+math.pi*.4,if index==6 then (n%3-1)*.16 else 0)
+  end
+ elseif index==2 or index==3 then
+  ring(0,0,1.02,0,32);ring(0,0,.78,0,32)
+  if index==3 then ring(0,0,.84,.28,28);ring(0,0,.65,.28,28) end
+ elseif index==4 or index==5 then
+  local n=if index==5 then count-1 else count
+  if index==5 then ring(0,0,.29,0,16);ring(0,0,.19,0,16) end
+  for j=1,n do
+   local t=(j-1)/n*math.pi*2
+   local orbit=if index==5 then .68 else .96
+   local x,z=math.cos(t)*orbit,math.sin(t)*orbit
+   local y=if index==4 then math.sin(t*2)*.13 else 0
+   ring(x,z,.30,y,16);ring(x,z,.20,y,16)
+  end
+ else
+  ring(0,0,1,0,32)
+  for n=1,count do
+   local t=(n-1)/count*math.pi*2;local delta=math.pi/count
+   paths[#paths+1]={Vector3.new(math.cos(t-delta),0,math.sin(t-delta)),Vector3.new(math.cos(t)*1.10,.45,math.sin(t)*1.10),Vector3.new(math.cos(t+delta),0,math.sin(t+delta))}
+  end
+ end
+ return paths
+end
 function A.new(parent,preview)
  return setmetatable({
   parent=parent,preview=preview,feathers={},trims={},beads={},ornaments={},
-  parts={},frames={},geoWings={},geoHalos={},sketchEdges={},diamonds={},diamondTime={},key="",paintAt=-1,walk=0,phase=0,lastAt=nil
+  parts={},frames={},geoWings={},geoHalos={},haloV2={},sketchEdges={},diamonds={},diamondTime={},key="",paintAt=-1,walk=0,phase=0,lastAt=nil
  },A)
 end
 function A:clear()
@@ -90,7 +133,7 @@ function A:clear()
  self.root=nil;self.highlight=nil;self.emitter=nil;self.trail=nil;self.light=nil;self.neonEnergy=0;self.neonHP=nil
  self.key="";self.char=nil;self.lastAt=nil;self.walk=0;self.phase=0
  table.clear(self.feathers);table.clear(self.trims);table.clear(self.beads)
- table.clear(self.ornaments);table.clear(self.parts);table.clear(self.frames);table.clear(self.geoWings);table.clear(self.geoHalos);table.clear(self.sketchEdges);table.clear(self.diamonds);table.clear(self.diamondTime)
+ table.clear(self.ornaments);table.clear(self.parts);table.clear(self.frames);table.clear(self.geoWings);table.clear(self.geoHalos);table.clear(self.haloV2);table.clear(self.sketchEdges);table.clear(self.diamonds);table.clear(self.diamondTime)
 end
 function A:add(partInstance)
  table.insert(self.parts,partInstance)
@@ -98,9 +141,13 @@ function A:add(partInstance)
 end
 function A:bind(char,body,head,s)
  local wdetail=s.wingDetail or "High";local hdetail=s.haloDetail or "High"
+ local v2Key={};local hasV2=false
+ for i in S.haloV2Styles do local k="haloV2"..i
+  if s[k.."Enabled"] then hasV2=true;table.insert(v2Key,k..":"..tostring(s[k.."Count"])) end
+ end
  local key=table.concat({tostring(s.wings),s.wingStyle,wdetail,
-  tostring(s.halo),s.haloStyle,hdetail,tostring(s.neon),tostring(s.aura),tostring(s.trail)},"/")
- if not (char and body and head) or not(s.wings or s.halo or s.neon or s.aura or s.trail or s.redDiamond or s.blueDiamond) then
+  tostring(s.halo),s.haloStyle,hdetail,tostring(s.neon),tostring(s.aura),tostring(s.trail),table.concat(v2Key,",")},"/")
+ if not (char and body and head) or not(s.wings or s.halo or hasV2 or s.neon or s.aura or s.trail or s.redDiamond or s.blueDiamond) then
   if self.root then self:clear() end;return
  end
  if self.key==key and self.char==char then return end
@@ -184,6 +231,18 @@ function A:bind(char,body,head,s)
    local style=s.haloStyle
    local p=self:add(part(self.root,"HaloGem",Vector3.one,if is(style,"Starfall","Lotus","Comet") then Enum.PartType.Ball else Enum.PartType.Block,true))
    table.insert(self.ornaments,{p=p,index=i,count=ornaments})
+  end
+ end
+ for index in S.haloV2Styles do
+  local k="haloV2"..index
+  if s[k.."Enabled"] then
+   local layer={index=index,paths={}}
+   for _,points in haloV2Paths(index,s[k.."Count"]) do
+    local edges={}
+    for i=1,#points-1 do edges[i]=self:add(part(self.root,"HaloV2Outline",Vector3.one,Enum.PartType.Block,true)) end
+    table.insert(layer.paths,{points=points,edges=edges})
+   end
+   table.insert(self.haloV2,layer)
   end
  end
  if s.neon then self.highlight=U.new("Highlight",{Name="Neon",Adornee=char,DepthMode=Enum.HighlightDepthMode.Occluded},self.root) end
@@ -383,6 +442,29 @@ function A:step(char,s,t)
  local haloY=s.haloHeight/100+.07
   +math.sin(time*1.8)*.045
   +bob*.11
+ for _,layer in self.haloV2 do
+  local k="haloV2"..layer.index
+  local radius=s[k.."Radius"]/100
+  local phase=time*s[k.."Spin"]*.012
+  local height=s[k.."Height"]/100+(layer.index-1)*.08+math.sin(time*1.8+layer.index)*.035
+  local basis=head.CFrame*CFrame.new(0,height,0)*CFrame.Angles(math.rad(s[k.."Tilt"]),phase,0)
+  local primary,secondary=U.hex(s[k.."Color"]),U.hex(s[k.."Secondary"])
+  local opacity=s[k.."Opacity"]/100
+  local glow=s[k.."Glow"]/100
+  local thick=.045*s[k.."Thickness"]/100
+  for j,path in layer.paths do
+   local col=primary:Lerp(secondary,(j-1)/math.max(1,#layer.paths-1))
+   for i,edge in path.edges do
+    local x=basis:PointToWorldSpace(path.points[i]*radius)
+    local y=basis:PointToWorldSpace(path.points[i+1]*radius)
+    segment(edge,x,y,thick)
+    edge.Color=col
+    edge.Transparency=1-opacity
+    edge.Material=if glow>.15 then Enum.Material.Neon else Enum.Material.SmoothPlastic
+    if glow>.15 then edge.Color=col:Lerp(Color3.new(1,1,1),glow*.23) end
+   end
+  end
+ end
  local hRadius=s.haloRadius/100
  for _,g in self.geoHalos do
   local spin=time*s.haloSpin*.012*(if g.ring==2 then -1 else 1)
