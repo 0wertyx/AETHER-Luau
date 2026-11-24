@@ -136,6 +136,86 @@ function app:runCue()
     if ok then self.cues = vm; self:log("Scripts", "HUD script started")
     else self:log("Scripts", vm); error(vm, 0) end
 end
+-- Live updates are bounded data packages, never downloaded executable Luau.
+local updateHttp=game:GetService("HttpService")
+local updateState={version="1.0.0",revision=0,status="Ready",busy=false,history={},generation=0}
+app.liveUpdate=updateState
+local function validateUpdate(raw)
+    assert(type(raw)=="table" and raw.format=="aether.live/1","Invalid update format")
+    assert(type(raw.revision)=="number" and raw.revision%1==0 and raw.revision>=1 and raw.revision<=1000000,"Invalid revision")
+    assert(type(raw.version)=="string" and #raw.version<=20 and raw.version:match("^%d+%.%d+%.%d+$"),"Invalid version")
+    assert(type(raw.notes)=="string" and #raw.notes<=240,"Invalid release notes")
+    assert(type(raw.presets)=="table","Missing preset data")
+    local presets={};local count=0
+    for group,items in raw.presets do
+        assert(table.find({"Theme","Wings","Halos","Character","Neon","Ambient","Motion","HUD","Cursor","Camera","Fonts"},group) and type(items)=="table","Invalid preset group")
+        presets[group]={}
+        for name,values in items do
+            count+=1
+            assert(count<=24 and type(name)=="string" and #name>=1 and #name<=40 and not name:find("%c"),"Invalid preset name/count")
+            presets[group][name]=S.settings(values,group)
+        end
+    end
+    return {revision=raw.revision,version=raw.version,notes=raw.notes,presets=presets}
+end
+function app:updateStatus(message)
+    updateState.status=message
+    self:log("Update",message)
+    if self.ui then self.ui:sync() end
+end
+function app:applyLiveUpdate(raw,force)
+    if updateState.busy or self.stopping then return end
+    updateState.busy=true;updateState.generation+=1
+    local gen=updateState.generation
+    self:updateStatus("Validating update...")
+    task.delay(.35,function()
+        if self.stopping or gen~=updateState.generation then return end
+        local ok,pack=pcall(validateUpdate,raw)
+        if not ok then updateState.busy=false;self:updateStatus("Rejected: "..tostring(pack):sub(-100));return end
+        if not force and pack.revision<=updateState.revision then updateState.busy=false;self:updateStatus("Already up to date");return end
+        local before={version=updateState.version,revision=updateState.revision,notes=updateState.notes,presets=S.copy(S.presets)}
+        local staged=S.copy(S.presets)
+        for group,items in pack.presets do
+            staged[group]=staged[group] or {}
+            for name,values in items do staged[group][name]=values end
+        end
+        -- Swap one validated data table. Preserve all settings, profile bank,
+        -- current page, HUD, avatar, render callbacks and the session itself.
+        S.presets=staged
+        updateState.version=pack.version;updateState.revision=pack.revision;updateState.notes=pack.notes
+        local applied,err=pcall(function() self:updateStatus("Updated live to "..pack.version) end)
+        if not applied then
+            S.presets=before.presets;updateState.version=before.version;updateState.revision=before.revision;updateState.notes=before.notes
+            updateState.status="Update rolled back: "..tostring(err):sub(-100)
+        else
+            table.insert(updateState.history,before)
+            while #updateState.history>5 do table.remove(updateState.history,1) end
+        end
+        updateState.busy=false
+        if self.ui then self.ui:sync() end
+    end)
+end
+function app:testLiveUpdate()
+    local revision=updateState.revision+1
+    self:applyLiveUpdate({format="aether.live/1",revision=revision,version="1.0."..tostring(revision),notes="Live test: new Aurora glass theme and Lunar halo preset. Existing settings remain intact.",presets={Theme={["Live Aurora"]={accent="8DEBFF",secondary="D8ACFF",glassColor="22243E"}},Halos={["Live Lunar"]={halo=true,haloStyle="Lunar",haloColor="C4B5FF"}}}},true)
+end
+function app:checkLiveUpdate()
+    if updateState.busy then return end
+    local manifest=game:GetService("ReplicatedStorage"):FindFirstChild("AetherLiveManifestV1")
+    if not manifest or not manifest:IsA("StringValue") or manifest.Value=="" then self:updateStatus("No update manifest available. Use Test update or enable the server relay.");return end
+    if #manifest.Value>32000 then self:updateStatus("Manifest too large");return end
+    local ok,raw=pcall(function() return updateHttp:JSONDecode(manifest.Value) end)
+    if not ok then self:updateStatus("Invalid manifest JSON");return end
+    self:applyLiveUpdate(raw,false)
+end
+function app:rollbackLiveUpdate()
+    if updateState.busy then return end
+    local before=table.remove(updateState.history)
+    if not before then self:updateStatus("No previous update");return end
+    S.presets=before.presets;updateState.version=before.version;updateState.revision=before.revision;updateState.notes=before.notes
+    self:updateStatus("Rolled back to "..before.version)
+end
+
 function app:page(tab, ui)
     Pages.render(self, tab, ui)
 end
