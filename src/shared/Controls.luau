@@ -447,5 +447,40 @@ function UI:control(k)
  self.page:on(hit.InputBegan,function(i) self:begin(i,function(pos) local t=math.clamp((pos.X-hit.AbsolutePosition.X)/math.max(1,hit.AbsoluteSize.X),0,1);app:set(k,math.round(d.min+t*(d.max-d.min))) end) end)
  self:watch(function() if not box:IsFocused() then box.Text=tostring(app.s[k]) end;fill.Size=UDim2.fromScale((app.s[k]-d.min)/(d.max-d.min),1);fill.BackgroundColor3=U.hex(app.s.accent) end)
 end
+function UI:colorPicker(k)
+ local app=self.app
+ self:control(k)
+ local row=self:row(188,"SquareColorPicker")
+ local field=U.new("TextButton",{Name="SaturationValue",Position=UDim2.fromOffset(9,8),Size=UDim2.fromOffset(170,170),BackgroundColor3=Color3.new(1,0,0),Text="",AutoButtonColor=false,BorderSizePixel=0},row)
+ U.corner(field,8)
+ local white=U.frame(field,"Saturation",nil,nil,Color3.new(1,1,1),0);white.Active=false
+ U.corner(white,8);U.new("UIGradient",{Transparency=NumberSequence.new(0,1)},white)
+ local black=U.frame(field,"Value",nil,nil,Color3.new(),0);black.Active=false
+ U.corner(black,8);U.new("UIGradient",{Rotation=90,Transparency=NumberSequence.new(1,0)},black)
+ local marker=U.frame(field,"Marker",nil,UDim2.fromOffset(12,12),Color3.new(1,1,1),1);marker.AnchorPoint=Vector2.new(.5,.5);U.corner(marker,10);U.stroke(marker,Color3.new(1,1,1),0)
+ local hue=U.new("TextButton",{Name="Hue",Position=UDim2.fromOffset(190,8),Size=UDim2.fromOffset(22,170),BackgroundColor3=Color3.new(1,1,1),Text="",AutoButtonColor=false,BorderSizePixel=0},row)
+ U.corner(hue,8)
+ local keys={}
+ for i=0,6 do keys[#keys+1]=ColorSequenceKeypoint.new(i/6,Color3.fromHSV(i/6,1,1)) end
+ U.new("UIGradient",{Rotation=90,Color=ColorSequence.new(keys)},hue)
+ local hm=U.frame(hue,"HueMarker",nil,UDim2.new(1,6,0,3),Color3.new(1,1,1));hm.AnchorPoint=Vector2.new(.5,.5);U.stroke(hm,Color3.new(),.3)
+ local h,s,v=U.hex(app.s[k]):ToHSV();local last=app.s[k]
+ local function commit()
+  local next=Color3.fromHSV(h,s,v):ToHex():upper()
+  last=next
+  if app.s[k]~=next then app:set(k,next) else self:sync() end
+ end
+ self.page:on(field.InputBegan,function(i) self:begin(i,function(pos)
+  s=math.clamp((pos.X-field.AbsolutePosition.X)/math.max(1,field.AbsoluteSize.X),0,1)
+  v=1-math.clamp((pos.Y-field.AbsolutePosition.Y)/math.max(1,field.AbsoluteSize.Y),0,1);commit()
+ end) end)
+ self.page:on(hue.InputBegan,function(i) self:begin(i,function(pos)
+  h=math.clamp((pos.Y-hue.AbsolutePosition.Y)/math.max(1,hue.AbsoluteSize.Y),0,1);commit()
+ end) end)
+ self:watch(function()
+  if last~=app.s[k] then last=app.s[k];h,s,v=U.hex(last):ToHSV() end
+  field.BackgroundColor3=Color3.fromHSV(h,1,1);marker.Position=UDim2.fromScale(s,1-v);hm.Position=UDim2.fromScale(.5,h)
+ end)
+end
 function UI:group(g,skip) for _,k in S.order do if S.defs[k].group==g and not(skip and skip[k]) then self:control(k) end end end
 return UI
