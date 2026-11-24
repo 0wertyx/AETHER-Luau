@@ -15,7 +15,10 @@
         }
       },
       "AetherLiveUpdates": {
-        "$path": "src/server/LiveUpdates.server.luau"
+        "$path": "src/server/LiveUpdates.server.luau",
+        "$attributes": {
+          "EnabledRelay": true
+        }
       }
     },
     "StarterPlayer": {
