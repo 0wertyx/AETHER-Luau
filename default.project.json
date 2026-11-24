@@ -1,14 +1,26 @@
 {
-  "name": "AETHER Full",
+  "name": "AETHER",
   "tree": {
     "$className": "DataModel",
-    "Workspace": { "$className": "Workspace", "Spawn": { "$className": "SpawnLocation", "$properties": { "Anchored": true, "Size": [10,1,10] } } },
-    "StarterPlayer": { "$className": "StarterPlayer", "StarterPlayerScripts": { "$className": "StarterPlayerScripts", "AetherFull": {
-      "$path": "src/Start.client.luau",
-      "Studio":{"$path":"src/Studio.luau"}, "Schema":{"$path":"src/Schema.luau"}, "Util":{"$path":"src/Util.luau"}, "Symbol":{"$path":"src/Symbol.luau"},
-      "Avatar":{"$path":"src/Avatar.luau"}, "View":{"$path":"src/View.luau"}, "World":{"$path":"src/World.luau"}, "Hud":{"$path":"src/Hud.luau"},
-      "Pages":{"$path":"src/Pages.luau"}, "Controls":{"$path":"src/Controls.luau"}, "Storage":{"$path":"src/Storage.luau"}, "Cues":{"$path":"src/Cues.luau"}
-    } } },
-    "ServerScriptService": { "$className": "ServerScriptService", "AetherProfiles":{"$path":"src/Profiles.server.luau","Schema":{"$path":"src/Schema.luau"}}, "Atrium":{"$path":"src/Demo.server.luau"} }
+    "ReplicatedStorage": {
+      "Aether": {
+        "$path": "src/shared"
+      }
+    },
+    "ServerScriptService": {
+      "AetherProfiles": {
+        "$path": "src/server/Profiles.server.luau",
+        "Schema": {
+          "$path": "src/shared/Schema.luau"
+        }
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "AetherClient": {
+          "$path": "src/client/Aether.client.luau"
+        }
+      }
+    }
   }
 }
