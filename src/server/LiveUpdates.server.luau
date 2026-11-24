@@ -12,8 +12,8 @@ while script.Parent do
  if ok and #body<=32000 then
   local good,data=pcall(function() return Http:JSONDecode(body) end)
   if good and type(data)=="table" and data.format=="aether.live/1" and type(data.revision)=="number" and type(data.presets)=="table" then
-   manifest.Value=body
+   if manifest.Value~=body then manifest.Value=body end
   end
  end
- task.wait(30)
+ task.wait(15)
 end
