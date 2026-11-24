@@ -119,6 +119,59 @@ function E.render(a,tab,ui)
   ui:note("INTERACT — Separate Shift-Lock settings and input visualization.",42)
   ui:note("WING6 — Six sketch-inspired wings and counter-rotating diamonds.",42)
   ui:note("SKETCH — HD outline icons and ECG heart.",36)
- elseif tab=="Diagnostics" then local info=ui:note("",54);local log=ui:box("Session events","",165);log.TextEditable=false;local function refresh() info.Text=string.format("%s  ·  HP %s / %s  ·  %d tracked\n%s",a.mode,tostring(a.frame.hp),tostring(a.frame.max),#a.frame.targets,a.store.status);log.Text=table.concat(a.logs,"\n") end;ui:chips({"Refresh","Clear log","Reset settings"},function(n) if n=="Clear log" then table.clear(a.logs) elseif n=="Reset settings" then a:replace(S.defaults()) end;refresh() end,3);refresh();ui:title("SESSION");ui:note("Unload stops AETHER, removes its HUD and effects, and releases its camera and mouse controls. Export a bank first to retain local-only settings.",52);ui:chips({"Unload AETHER"},function() ui:message("Press Confirm unload to remove AETHER.");ui:chips({"Confirm unload"},function() a:unload() end,1) end,1) end
+ elseif tab=="Diagnostics" then local info=ui:note("",54);local log=ui:box("Session events","",165);log.TextEditable=false;local function refresh() info.Text=string.format("%s  ·  HP %s / %s  ·  %d tracked\n%s",a.mode,tostring(a.frame.hp),tostring(a.frame.max),#a.frame.targets,a.store.status);log.Text=table.concat(a.logs,"\n") end;ui:chips({"Refresh","Clear log","Reset settings"},function(n) if n=="Clear log" then table.clear(a.logs) elseif n=="Reset settings" then a:replace(S.defaults()) end;refresh() end,3);refresh();ui:title("SESSION");ui:note("Unload stops AETHER, removes its HUD and effects, and releases its camera and mouse controls. Export a bank first to retain local-only settings.",52);-- Allocate one confirmation row, once per Diagnostics page. Never append rows from clicks.
+  local page=ui.page
+  local row=ui:row(40,"UnloadConfirmation")
+  row.BackgroundTransparency=1
+  local unload=U.button(row,"Unload AETHER")
+  unload.Size=UDim2.fromScale(1,1)
+  unload:SetAttribute("AETHERKeepFontColor",true)
+  local cancel=U.button(row,"Cancel")
+  cancel.Position=UDim2.fromScale(.72,0);cancel.Size=UDim2.new(.28,-2,1,0);cancel.Visible=false
+  local state="idle"
+  local token=0
+  local red=Color3.fromRGB(135,35,53)
+  local function draw()
+   if page.dead or not row.Parent then return end
+   unload.BackgroundColor3=if state=="waiting" then Color3.fromRGB(86,36,48) else red
+   unload.TextColor3=Color3.fromRGB(255,222,226)
+   unload.Size=if state=="idle" then UDim2.fromScale(1,1) else UDim2.new(.72,-4,1,0)
+   unload.Active=state=="idle" or state=="ready"
+   unload.Interactable=unload.Active
+   unload.AutoButtonColor=unload.Active
+   cancel.Visible=state=="waiting" or state=="ready"
+   if state=="idle" then unload.Text="Unload AETHER"
+   elseif state=="ready" then unload.Text="Confirm unload"
+   elseif state=="done" then unload.Text="Unloading..." end
+  end
+  page:add(function() token+=1;state="closed" end)
+  page:on(cancel.Activated,function()
+   if state~="waiting" and state~="ready" then return end
+   token+=1;state="idle";draw();ui:message("Unload cancelled.")
+  end)
+  page:on(unload.Activated,function()
+   if page.dead or a.stopping then return end
+   if state=="ready" then
+    token+=1;state="done";draw();a:unload();return
+   end
+   if state~="idle" then return end
+   token+=1
+   local current=token
+   state="waiting";draw();unload.Text="Confirm in 3 s"
+   ui:message("Confirm after the countdown, or cancel.")
+   task.spawn(function()
+    local deadline=os.clock()+3
+    while not page.dead and token==current and state=="waiting" do
+     local remaining=deadline-os.clock()
+     if remaining<=0 then break end
+     unload.Text="Confirm in "..tostring(math.ceil(remaining)).." s"
+     task.wait(math.min(.1,remaining))
+    end
+    if page.dead or token~=current or state~="waiting" or not row.Parent then return end
+    state="ready";draw()
+   end)
+  end)
+  draw()
+ end
 end
 return E
