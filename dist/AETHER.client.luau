@@ -781,6 +781,44 @@ __aether_factories["Hud"] = function()
 local U=__aether_require("Util");local Symbol=__aether_require("Symbol");local Icons=__aether_require("Icons")
 local H={};H.__index=H
 local sizes={hp=Vector2.new(264,94),clock=Vector2.new(116,58),profile=Vector2.new(172,58),dock=Vector2.new(221,49),cross=Vector2.new(18,18)}
+local heartPalettes={
+ Aurora={"7DE3FF","B78AFF","FC82D6"},
+ Amethyst={"7550E8","BB8CFF","F2B8FF"},
+ Ocean={"245BD9","56C9F5","A2FFF1"},
+ Sakura={"FF7CAA","FFD1E4","C48EFF"},
+ Sunset={"FFD17E","FF847D","C46CFF"},
+ Ember={"FFCE70","FF7043","CE315F"},
+ Mint={"46CDB3","BDFFE0","62BAF1"},
+ Ice={"E4F6FF","97D7FF","7596ED"},
+ Galaxy={"5856D6","A97DFF","FF91C9"},
+}
+local function heartColors(s,ratio,dead,t)
+ if dead then return Color3.fromRGB(91,85,102),Color3.fromRGB(98,92,110),Color3.fromRGB(104,98,115) end
+ local a,m,b
+ if s.heartPalette=="Rainbow" then
+  local phase=if s.reduce then 0 else t*s.heartGradientSpeed/100*.12
+  a=Color3.fromHSV(phase%1,.62,1);m=Color3.fromHSV((phase+.14)%1,.50,1);b=Color3.fromHSV((phase+.28)%1,.64,1)
+ elseif s.heartPalette=="Adaptive" then
+  a=U.hex(s.accent);b=U.hex(s.secondary);m=a:Lerp(b,.5)
+ elseif s.heartPalette=="Custom" then
+  a=U.hex(s.heartA);m=U.hex(s.heartMid);b=U.hex(s.heartB)
+ else
+  local palette=heartPalettes[s.heartPalette] or heartPalettes.Aurora
+  a=U.hex(palette[1]);m=U.hex(palette[2]);b=U.hex(palette[3])
+ end
+ -- Only the heart uses the selected palette. HP warnings remain recognizable.
+ local yellowA,yellowM,yellowB=Color3.fromRGB(255,225,99),Color3.fromRGB(255,187,75),Color3.fromRGB(255,144,60)
+ local redA,redM,redB=Color3.fromRGB(245,46,78),Color3.fromRGB(255,78,114),Color3.fromRGB(255,109,169)
+ if ratio<=.30 then
+  local danger=1-ratio/.30
+  return yellowA:Lerp(redA,.7+.3*danger),yellowM:Lerp(redM,.7+.3*danger),yellowB:Lerp(redB,.7+.3*danger)
+ elseif ratio<=.65 then
+  local q=(.65-ratio)/.35
+  return yellowA:Lerp(redA,q*.7),yellowM:Lerp(redM,q*.7),yellowB:Lerp(redB,q*.7)
+ end
+ local q=math.clamp((.82-ratio)/.17,0,1)
+ return a:Lerp(yellowA,q),m:Lerp(yellowM,q),b:Lerp(yellowB,q)
+end
 local function center(p,t,size) local n=U.label(p,t,size);n.TextXAlignment=Enum.TextXAlignment.Center;return n end
 function H.new(scope,parent,preview,go,drag)
  local self=setmetatable({view=parent,preview=preview,widgets={},markers={},extras={},spark={},time=0,phase=0,paintAt=0,last=-1,dockIcons={}},H)
@@ -974,7 +1012,15 @@ function H:vitals(s,f,dt)
  local mix=if s.reduce or dead then 1 else 1-math.exp(-dt*12);self.tint=(self.tint or a):Lerp(a,mix);self.tint2=(self.tint2 or b):Lerp(b,mix);self.fillG.Color=ColorSequence.new(self.tint,self.tint2)
  local beat=0;if not dead and not s.reduce then local period=if ratio<=.3 then .33+.5*ratio elseif ratio<=.65 then .62+.45*ratio else .91+.62*ratio;self.phase=(self.phase+dt*s.speed/100/period)%1;beat=math.max(0,1-math.abs(self.phase-.12)*9)+.6*math.max(0,1-math.abs(self.phase-.31)*13) else self.phase=0 end
  local bump=if not s.reduce and not dead and (self.effect=="Heal" or self.effect=="Revive") then math.sin(math.pi*q)*(if self.effect=="Revive" then .22 else .09) else 0
- local side=30*(1+beat*(.12+.15*(1-ratio))+bump);self.heart.root.Size=UDim2.fromOffset(side,side);self.heart:paint(self.tint,self.tint2,if dead then 0 else math.clamp(s.rim+beat*25,0,100),8);self.heart.root.GroupTransparency=if dead then .55 else 0
+ local side=30*(1+beat*(.12+.15*(1-ratio))+bump)
+ self.heart.root.Size=UDim2.fromOffset(side,side)
+ local ha,hm,hb=heartColors(s,ratio,dead,self.time)
+ self.heartTint=(self.heartTint or ha):Lerp(ha,mix)
+ self.heartMid=(self.heartMid or hm):Lerp(hm,mix)
+ self.heartTint2=(self.heartTint2 or hb):Lerp(hb,mix)
+ local angle=if s.heartDirection=="Horizontal" then 0 elseif s.heartDirection=="Diagonal" then 45 elseif s.heartDirection=="Reverse" then 270 elseif s.heartDirection=="Orbit" and not dead and not s.reduce then (90+self.time*s.heartGradientSpeed*.6)%360 else 90
+ self.heart:paint(self.heartTint,self.heartTint2,if dead then 0 else math.clamp(s.heartGlow+beat*25,0,100),8,self.heartMid,angle)
+ self.heart.root.GroupTransparency=if dead then .55 else 0
  local shake=if not s.reduce and not dead and self.effect=="Damage" and self.age<.28 then math.sin(self.age*100)*3*(1-self.age/.28) else 0;self.hpShake=shake;w.p.Position=UDim2.new(s.hpX/100,shake,s.hpY/100,0);w.rim.Color=self.tint;w.rim.Transparency=if dead then .9 else 1-math.min(1,(s.rim+beat*15)/100)
  self.shine.Visible=s.hudShine and not dead and not s.reduce and self.bar>.02 and s.hudMotion~="Off"
  if self.shine.Visible then
@@ -1229,7 +1275,7 @@ local function scripts(ui,a)
 end
 function E.render(a,tab,ui)
  if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. RightShift opens Studio; LeftAlt toggles shoulder lock.",43);ui:chips({"Game","Simulator"},function(n) a:modeSet(n) end,2,function() return a.mode end);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme");ui:note("For 32 ORIGINAL desktop icons, upload AETHER_original_icons_atlas.png as a Roblox image and enter its asset ID above. The atlas includes all 32 icons at 224px per tile.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
- elseif tab=="HUD" then preview(ui,a);preset(ui,a,"HUD");ui:control("locked");ui:control("compact");ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudShine","hudReaction"} do ui:control(k) end;ui:note("Unlock layout and drag a widget in the preview, or edit its coordinates below.",29);ui:chips({"hp","clock","profile","dock","cross"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab;for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end
+ elseif tab=="HUD" then preview(ui,a);preset(ui,a,"HUD");ui:control("locked");ui:control("compact");ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartPalette","heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Unlock layout and drag a widget in the preview, or edit its coordinates below.",29);ui:chips({"hp","clock","profile","dock","cross"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab;for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
   avatarPreview(ui,a)
   if tab=="Character" then
@@ -1291,6 +1337,7 @@ range("Theme","glass","Glass opacity %",81,10,100);range("Theme","rim","Neon rim
 toggle("Motion","reduce","Reduce motion",false);range("Motion","speed","Animation speed %",100,40,200);range("Motion","duration","Transition (ms)",300,80,1400);choice("Motion","ease","Interpolation","Smooth",{"Smooth","Linear","Sine"});choice("Motion","menuTransition","Menu transition","Glass",{"Glass","Slide","Fade","Off"});range("Motion","menuAnimStrength","Menu motion intensity %",75,0,100);toggle("Motion","tabTransition","Animated page transitions",true);toggle("Motion","navGlow","Animated navigation glow",true)
 toggle("Theme","menuGeometry","Animated geometric background",true);choice("Theme","menuShape","Background style","Mixed",{"Mixed","Rings","Crystals","Triangles","Hexagons"});range("Theme","menuDensity","Background density",12,4,20);range("Theme","menuMotion","Background speed %",65,0,180);range("Theme","menuOpacity","Background intensity %",55,0,100)
 toggle("HUD","locked","Lock widget positions",true);toggle("HUD","compact","Compact health panel",false);choice("HUD","hudMotion","Widget animation","Glass",{"Glass","Float","Pulse","Off"});range("HUD","hudMotionStrength","Widget motion intensity %",65,0,100);toggle("HUD","hudShine","Health bar shimmer",true);toggle("HUD","hudReaction","Damage and healing glow",true)
+choice("HUD","heartPalette","Heart gradient","Adaptive",{"Adaptive","Aurora","Amethyst","Ocean","Sakura","Sunset","Ember","Mint","Ice","Galaxy","Rainbow","Custom"});choice("HUD","heartDirection","Heart gradient direction","Vertical",{"Vertical","Horizontal","Diagonal","Reverse","Orbit"});range("HUD","heartGradientSpeed","Heart gradient speed %",60,0,150);color("HUD","heartA","Heart custom start","BA99FF");color("HUD","heartMid","Heart custom middle","F8CCFF");color("HUD","heartB","Heart custom end","69D9FA");range("HUD","heartGlow","Heart glow %",65,0,100)
 for _,row in {{"hp","Health",3,9},{"clock","Clock",3,96},{"profile","Player card",97,9},{"dock","Studio dock",50,96},{"cross","Reticle",50,50}} do
  local k,t=row[1],row[2];toggle("HUD",k,t,true); range("HUD",k.."X",t.." · horizontal %",row[3],0,100);range("HUD",k.."Y",t.." · vertical %",row[4],0,100)
  range("HUD",k.."Scale",t.." · scale %",100,50,160);range("HUD",k.."Turn",t.." · rotation",0,-180,180);range("HUD",k.."Alpha",t.." · opacity %",100,10,100)
@@ -1469,8 +1516,18 @@ function M.new(parent,name,round)
   for i,rect in mask do local part=self.parts[i] or U.frame(ink,"Run",nil,nil,Color3.new(1,1,1));self.parts[i]=part;part.Position=UDim2.fromScale(rect.x/N,rect.y/N);part.Size=UDim2.fromScale(rect.w/N,rect.h/N);part.Visible=true end
   for i=#mask+1,#self.parts do self.parts[i].Visible=false end;self.mask=mask;self.a=nil
  end
- function self:paint(a,b,glow,spread)
-  if self.a~=a or self.b~=b then for i,rect in self.mask do self.parts[i].BackgroundColor3=a:Lerp(b,(rect.y+rect.h*.5)/N) end;outer.BackgroundColor3=b;inner.BackgroundColor3=a;self.a=a;self.b=b end
+ function self:paint(a,b,glow,spread,middle,angle)
+  angle=angle or 90
+  if self.a~=a or self.b~=b or self.mid~=middle or self.angle~=angle then
+   local rad=math.rad(angle);local dx,dy=math.cos(rad),math.sin(rad)
+   local span=math.abs(dx)+math.abs(dy)
+   for i,rect in self.mask do
+    local x=(rect.x+rect.w*.5)/N-.5;local y=(rect.y+rect.h*.5)/N-.5
+    local q=math.clamp(.5+(x*dx+y*dy)/math.max(.001,span),0,1)
+    self.parts[i].BackgroundColor3=if middle then (if q<.5 then a:Lerp(middle,q*2) else middle:Lerp(b,q*2-1)) else a:Lerp(b,q)
+   end
+   outer.BackgroundColor3=b;inner.BackgroundColor3=a;self.a=a;self.b=b;self.mid=middle;self.angle=angle
+  end
   if self.glow~=glow or self.spread~=spread then outer.BackgroundTransparency=1-glow*.0016;inner.BackgroundTransparency=1-glow*.0024;outer.Visible=glow>0;inner.Visible=glow>0;local k=.69+spread*.016;outer.Size=UDim2.fromScale(k,k);inner.Size=UDim2.fromScale(k*.77,k*.77);ink.Size=UDim2.fromScale(.73,.73);self.glow=glow;self.spread=spread end
  end
  self:shape(name,round or 30);self:paint(Color3.fromRGB(185,150,255),Color3.fromRGB(255,165,220),50,8);return self

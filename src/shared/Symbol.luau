@@ -42,8 +42,18 @@ function M.new(parent,name,round)
   for i,rect in mask do local part=self.parts[i] or U.frame(ink,"Run",nil,nil,Color3.new(1,1,1));self.parts[i]=part;part.Position=UDim2.fromScale(rect.x/N,rect.y/N);part.Size=UDim2.fromScale(rect.w/N,rect.h/N);part.Visible=true end
   for i=#mask+1,#self.parts do self.parts[i].Visible=false end;self.mask=mask;self.a=nil
  end
- function self:paint(a,b,glow,spread)
-  if self.a~=a or self.b~=b then for i,rect in self.mask do self.parts[i].BackgroundColor3=a:Lerp(b,(rect.y+rect.h*.5)/N) end;outer.BackgroundColor3=b;inner.BackgroundColor3=a;self.a=a;self.b=b end
+ function self:paint(a,b,glow,spread,middle,angle)
+  angle=angle or 90
+  if self.a~=a or self.b~=b or self.mid~=middle or self.angle~=angle then
+   local rad=math.rad(angle);local dx,dy=math.cos(rad),math.sin(rad)
+   local span=math.abs(dx)+math.abs(dy)
+   for i,rect in self.mask do
+    local x=(rect.x+rect.w*.5)/N-.5;local y=(rect.y+rect.h*.5)/N-.5
+    local q=math.clamp(.5+(x*dx+y*dy)/math.max(.001,span),0,1)
+    self.parts[i].BackgroundColor3=if middle then (if q<.5 then a:Lerp(middle,q*2) else middle:Lerp(b,q*2-1)) else a:Lerp(b,q)
+   end
+   outer.BackgroundColor3=b;inner.BackgroundColor3=a;self.a=a;self.b=b;self.mid=middle;self.angle=angle
+  end
   if self.glow~=glow or self.spread~=spread then outer.BackgroundTransparency=1-glow*.0016;inner.BackgroundTransparency=1-glow*.0024;outer.Visible=glow>0;inner.Visible=glow>0;local k=.69+spread*.016;outer.Size=UDim2.fromScale(k,k);inner.Size=UDim2.fromScale(k*.77,k*.77);ink.Size=UDim2.fromScale(.73,.73);self.glow=glow;self.spread=spread end
  end
  self:shape(name,round or 30);self:paint(Color3.fromRGB(185,150,255),Color3.fromRGB(255,165,220),50,8);return self

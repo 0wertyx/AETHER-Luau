@@ -1,6 +1,44 @@
 local U=require(script.Parent.Util);local Symbol=require(script.Parent.Symbol);local Icons=require(script.Parent.Icons)
 local H={};H.__index=H
 local sizes={hp=Vector2.new(264,94),clock=Vector2.new(116,58),profile=Vector2.new(172,58),dock=Vector2.new(221,49),cross=Vector2.new(18,18)}
+local heartPalettes={
+ Aurora={"7DE3FF","B78AFF","FC82D6"},
+ Amethyst={"7550E8","BB8CFF","F2B8FF"},
+ Ocean={"245BD9","56C9F5","A2FFF1"},
+ Sakura={"FF7CAA","FFD1E4","C48EFF"},
+ Sunset={"FFD17E","FF847D","C46CFF"},
+ Ember={"FFCE70","FF7043","CE315F"},
+ Mint={"46CDB3","BDFFE0","62BAF1"},
+ Ice={"E4F6FF","97D7FF","7596ED"},
+ Galaxy={"5856D6","A97DFF","FF91C9"},
+}
+local function heartColors(s,ratio,dead,t)
+ if dead then return Color3.fromRGB(91,85,102),Color3.fromRGB(98,92,110),Color3.fromRGB(104,98,115) end
+ local a,m,b
+ if s.heartPalette=="Rainbow" then
+  local phase=if s.reduce then 0 else t*s.heartGradientSpeed/100*.12
+  a=Color3.fromHSV(phase%1,.62,1);m=Color3.fromHSV((phase+.14)%1,.50,1);b=Color3.fromHSV((phase+.28)%1,.64,1)
+ elseif s.heartPalette=="Adaptive" then
+  a=U.hex(s.accent);b=U.hex(s.secondary);m=a:Lerp(b,.5)
+ elseif s.heartPalette=="Custom" then
+  a=U.hex(s.heartA);m=U.hex(s.heartMid);b=U.hex(s.heartB)
+ else
+  local palette=heartPalettes[s.heartPalette] or heartPalettes.Aurora
+  a=U.hex(palette[1]);m=U.hex(palette[2]);b=U.hex(palette[3])
+ end
+ -- Only the heart uses the selected palette. HP warnings remain recognizable.
+ local yellowA,yellowM,yellowB=Color3.fromRGB(255,225,99),Color3.fromRGB(255,187,75),Color3.fromRGB(255,144,60)
+ local redA,redM,redB=Color3.fromRGB(245,46,78),Color3.fromRGB(255,78,114),Color3.fromRGB(255,109,169)
+ if ratio<=.30 then
+  local danger=1-ratio/.30
+  return yellowA:Lerp(redA,.7+.3*danger),yellowM:Lerp(redM,.7+.3*danger),yellowB:Lerp(redB,.7+.3*danger)
+ elseif ratio<=.65 then
+  local q=(.65-ratio)/.35
+  return yellowA:Lerp(redA,q*.7),yellowM:Lerp(redM,q*.7),yellowB:Lerp(redB,q*.7)
+ end
+ local q=math.clamp((.82-ratio)/.17,0,1)
+ return a:Lerp(yellowA,q),m:Lerp(yellowM,q),b:Lerp(yellowB,q)
+end
 local function center(p,t,size) local n=U.label(p,t,size);n.TextXAlignment=Enum.TextXAlignment.Center;return n end
 function H.new(scope,parent,preview,go,drag)
  local self=setmetatable({view=parent,preview=preview,widgets={},markers={},extras={},spark={},time=0,phase=0,paintAt=0,last=-1,dockIcons={}},H)
@@ -194,7 +232,15 @@ function H:vitals(s,f,dt)
  local mix=if s.reduce or dead then 1 else 1-math.exp(-dt*12);self.tint=(self.tint or a):Lerp(a,mix);self.tint2=(self.tint2 or b):Lerp(b,mix);self.fillG.Color=ColorSequence.new(self.tint,self.tint2)
  local beat=0;if not dead and not s.reduce then local period=if ratio<=.3 then .33+.5*ratio elseif ratio<=.65 then .62+.45*ratio else .91+.62*ratio;self.phase=(self.phase+dt*s.speed/100/period)%1;beat=math.max(0,1-math.abs(self.phase-.12)*9)+.6*math.max(0,1-math.abs(self.phase-.31)*13) else self.phase=0 end
  local bump=if not s.reduce and not dead and (self.effect=="Heal" or self.effect=="Revive") then math.sin(math.pi*q)*(if self.effect=="Revive" then .22 else .09) else 0
- local side=30*(1+beat*(.12+.15*(1-ratio))+bump);self.heart.root.Size=UDim2.fromOffset(side,side);self.heart:paint(self.tint,self.tint2,if dead then 0 else math.clamp(s.rim+beat*25,0,100),8);self.heart.root.GroupTransparency=if dead then .55 else 0
+ local side=30*(1+beat*(.12+.15*(1-ratio))+bump)
+ self.heart.root.Size=UDim2.fromOffset(side,side)
+ local ha,hm,hb=heartColors(s,ratio,dead,self.time)
+ self.heartTint=(self.heartTint or ha):Lerp(ha,mix)
+ self.heartMid=(self.heartMid or hm):Lerp(hm,mix)
+ self.heartTint2=(self.heartTint2 or hb):Lerp(hb,mix)
+ local angle=if s.heartDirection=="Horizontal" then 0 elseif s.heartDirection=="Diagonal" then 45 elseif s.heartDirection=="Reverse" then 270 elseif s.heartDirection=="Orbit" and not dead and not s.reduce then (90+self.time*s.heartGradientSpeed*.6)%360 else 90
+ self.heart:paint(self.heartTint,self.heartTint2,if dead then 0 else math.clamp(s.heartGlow+beat*25,0,100),8,self.heartMid,angle)
+ self.heart.root.GroupTransparency=if dead then .55 else 0
  local shake=if not s.reduce and not dead and self.effect=="Damage" and self.age<.28 then math.sin(self.age*100)*3*(1-self.age/.28) else 0;self.hpShake=shake;w.p.Position=UDim2.new(s.hpX/100,shake,s.hpY/100,0);w.rim.Color=self.tint;w.rim.Transparency=if dead then .9 else 1-math.min(1,(s.rim+beat*15)/100)
  self.shine.Visible=s.hudShine and not dead and not s.reduce and self.bar>.02 and s.hudMotion~="Off"
  if self.shine.Visible then
