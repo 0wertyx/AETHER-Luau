@@ -182,7 +182,7 @@ function app:applyLiveUpdate(raw,force)
         -- Swap one validated data table. Preserve all settings, profile bank,
         -- current page, HUD, avatar, render callbacks and the session itself.
         S.presets=staged
-        updateState.version=pack.version;updateState.revision=pack.revision;updateState.notes=pack.notes
+        updateState.version=pack.version;if not force then updateState.revision=pack.revision end;updateState.notes=pack.notes
         local applied,err=pcall(function() self:updateStatus("Updated live to "..pack.version) end)
         if not applied then
             S.presets=before.presets;updateState.version=before.version;updateState.revision=before.revision;updateState.notes=before.notes
