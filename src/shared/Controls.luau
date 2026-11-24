@@ -23,18 +23,11 @@ function UI.new(app,gui,scope)
   dot.AnchorPoint=Vector2.new(.5,.5);dot.Active=false;dot.Interactable=false;U.corner(dot,99)
   self.stars[i]={root=root,bars=bars,dot=dot}
  end
- self.top=U.frame(self.stage,"TopCapsule",nil,UDim2.fromOffset(345,38),bg,.12)
- self.top.AnchorPoint=Vector2.new(.5,0);U.corner(self.top,18);self.topRim=U.stroke(self.top,Color3.fromRGB(166,138,255),.42)
- self.topButtons={}
- for index,item in {{"AI · OFFLINE","Scripts"},{"AETHER","Toggle"},{"ARCHIVIUM","Workshop"}} do
-  local button=U.button(self.top,item[1]);button.BackgroundTransparency=.42;button.TextSize=11
-  button.Position=UDim2.new((index-1)/3,4,0,4);button.Size=UDim2.new(1/3,-8,1,-8)
-  self.topButtons[index]=button
-  scope:on(button.Activated,function() if item[2]=="Toggle" then self:show(not self.opened) else self:open(item[2]) end end)
+ self.top,self.topRim,self.topButtons=U.topPanel(self.stage)
+ for index,action in {"Scripts","Toggle","Workshop"} do
+  scope:on(self.topButtons[index].Activated,function() if action=="Toggle" then self:show(not self.opened) else self:open(action) end end)
  end
- self.rail=U.frame(self.stage,"RobloxShortcuts",nil,UDim2.fromOffset(54,176),bg,.16);U.corner(self.rail,14);self.railRim=U.stroke(self.rail,Color3.fromRGB(166,138,255),.48)
- self.rail.AnchorPoint=Vector2.new(0,.5)
- self.railButtons={}
+ self.rail,self.railRim,self.railButtons,self.railCollapse=U.railPanel(self.stage)
  local coreOriginal,coreApplied={},{}
  local chatOriginal,chatApplied,chatConfig=nil,nil,nil
  scope:add(function()
@@ -42,8 +35,7 @@ function UI.new(app,gui,scope)
   if chatConfig and chatConfig.Parent and chatConfig.Enabled==chatApplied then chatConfig.Enabled=chatOriginal end
  end)
  for index,item in {{"CHAT",Enum.CoreGuiType.Chat},{"BAG",Enum.CoreGuiType.Backpack},{"LIST",Enum.CoreGuiType.PlayerList}} do
-  local button=U.button(self.rail,item[1]);button.TextSize=10;button.Size=UDim2.fromOffset(44,38);button.Position=UDim2.fromOffset(5,5+(index-1)*43)
-  self.railButtons[index]=button
+  local button=self.railButtons[index]
   scope:on(button.Activated,function()
    self:action(function()
     if item[2]==Enum.CoreGuiType.PlayerList then self:open("List");return end
@@ -66,9 +58,7 @@ function UI.new(app,gui,scope)
   StarterGui:SetCoreGuiEnabled(kind,not enabled);coreApplied[kind]=not enabled
   self:message(if enabled then "Roblox player list hidden" else "Roblox player list enabled")
  end
- local collapse=U.button(self.rail,"‹");collapse.Size=UDim2.fromOffset(44,34);collapse.Position=UDim2.fromOffset(5,136)
- scope:on(collapse.Activated,function() self.railCollapsed=not self.railCollapsed;self:layout() end)
- self.railCollapse=collapse
+ scope:on(self.railCollapse.Activated,function() self.railCollapsed=not self.railCollapsed;self:layout() end)
  self.panel=U.new("CanvasGroup",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=.035,BorderSizePixel=0,Size=UDim2.fromScale(1,1),GroupTransparency=1,Visible=false,Active=true},self.stage);U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3);self.panel.BackgroundTransparency=1;self.panel.GroupColor3=Color3.new(1,1,1)
  self.panelBackground=U.frame(self.panel,"GlassBackground",nil,nil,Color3.new(1,1,1),.035);self.panelBackground.Active=false;self.panelBackground.Interactable=false;self.panelBackground.ZIndex=1;U.corner(self.panelBackground,17)
  U.gradient(self.panelBackground,bg,Color3.fromRGB(39,30,58),82)
@@ -383,7 +373,7 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.." / PREVIEW FIX 02"
+ self.tag.Text=self.app.mode.." / HD GUI"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  for key,item in self.quickButtons do item.button.Text=item.label..(if st[key] then "  ON" else "  OFF");item.button.BackgroundColor3=if st[key] then U.hex(st.accent):Lerp(bg,.52) else soft end

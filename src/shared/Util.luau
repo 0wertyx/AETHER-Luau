@@ -15,6 +15,32 @@ function U.gradient(p,a,b,rot) return U.new("UIGradient",{Color=ColorSequence.ne
 function U.frame(p,name,pos,size,color,alpha) return U.new("Frame",{Name=name,Position=pos or UDim2.new(),Size=size or UDim2.fromScale(1,1),BackgroundColor3=color or Color3.fromRGB(22,18,37),BackgroundTransparency=alpha or 0,BorderSizePixel=0},p) end
 function U.label(p,text,sz,pos,size) return U.new("TextLabel",{BackgroundTransparency=1,Text=text,Font=Enum.Font.GothamMedium,TextSize=sz,TextColor3=Color3.fromRGB(242,237,255),TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd,Position=pos or UDim2.new(),Size=size or UDim2.fromScale(1,1)},p) end
 function U.button(p,text) local b=U.new("TextButton",{Text=text,Font=Enum.Font.GothamMedium,TextSize=13,TextColor3=Color3.fromRGB(241,234,255),BackgroundColor3=Color3.fromRGB(52,40,77),BorderSizePixel=0,AutoButtonColor=true},p);U.corner(b,8);return b end
+-- Shared original panel components. Runtime attaches actions; HUD preview attaches
+-- movement handles to the same components without executing game actions.
+function U.topPanel(parent)
+ local panel=U.frame(parent,"TopCapsule",nil,UDim2.fromOffset(345,38),Color3.fromRGB(19,16,32),.12)
+ panel.AnchorPoint=Vector2.new(.5,0);U.corner(panel,18)
+ local rim=U.stroke(panel,Color3.fromRGB(166,138,255),.42)
+ local buttons={}
+ for index,label in {"AI · OFFLINE","AETHER","ARCHIVIUM"} do
+  local button=U.button(panel,label);button.BackgroundTransparency=.42;button.TextSize=11
+  button.Position=UDim2.new((index-1)/3,4,0,4);button.Size=UDim2.new(1/3,-8,1,-8)
+  buttons[index]=button
+ end
+ return panel,rim,buttons
+end
+function U.railPanel(parent)
+ local panel=U.frame(parent,"RobloxShortcuts",nil,UDim2.fromOffset(54,176),Color3.fromRGB(19,16,32),.16)
+ panel.AnchorPoint=Vector2.new(0,.5);U.corner(panel,14)
+ local rim=U.stroke(panel,Color3.fromRGB(166,138,255),.48)
+ local buttons={}
+ for index,label in {"CHAT","BAG","LIST"} do
+  local button=U.button(panel,label);button.TextSize=10;button.Size=UDim2.fromOffset(44,38);button.Position=UDim2.fromOffset(5,5+(index-1)*43)
+  buttons[index]=button
+ end
+ local collapse=U.button(panel,"‹");collapse.Size=UDim2.fromOffset(44,34);collapse.Position=UDim2.fromOffset(5,136)
+ return panel,rim,buttons,collapse
+end
 function U.hex(s) return Color3.fromHex(s) end
 function U.font(s) local w=Enum.FontWeight[s.weight];if s.fontAsset~="" then return Font.new("rbxassetid://"..s.fontAsset,w) end;local base=Font.fromEnum(Enum.Font[s.font]);return Font.new(base.Family,w,base.Style) end
 function U.ease(t,name)

@@ -81,6 +81,106 @@ local function heartImage(parent)
  if not ok then return nil,nil,nil end
  return label,gradient,halo
 end
+local function galleryRaster(name,round)
+ local n,ss=128,4
+ local resolution=n*ss
+ local polys={}
+ for sub in string.gmatch(paths[name] or paths.Diamond,"[^|]+") do
+  local points={}
+  for x,y in sub:gmatch("(%d+),(%d+)") do table.insert(points,Vector2.new(tonumber(x),tonumber(y))) end
+  table.insert(polys,smooth(points,round*.055))
+ end
+ local alpha=buffer.create(n*n)
+ local function add(x,y)
+  local at=math.floor(y/ss)*n+math.floor(x/ss)
+  buffer.writeu8(alpha,at,buffer.readu8(alpha,at)+1)
+ end
+ for y=0,resolution-1 do
+  local yy=(y+.5)*32/resolution
+  if name=="Location Pin" or name=="Orbit Arc" then
+   for x=0,resolution-1 do
+    local xx=(x+.5)*32/resolution
+    local d=(xx-16)^2+(yy-17)^2
+    local inside
+    if name=="Location Pin" then
+     local p=(xx-16)^2+(yy-20)^2
+     inside=(p<112 or (yy>=2 and yy<21 and math.abs(xx-16)<(yy-1)*.56)) and p>15
+    else inside=(d<186 and d>93 and (yy>=13 or xx<13)) or (yy<13 and math.abs(xx-18)<yy*.55) end
+    if inside then add(x,y) end
+   end
+  else
+   local intersections={}
+   for _,poly in polys do
+    for i,a in poly do
+     local b=poly[i%#poly+1]
+     if (a.Y>yy)~=(b.Y>yy) then table.insert(intersections,a.X+(yy-a.Y)*(b.X-a.X)/(b.Y-a.Y)) end
+    end
+   end
+   table.sort(intersections)
+   for i=1,#intersections-1,2 do
+    local first=math.clamp(math.ceil(intersections[i]*resolution/32-.5),0,resolution)
+    local last=math.clamp(math.ceil(intersections[i+1]*resolution/32-.5)-1,-1,resolution-1)
+    for x=first,last do add(x,y) end
+   end
+  end
+ end
+ local core=buffer.create(n*n*4)
+ local glow=buffer.create(n*n*4)
+ -- Separate alpha blur follows the silhouette, not a circular backdrop.
+ local weights={1,4,7,10,12,10,7,4,1}
+ local temp=buffer.create(n*n*4)
+ for y=0,n-1 do
+  for x=0,n-1 do
+   local at=y*n+x
+   buffer.writeu32(core,at*4,0x00FFFFFF)
+   buffer.writeu8(core,at*4+3,math.round(buffer.readu8(alpha,at)*255/(ss*ss)))
+   local sum=0
+   for i,w in weights do local xx=x+i-5;if xx>=0 and xx<n then sum+=buffer.readu8(alpha,y*n+xx)*w end end
+   buffer.writef32(temp,at*4,sum/56)
+  end
+ end
+ for y=0,n-1 do
+  for x=0,n-1 do
+   local sum=0
+   for i,w in weights do local yy=y+i-5;if yy>=0 and yy<n then sum+=buffer.readf32(temp,(yy*n+x)*4)*w end end
+   local at=(y*n+x)*4
+   buffer.writeu32(glow,at,0x00FFFFFF)
+   buffer.writeu8(glow,at+3,math.clamp(math.round(sum*255/(56*ss*ss)),0,255))
+  end
+ end
+ return core,glow,n
+end
+function M.gallery(parent,name,round)
+ local edits={}
+ local root
+ local ok,result=pcall(function()
+  local core,glow,n=galleryRaster(name,round or 30)
+  root=U.new("Frame",{Name="HDGalleryGlyph",BackgroundTransparency=1,AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromScale(1,1),Active=false,Interactable=false},parent)
+  local function image(data,label,z)
+   local edit=AssetService:CreateEditableImage({Size=Vector2.new(n,n)})
+   assert(edit,"EditableImage unavailable")
+   table.insert(edits,edit)
+   edit:WritePixelsBuffer(Vector2.zero,Vector2.new(n,n),data)
+   return U.new("ImageLabel",{Name=label,Size=UDim2.fromScale(.90,.90),Position=UDim2.fromScale(.5,.5),AnchorPoint=Vector2.new(.5,.5),BackgroundTransparency=1,Active=false,Interactable=false,Selectable=false,ScaleType=Enum.ScaleType.Fit,ImageContent=Content.fromObject(edit),ResampleMode=Enum.ResamplerMode.Default,ZIndex=z},root)
+  end
+  local aura=image(glow,"ContourGlow128",parent.ZIndex+1)
+  local ink=image(core,"Silhouette128",parent.ZIndex+2)
+  local gradient=U.new("UIGradient",{Rotation=90},ink)
+  local self={root=root}
+  function self:paint(a,b,intensity,spread)
+   gradient.Color=ColorSequence.new(a,b)
+   aura.ImageColor3=a:Lerp(b,.5)
+   aura.ImageTransparency=1-math.clamp(intensity/100*.75,0,1)
+   aura.Size=UDim2.fromScale(.90+spread*.004,.90+spread*.004)
+  end
+  root.Destroying:Once(function() for _,edit in edits do edit:Destroy() end end)
+  return self
+ end)
+ if ok then return result end
+ if root then root:Destroy() end
+ for _,edit in edits do pcall(function() edit:Destroy() end) end
+ return M.new(parent,name,round)
+end
 function M.new(parent,name,round)
  local root=U.new("CanvasGroup",{Name="Glyph",BackgroundTransparency=1,AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromScale(1,1)},parent)
  local outer=U.frame(root,"OuterGlow",nil,nil,nil,.89);U.corner(outer,999);local inner=U.frame(root,"InnerGlow",nil,nil,nil,.80);U.corner(inner,999)

@@ -169,19 +169,17 @@ function H.new(scope,parent,preview,go,drag,close,showPanels)
  if preview and showPanels then
   self.previewPanels={}
   self.previewHandles={}
-  local function makePanel(key,labels,vertical)
-   local panel=U.frame(parent,"Preview_"..key,if vertical then UDim2.new(0,5,.25,0) else UDim2.new(.5,-78,0,5),if vertical then UDim2.fromOffset(35,100) else UDim2.fromOffset(156,24),Color3.fromRGB(26,21,42),.08)
-   panel.Visible=true
-   panel.ZIndex=7;U.corner(panel,6);local rim=U.stroke(panel,Color3.fromRGB(199,160,255),.3,1)
-   for j,label in labels do
-    local tile=U.frame(panel,"Tile"..j,if vertical then UDim2.new(0,2,(j-1)/#labels,2) else UDim2.new((j-1)/#labels,2,0,2),if vertical then UDim2.new(1,-4,1/#labels,-4) else UDim2.new(1/#labels,-4,1,-4),Color3.fromRGB(54,40,80),.16)
-    tile.ZIndex=8;tile.Active=false;tile.Interactable=false;U.corner(tile,4)
-    local caption=center(tile,label,if vertical then 8 else 7);caption.ZIndex=9;caption.TextScaled=true;caption.Active=false;caption.Interactable=false
-   end
-   self.previewPanels[key]={p=panel,rim=rim}
+  local top,topRim,topButtons=U.topPanel(parent)
+  local rail,railRim,railButtons,collapse=U.railPanel(parent)
+  self.previewPanels.top={p=top,rim=topRim,buttons=topButtons}
+  self.previewPanels.rail={p=rail,rim=railRim,buttons=railButtons,collapse=collapse}
+  for _,item in self.previewPanels do
+   item.p.AnchorPoint=Vector2.zero;item.p.ZIndex=7
+   item.scale=U.new("UIScale",{Scale=.55},item.p)
+   for _,button in item.buttons do button.Active=false;button.Interactable=false;button.ZIndex=8 end
+   if item.collapse then item.collapse.Active=false;item.collapse.Interactable=false;item.collapse.ZIndex=8 end
   end
-  makePanel("top",{"AI","AETHER","ARCHIVIUM"},false)
-  makePanel("rail",{"CHAT","BAG","LIST","‹"},true)
+  top.Position=UDim2.new(.5,-95,0,6);rail.Position=UDim2.new(0,6,.25,0)
   for _,key in {"top","rail","input","wallhop","hp","clock","profile","dock"} do
    local target=if key=="top" or key=="rail" then self.previewPanels[key].p elseif key=="input" then self.inputRoot elseif key=="wallhop" then self.wallhop else self.widgets[key].p
    local hit=U.new("TextButton",{Name="PreviewDrag_"..key,Text="",BackgroundTransparency=1,AutoButtonColor=false,Active=true,Visible=false,ZIndex=15},parent)
@@ -199,20 +197,26 @@ function H:layoutPreview(s)
  for _,key in {"top","rail"} do
   local item=self.previewPanels[key]
   local panel=item.p
-  local w=if key=="top" then math.min(vp.X*.62,math.max(144, vp.X*.44)) else math.min(42,math.max(30,vp.X*.085))
-  local height=if key=="top" then 25 else math.min(108,vp.Y*.55)
+  local factor=math.clamp(math.min(vp.X/850,vp.Y/420),.35,.74)
+  local originalW=if key=="top" then 345 else 54
+  local originalH=if key=="top" then 38 else 176
+  local w,height=originalW*factor,originalH*factor
+  item.scale.Scale=factor
   local x,y
   if s[key.."Custom"] then
    x=math.max(0,vp.X-w)*s[key.."X"]/100;y=math.max(0,vp.Y-height)*s[key.."Y"]/100
   elseif key=="top" then x=(vp.X-w)*.5;y=6
   else x=6;y=vp.Y*.46-height*.5 end
   panel.AnchorPoint=Vector2.zero
-  panel.Size=UDim2.fromOffset(w,height)
+  panel.Size=UDim2.fromOffset(originalW,originalH)
   panel.Position=UDim2.fromOffset(math.clamp(x,0,math.max(0,vp.X-w)),math.clamp(y,0,math.max(0,vp.Y-height)))
   panel.Visible=if key=="top" then s.topCapsule else s.robloxRail
-  item.rim.Color=if s.movePanels then U.hex(s.accent) else Color3.fromRGB(153,143,180)
-  item.rim.Transparency=0
-  item.rim.Thickness=if s.movePanels then 2 else 1
+  item.rim.Color=U.hex(s.accent)
+  item.rim.Transparency=if key=="top" then .42 else .48
+  item.rim.Thickness=1
+  local face=U.font(s)
+  for _,button in item.buttons do button.FontFace=face;button.TextColor3=U.hex(s.uiFontColor or "F1E6FF") end
+  if item.collapse then item.collapse.FontFace=face end
  end
  for key,item in self.previewHandles do
   local isPanel=key=="top" or key=="rail"
@@ -222,7 +226,7 @@ function H:layoutPreview(s)
   if item.p.Visible then
    -- Panel positions are set directly, so the drag target can follow without waiting
    -- for AbsolutePosition propagation during the current input event.
-   if isPanel then item.p.Position=item.target.Position;item.p.Size=item.target.Size
+   if isPanel then local factor=self.previewPanels[key].scale.Scale;item.p.Position=item.target.Position;item.p.Size=UDim2.fromOffset(item.target.Size.X.Offset*factor,item.target.Size.Y.Offset*factor)
    else local xy=item.target.AbsolutePosition-self.view.AbsolutePosition;item.p.Position=UDim2.fromOffset(xy.X,xy.Y);item.p.Size=UDim2.fromOffset(item.target.AbsoluteSize.X,item.target.AbsoluteSize.Y) end
   end
  end

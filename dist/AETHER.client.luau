@@ -586,18 +586,11 @@ function UI.new(app,gui,scope)
   dot.AnchorPoint=Vector2.new(.5,.5);dot.Active=false;dot.Interactable=false;U.corner(dot,99)
   self.stars[i]={root=root,bars=bars,dot=dot}
  end
- self.top=U.frame(self.stage,"TopCapsule",nil,UDim2.fromOffset(345,38),bg,.12)
- self.top.AnchorPoint=Vector2.new(.5,0);U.corner(self.top,18);self.topRim=U.stroke(self.top,Color3.fromRGB(166,138,255),.42)
- self.topButtons={}
- for index,item in {{"AI · OFFLINE","Scripts"},{"AETHER","Toggle"},{"ARCHIVIUM","Workshop"}} do
-  local button=U.button(self.top,item[1]);button.BackgroundTransparency=.42;button.TextSize=11
-  button.Position=UDim2.new((index-1)/3,4,0,4);button.Size=UDim2.new(1/3,-8,1,-8)
-  self.topButtons[index]=button
-  scope:on(button.Activated,function() if item[2]=="Toggle" then self:show(not self.opened) else self:open(item[2]) end end)
+ self.top,self.topRim,self.topButtons=U.topPanel(self.stage)
+ for index,action in {"Scripts","Toggle","Workshop"} do
+  scope:on(self.topButtons[index].Activated,function() if action=="Toggle" then self:show(not self.opened) else self:open(action) end end)
  end
- self.rail=U.frame(self.stage,"RobloxShortcuts",nil,UDim2.fromOffset(54,176),bg,.16);U.corner(self.rail,14);self.railRim=U.stroke(self.rail,Color3.fromRGB(166,138,255),.48)
- self.rail.AnchorPoint=Vector2.new(0,.5)
- self.railButtons={}
+ self.rail,self.railRim,self.railButtons,self.railCollapse=U.railPanel(self.stage)
  local coreOriginal,coreApplied={},{}
  local chatOriginal,chatApplied,chatConfig=nil,nil,nil
  scope:add(function()
@@ -605,8 +598,7 @@ function UI.new(app,gui,scope)
   if chatConfig and chatConfig.Parent and chatConfig.Enabled==chatApplied then chatConfig.Enabled=chatOriginal end
  end)
  for index,item in {{"CHAT",Enum.CoreGuiType.Chat},{"BAG",Enum.CoreGuiType.Backpack},{"LIST",Enum.CoreGuiType.PlayerList}} do
-  local button=U.button(self.rail,item[1]);button.TextSize=10;button.Size=UDim2.fromOffset(44,38);button.Position=UDim2.fromOffset(5,5+(index-1)*43)
-  self.railButtons[index]=button
+  local button=self.railButtons[index]
   scope:on(button.Activated,function()
    self:action(function()
     if item[2]==Enum.CoreGuiType.PlayerList then self:open("List");return end
@@ -629,9 +621,7 @@ function UI.new(app,gui,scope)
   StarterGui:SetCoreGuiEnabled(kind,not enabled);coreApplied[kind]=not enabled
   self:message(if enabled then "Roblox player list hidden" else "Roblox player list enabled")
  end
- local collapse=U.button(self.rail,"‹");collapse.Size=UDim2.fromOffset(44,34);collapse.Position=UDim2.fromOffset(5,136)
- scope:on(collapse.Activated,function() self.railCollapsed=not self.railCollapsed;self:layout() end)
- self.railCollapse=collapse
+ scope:on(self.railCollapse.Activated,function() self.railCollapsed=not self.railCollapsed;self:layout() end)
  self.panel=U.new("CanvasGroup",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=.035,BorderSizePixel=0,Size=UDim2.fromScale(1,1),GroupTransparency=1,Visible=false,Active=true},self.stage);U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3);self.panel.BackgroundTransparency=1;self.panel.GroupColor3=Color3.new(1,1,1)
  self.panelBackground=U.frame(self.panel,"GlassBackground",nil,nil,Color3.new(1,1,1),.035);self.panelBackground.Active=false;self.panelBackground.Interactable=false;self.panelBackground.ZIndex=1;U.corner(self.panelBackground,17)
  U.gradient(self.panelBackground,bg,Color3.fromRGB(39,30,58),82)
@@ -946,7 +936,7 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.." / PREVIEW FIX 02"
+ self.tag.Text=self.app.mode.." / HD GUI"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  for key,item in self.quickButtons do item.button.Text=item.label..(if st[key] then "  ON" else "  OFF");item.button.BackgroundColor3=if st[key] then U.hex(st.accent):Lerp(bg,.52) else soft end
@@ -1335,19 +1325,17 @@ function H.new(scope,parent,preview,go,drag,close,showPanels)
  if preview and showPanels then
   self.previewPanels={}
   self.previewHandles={}
-  local function makePanel(key,labels,vertical)
-   local panel=U.frame(parent,"Preview_"..key,if vertical then UDim2.new(0,5,.25,0) else UDim2.new(.5,-78,0,5),if vertical then UDim2.fromOffset(35,100) else UDim2.fromOffset(156,24),Color3.fromRGB(26,21,42),.08)
-   panel.Visible=true
-   panel.ZIndex=7;U.corner(panel,6);local rim=U.stroke(panel,Color3.fromRGB(199,160,255),.3,1)
-   for j,label in labels do
-    local tile=U.frame(panel,"Tile"..j,if vertical then UDim2.new(0,2,(j-1)/#labels,2) else UDim2.new((j-1)/#labels,2,0,2),if vertical then UDim2.new(1,-4,1/#labels,-4) else UDim2.new(1/#labels,-4,1,-4),Color3.fromRGB(54,40,80),.16)
-    tile.ZIndex=8;tile.Active=false;tile.Interactable=false;U.corner(tile,4)
-    local caption=center(tile,label,if vertical then 8 else 7);caption.ZIndex=9;caption.TextScaled=true;caption.Active=false;caption.Interactable=false
-   end
-   self.previewPanels[key]={p=panel,rim=rim}
+  local top,topRim,topButtons=U.topPanel(parent)
+  local rail,railRim,railButtons,collapse=U.railPanel(parent)
+  self.previewPanels.top={p=top,rim=topRim,buttons=topButtons}
+  self.previewPanels.rail={p=rail,rim=railRim,buttons=railButtons,collapse=collapse}
+  for _,item in self.previewPanels do
+   item.p.AnchorPoint=Vector2.zero;item.p.ZIndex=7
+   item.scale=U.new("UIScale",{Scale=.55},item.p)
+   for _,button in item.buttons do button.Active=false;button.Interactable=false;button.ZIndex=8 end
+   if item.collapse then item.collapse.Active=false;item.collapse.Interactable=false;item.collapse.ZIndex=8 end
   end
-  makePanel("top",{"AI","AETHER","ARCHIVIUM"},false)
-  makePanel("rail",{"CHAT","BAG","LIST","‹"},true)
+  top.Position=UDim2.new(.5,-95,0,6);rail.Position=UDim2.new(0,6,.25,0)
   for _,key in {"top","rail","input","wallhop","hp","clock","profile","dock"} do
    local target=if key=="top" or key=="rail" then self.previewPanels[key].p elseif key=="input" then self.inputRoot elseif key=="wallhop" then self.wallhop else self.widgets[key].p
    local hit=U.new("TextButton",{Name="PreviewDrag_"..key,Text="",BackgroundTransparency=1,AutoButtonColor=false,Active=true,Visible=false,ZIndex=15},parent)
@@ -1365,20 +1353,26 @@ function H:layoutPreview(s)
  for _,key in {"top","rail"} do
   local item=self.previewPanels[key]
   local panel=item.p
-  local w=if key=="top" then math.min(vp.X*.62,math.max(144, vp.X*.44)) else math.min(42,math.max(30,vp.X*.085))
-  local height=if key=="top" then 25 else math.min(108,vp.Y*.55)
+  local factor=math.clamp(math.min(vp.X/850,vp.Y/420),.35,.74)
+  local originalW=if key=="top" then 345 else 54
+  local originalH=if key=="top" then 38 else 176
+  local w,height=originalW*factor,originalH*factor
+  item.scale.Scale=factor
   local x,y
   if s[key.."Custom"] then
    x=math.max(0,vp.X-w)*s[key.."X"]/100;y=math.max(0,vp.Y-height)*s[key.."Y"]/100
   elseif key=="top" then x=(vp.X-w)*.5;y=6
   else x=6;y=vp.Y*.46-height*.5 end
   panel.AnchorPoint=Vector2.zero
-  panel.Size=UDim2.fromOffset(w,height)
+  panel.Size=UDim2.fromOffset(originalW,originalH)
   panel.Position=UDim2.fromOffset(math.clamp(x,0,math.max(0,vp.X-w)),math.clamp(y,0,math.max(0,vp.Y-height)))
   panel.Visible=if key=="top" then s.topCapsule else s.robloxRail
-  item.rim.Color=if s.movePanels then U.hex(s.accent) else Color3.fromRGB(153,143,180)
-  item.rim.Transparency=0
-  item.rim.Thickness=if s.movePanels then 2 else 1
+  item.rim.Color=U.hex(s.accent)
+  item.rim.Transparency=if key=="top" then .42 else .48
+  item.rim.Thickness=1
+  local face=U.font(s)
+  for _,button in item.buttons do button.FontFace=face;button.TextColor3=U.hex(s.uiFontColor or "F1E6FF") end
+  if item.collapse then item.collapse.FontFace=face end
  end
  for key,item in self.previewHandles do
   local isPanel=key=="top" or key=="rail"
@@ -1388,7 +1382,7 @@ function H:layoutPreview(s)
   if item.p.Visible then
    -- Panel positions are set directly, so the drag target can follow without waiting
    -- for AbsolutePosition propagation during the current input event.
-   if isPanel then item.p.Position=item.target.Position;item.p.Size=item.target.Size
+   if isPanel then local factor=self.previewPanels[key].scale.Scale;item.p.Position=item.target.Position;item.p.Size=UDim2.fromOffset(item.target.Size.X.Offset*factor,item.target.Size.Y.Offset*factor)
    else local xy=item.target.AbsolutePosition-self.view.AbsolutePosition;item.p.Position=UDim2.fromOffset(xy.X,xy.Y);item.p.Size=UDim2.fromOffset(item.target.AbsoluteSize.X,item.target.AbsoluteSize.Y) end
   end
  end
@@ -2052,7 +2046,7 @@ local function avatarPreview(ui,a)
  local f=ui:row(165,"RigPreview");local view=U.new("ViewportFrame",{Size=UDim2.fromScale(1,1),BorderSizePixel=0,BackgroundColor3=Color3.fromRGB(21,19,36),Ambient=Color3.fromRGB(155,145,175),LightColor=Color3.fromRGB(246,222,255),LightDirection=Vector3.new(-1,-1,-.6)},f);U.corner(view,10);local w=U.new("WorldModel",{},view);local rig=Avatar.mannequin(w);local cam=U.new("Camera",{FieldOfView=34,CFrame=CFrame.lookAt(Vector3.new(2.3,3.6,9.3),Vector3.new(0,2.1,0))},view);view.CurrentCamera=cam;local avatar=Avatar.new(w,true);a.preview={avatar=avatar,rig=rig};ui.page:add(function() avatar:clear() end)
 end
 local function gallery(ui,a)
- ui:title("24 DIRECTION STYLES");for i=1,#S.shapes,4 do local r=ui:row(56,"ShapeGallery");for j=0,3 do local n=S.shapes[i+j];local b=U.button(r,"");b.Name=n;b.Position=UDim2.fromScale(j/4,0);b.Size=UDim2.new(.25,-3,1,0);local g=Symbol.new(b,n,30);g.root.Position=UDim2.fromScale(.5,.34);g.root.Size=UDim2.fromOffset(33,33);local l=U.label(b,n,10,UDim2.fromScale(0,.65),UDim2.fromScale(1,.3));l.TextXAlignment=Enum.TextXAlignment.Center;ui.page:on(b.Activated,function() a:set("shape",n) end);ui:watch(function() b.BackgroundColor3=if a.s.shape==n then U.hex("624785") else U.hex("30273E");g:paint(U.hex(a.s.arrowA),U.hex(a.s.arrowB),a.s.ink,a.s.spread) end) end end
+ ui:title("24 DIRECTION STYLES · HD");for i=1,#S.shapes,4 do local r=ui:row(72,"ShapeGallery");for j=0,3 do local n=S.shapes[i+j];local b=U.button(r,"");b.Name=n;b.Position=UDim2.fromScale(j/4,0);b.Size=UDim2.new(.25,-3,1,0);local g=Symbol.gallery(b,n,30);g.root.Position=UDim2.fromScale(.5,.37);g.root.Size=UDim2.fromOffset(47,47);local l=U.label(b,n,10,UDim2.fromScale(0,.65),UDim2.fromScale(1,.3));l.TextXAlignment=Enum.TextXAlignment.Center;ui.page:on(b.Activated,function() a:set("shape",n) end);ui:watch(function() b.BackgroundColor3=if a.s.shape==n then U.hex("624785") else U.hex("30273E");g:paint(U.hex(a.s.arrowA),U.hex(a.s.arrowB),a.s.ink,a.s.spread) end) end end
 end
 local function simMap(ui,a)
  local map=ui:row(132,"VirtualMap");map.ClipsDescendants=true;map.BackgroundColor3=U.hex("211E36");local center=U.label(map,"CAMERA ↑",11,UDim2.new(.5,-32,.5,-8),UDim2.fromOffset(70,18));center.TextColor3=U.hex(a.s.accent)
@@ -2413,6 +2407,106 @@ local function heartImage(parent)
  if not ok then return nil,nil,nil end
  return label,gradient,halo
 end
+local function galleryRaster(name,round)
+ local n,ss=128,4
+ local resolution=n*ss
+ local polys={}
+ for sub in string.gmatch(paths[name] or paths.Diamond,"[^|]+") do
+  local points={}
+  for x,y in sub:gmatch("(%d+),(%d+)") do table.insert(points,Vector2.new(tonumber(x),tonumber(y))) end
+  table.insert(polys,smooth(points,round*.055))
+ end
+ local alpha=buffer.create(n*n)
+ local function add(x,y)
+  local at=math.floor(y/ss)*n+math.floor(x/ss)
+  buffer.writeu8(alpha,at,buffer.readu8(alpha,at)+1)
+ end
+ for y=0,resolution-1 do
+  local yy=(y+.5)*32/resolution
+  if name=="Location Pin" or name=="Orbit Arc" then
+   for x=0,resolution-1 do
+    local xx=(x+.5)*32/resolution
+    local d=(xx-16)^2+(yy-17)^2
+    local inside
+    if name=="Location Pin" then
+     local p=(xx-16)^2+(yy-20)^2
+     inside=(p<112 or (yy>=2 and yy<21 and math.abs(xx-16)<(yy-1)*.56)) and p>15
+    else inside=(d<186 and d>93 and (yy>=13 or xx<13)) or (yy<13 and math.abs(xx-18)<yy*.55) end
+    if inside then add(x,y) end
+   end
+  else
+   local intersections={}
+   for _,poly in polys do
+    for i,a in poly do
+     local b=poly[i%#poly+1]
+     if (a.Y>yy)~=(b.Y>yy) then table.insert(intersections,a.X+(yy-a.Y)*(b.X-a.X)/(b.Y-a.Y)) end
+    end
+   end
+   table.sort(intersections)
+   for i=1,#intersections-1,2 do
+    local first=math.clamp(math.ceil(intersections[i]*resolution/32-.5),0,resolution)
+    local last=math.clamp(math.ceil(intersections[i+1]*resolution/32-.5)-1,-1,resolution-1)
+    for x=first,last do add(x,y) end
+   end
+  end
+ end
+ local core=buffer.create(n*n*4)
+ local glow=buffer.create(n*n*4)
+ -- Separate alpha blur follows the silhouette, not a circular backdrop.
+ local weights={1,4,7,10,12,10,7,4,1}
+ local temp=buffer.create(n*n*4)
+ for y=0,n-1 do
+  for x=0,n-1 do
+   local at=y*n+x
+   buffer.writeu32(core,at*4,0x00FFFFFF)
+   buffer.writeu8(core,at*4+3,math.round(buffer.readu8(alpha,at)*255/(ss*ss)))
+   local sum=0
+   for i,w in weights do local xx=x+i-5;if xx>=0 and xx<n then sum+=buffer.readu8(alpha,y*n+xx)*w end end
+   buffer.writef32(temp,at*4,sum/56)
+  end
+ end
+ for y=0,n-1 do
+  for x=0,n-1 do
+   local sum=0
+   for i,w in weights do local yy=y+i-5;if yy>=0 and yy<n then sum+=buffer.readf32(temp,(yy*n+x)*4)*w end end
+   local at=(y*n+x)*4
+   buffer.writeu32(glow,at,0x00FFFFFF)
+   buffer.writeu8(glow,at+3,math.clamp(math.round(sum*255/(56*ss*ss)),0,255))
+  end
+ end
+ return core,glow,n
+end
+function M.gallery(parent,name,round)
+ local edits={}
+ local root
+ local ok,result=pcall(function()
+  local core,glow,n=galleryRaster(name,round or 30)
+  root=U.new("Frame",{Name="HDGalleryGlyph",BackgroundTransparency=1,AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromScale(1,1),Active=false,Interactable=false},parent)
+  local function image(data,label,z)
+   local edit=AssetService:CreateEditableImage({Size=Vector2.new(n,n)})
+   assert(edit,"EditableImage unavailable")
+   table.insert(edits,edit)
+   edit:WritePixelsBuffer(Vector2.zero,Vector2.new(n,n),data)
+   return U.new("ImageLabel",{Name=label,Size=UDim2.fromScale(.90,.90),Position=UDim2.fromScale(.5,.5),AnchorPoint=Vector2.new(.5,.5),BackgroundTransparency=1,Active=false,Interactable=false,Selectable=false,ScaleType=Enum.ScaleType.Fit,ImageContent=Content.fromObject(edit),ResampleMode=Enum.ResamplerMode.Default,ZIndex=z},root)
+  end
+  local aura=image(glow,"ContourGlow128",parent.ZIndex+1)
+  local ink=image(core,"Silhouette128",parent.ZIndex+2)
+  local gradient=U.new("UIGradient",{Rotation=90},ink)
+  local self={root=root}
+  function self:paint(a,b,intensity,spread)
+   gradient.Color=ColorSequence.new(a,b)
+   aura.ImageColor3=a:Lerp(b,.5)
+   aura.ImageTransparency=1-math.clamp(intensity/100*.75,0,1)
+   aura.Size=UDim2.fromScale(.90+spread*.004,.90+spread*.004)
+  end
+  root.Destroying:Once(function() for _,edit in edits do edit:Destroy() end end)
+  return self
+ end)
+ if ok then return result end
+ if root then root:Destroy() end
+ for _,edit in edits do pcall(function() edit:Destroy() end) end
+ return M.new(parent,name,round)
+end
 function M.new(parent,name,round)
  local root=U.new("CanvasGroup",{Name="Glyph",BackgroundTransparency=1,AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromScale(1,1)},parent)
  local outer=U.frame(root,"OuterGlow",nil,nil,nil,.89);U.corner(outer,999);local inner=U.frame(root,"InnerGlow",nil,nil,nil,.80);U.corner(inner,999)
@@ -2477,6 +2571,32 @@ function U.gradient(p,a,b,rot) return U.new("UIGradient",{Color=ColorSequence.ne
 function U.frame(p,name,pos,size,color,alpha) return U.new("Frame",{Name=name,Position=pos or UDim2.new(),Size=size or UDim2.fromScale(1,1),BackgroundColor3=color or Color3.fromRGB(22,18,37),BackgroundTransparency=alpha or 0,BorderSizePixel=0},p) end
 function U.label(p,text,sz,pos,size) return U.new("TextLabel",{BackgroundTransparency=1,Text=text,Font=Enum.Font.GothamMedium,TextSize=sz,TextColor3=Color3.fromRGB(242,237,255),TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd,Position=pos or UDim2.new(),Size=size or UDim2.fromScale(1,1)},p) end
 function U.button(p,text) local b=U.new("TextButton",{Text=text,Font=Enum.Font.GothamMedium,TextSize=13,TextColor3=Color3.fromRGB(241,234,255),BackgroundColor3=Color3.fromRGB(52,40,77),BorderSizePixel=0,AutoButtonColor=true},p);U.corner(b,8);return b end
+-- Shared original panel components. Runtime attaches actions; HUD preview attaches
+-- movement handles to the same components without executing game actions.
+function U.topPanel(parent)
+ local panel=U.frame(parent,"TopCapsule",nil,UDim2.fromOffset(345,38),Color3.fromRGB(19,16,32),.12)
+ panel.AnchorPoint=Vector2.new(.5,0);U.corner(panel,18)
+ local rim=U.stroke(panel,Color3.fromRGB(166,138,255),.42)
+ local buttons={}
+ for index,label in {"AI · OFFLINE","AETHER","ARCHIVIUM"} do
+  local button=U.button(panel,label);button.BackgroundTransparency=.42;button.TextSize=11
+  button.Position=UDim2.new((index-1)/3,4,0,4);button.Size=UDim2.new(1/3,-8,1,-8)
+  buttons[index]=button
+ end
+ return panel,rim,buttons
+end
+function U.railPanel(parent)
+ local panel=U.frame(parent,"RobloxShortcuts",nil,UDim2.fromOffset(54,176),Color3.fromRGB(19,16,32),.16)
+ panel.AnchorPoint=Vector2.new(0,.5);U.corner(panel,14)
+ local rim=U.stroke(panel,Color3.fromRGB(166,138,255),.48)
+ local buttons={}
+ for index,label in {"CHAT","BAG","LIST"} do
+  local button=U.button(panel,label);button.TextSize=10;button.Size=UDim2.fromOffset(44,38);button.Position=UDim2.fromOffset(5,5+(index-1)*43)
+  buttons[index]=button
+ end
+ local collapse=U.button(panel,"‹");collapse.Size=UDim2.fromOffset(44,34);collapse.Position=UDim2.fromOffset(5,136)
+ return panel,rim,buttons,collapse
+end
 function U.hex(s) return Color3.fromHex(s) end
 function U.font(s) local w=Enum.FontWeight[s.weight];if s.fontAsset~="" then return Font.new("rbxassetid://"..s.fontAsset,w) end;local base=Font.fromEnum(Enum.Font[s.font]);return Font.new(base.Family,w,base.Style) end
 function U.ease(t,name)
