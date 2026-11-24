@@ -64,8 +64,13 @@ function H.new(scope,parent,preview,go,drag)
  local cr=self.widgets.cross.p
  cr.BackgroundTransparency=1
  self.widgets.cross.rim.Enabled=false
- self.crossH=U.frame(cr,"H",UDim2.fromScale(0,.46),UDim2.fromScale(1,.08))
- self.crossV=U.frame(cr,"V",UDim2.fromScale(.46,0),UDim2.fromScale(.08,1))
+ self.reticleRoot=U.frame(cr,"ShiftReticle",UDim2.fromScale(.5,.5),UDim2.fromScale(1,1),nil,1)
+ self.reticleRoot.AnchorPoint=Vector2.new(.5,.5);self.reticleRoot.Active=false
+ self.reticleEdges={}
+ for i=1,48 do
+  local edge=U.frame(self.reticleRoot,"Line"..i,nil,UDim2.fromOffset(1,1),Color3.new(1,1,1),0)
+  edge.AnchorPoint=Vector2.new(.5,.5);edge.Active=false;edge.Visible=false;U.corner(edge,3);self.reticleEdges[i]=edge
+ end
  return self
 end
 function H:clearMarkers() for _,m in self.markers do m.root:Destroy() end;table.clear(self.markers) end
@@ -91,8 +96,7 @@ function H:setStyle(s)
  self.widgets.hp.p.Size=UDim2.fromOffset(264,if s.compact then 72 else 94)
  self.track.Visible=true
  self.track.Position=UDim2.fromOffset(16,if s.compact then 60 else 77)
- self.crossH.BackgroundColor3=accent
- self.crossV.BackgroundColor3=accent
+ self.reticleKey=nil
  self.hpAccent.BackgroundColor3=accent
  self.profileDot.BackgroundColor3=U.hex(s.secondary)
  for _,icon in self.dockIcons do icon:sync(s.iconAtlas) end
@@ -109,6 +113,59 @@ function H:setStyle(s)
  end
  self.settings=s
  self.width=self.view.AbsoluteSize.X
+end
+function H:reticle(s,f,t)
+ local widget=self.widgets.cross
+ widget.p.Visible=s.cross and s.lockReticle~="None" and (self.preview or f.shiftLock==true)
+ if not widget.p.Visible then return end
+ if not self.preview then widget.p.AnchorPoint=Vector2.new(.5,.5);widget.p.Position=UDim2.fromScale(.5,.5);widget.p.Rotation=0 end
+ widget.p.Size=UDim2.fromOffset(s.reticleSize,s.reticleSize)
+ local style=s.lockReticle
+ local key=style..":"..s.reticleSize..":"..s.reticleStroke
+ if self.reticleKey~=key then
+  self.reticleKey=key
+  local used=0
+  local function line(x1,y1,x2,y2)
+   used+=1
+   local edge=self.reticleEdges[used];if not edge then return end
+   local dx,dy=x2-x1,y2-y1
+   edge.Position=UDim2.fromScale((x1+x2)*.5,(y1+y2)*.5)
+   edge.Size=UDim2.new(math.sqrt(dx*dx+dy*dy),0,0,s.reticleStroke)
+   edge.Rotation=math.deg(math.atan2(dy,dx));edge.Visible=true
+  end
+  local function poly(count,r,phase,star)
+   for i=0,count-1 do
+    local a=phase+i/count*math.pi*2;local b=phase+(i+1)/count*math.pi*2
+    local r1=r*(if star and i%2==1 then .44 else 1)
+    local r2=r*(if star and (i+1)%2==1 then .44 else 1)
+    line(.5+math.cos(a)*r1,.5+math.sin(a)*r1,.5+math.cos(b)*r2,.5+math.sin(b)*r2)
+   end
+  end
+  if style=="Dot" then
+   used=1;local d=self.reticleEdges[1];d.Position=UDim2.fromScale(.5,.5);d.Size=UDim2.fromOffset(s.reticleStroke*2,s.reticleStroke*2);d.Rotation=0;d.Visible=true
+  elseif style=="Cross" then line(.08,.5,.92,.5);line(.5,.08,.5,.92)
+  elseif style=="Split Cross" then for i=0,3 do local a=i*math.pi/2;line(.5+.18*math.cos(a),.5+.18*math.sin(a),.5+.44*math.cos(a),.5+.44*math.sin(a)) end
+  elseif style=="Corners" then for _,x in {-1,1} do for _,y in {-1,1} do line(.5+x*.43,.5+y*.43,.5+x*.23,.5+y*.43);line(.5+x*.43,.5+y*.43,.5+x*.43,.5+y*.23) end end
+  elseif style=="Diamond" then poly(4,.42,-math.pi/2,false)
+  elseif style=="Triangle" then poly(3,.45,-math.pi/2,false)
+  elseif style=="Hexagon" then poly(6,.42,0,false)
+  elseif style=="Star" then poly(10,.45,-math.pi/2,true)
+  elseif style=="Petal" then poly(8,.43,-math.pi/2,true)
+  elseif style=="Compass" then poly(4,.43,0,false);poly(4,.22,0,false)
+  elseif style=="Double Ring" then poly(24,.44,0,false);poly(20,.25,0,false)
+  elseif style=="Orbit" then for i=0,21 do local a=i/24*math.pi*2;local b=(i+1)/24*math.pi*2;line(.5+.40*math.cos(a),.5+.40*math.sin(a),.5+.40*math.cos(b),.5+.40*math.sin(b)) end
+  else poly(28,.42,0,false) end
+  for i=used+1,#self.reticleEdges do self.reticleEdges[i].Visible=false end
+  self.reticleUsed=math.min(used,#self.reticleEdges)
+  self.reticlePaint=nil
+ end
+ local tm=if s.reduce or not s.reticleMotion then 0 else t*s.reticleSpeed/100
+ self.reticleRoot.Rotation=if style=="Orbit" or style=="Star" or style=="Petal" or style=="Compass" or style=="Double Ring" then tm*22 else 0
+ local col=if s.reticleRainbow then Color3.fromHSV((tm*.12)%1,.55,1) else U.hex(s.reticleColor)
+ if self.reticlePaint~=col then
+  self.reticlePaint=col
+  for i=1,self.reticleUsed do self.reticleEdges[i].BackgroundColor3=col end
+ end
 end
 function H:vitals(s,f,dt)
  local hp,max=f.hp,f.max;local w=self.widgets.hp;w.p.Visible=s.hp and hp~=nil;if hp==nil then self.last=-1;self.phase=0;return end
@@ -144,7 +201,7 @@ function H:directions(s,f,dt,t,paint)
 end
 function H:step(s,f,dt)
  if self.settings~=s or self.width~=self.view.AbsoluteSize.X then self:setStyle(s) end;self.time+=dt;local t=self.time;local paint=t>=self.paintAt;if paint then self.paintAt=t+.075 end
- self:vitals(s,f,dt);self:directions(s,f,dt,t,paint);self.name.Text=f.name;self.clock.Text=os.date("%H:%M");self.clockSub.Text=f.mode
+ self:reticle(s,f,t);self:vitals(s,f,dt);self:directions(s,f,dt,t,paint);self.name.Text=f.name;self.clock.Text=os.date("%H:%M");self.clockSub.Text=f.mode
  if paint then for i,n in self.spark do n.Visible=s.sparkles;if s.sparkles then n.BackgroundColor3=U.hex(s.secondary);n.Position=UDim2.fromScale((i*.617)%1,(i*.349-(if s.reduce then 0 else t*.014))%1) end end end
  for id,n in self.extras do if not f.widgets[id] then n:Destroy();self.extras[id]=nil end end
  for id,w in f.widgets do local n=self.extras[id];if not n then n=U.label(self.view,"",14,nil,UDim2.fromOffset(150,25));n.Name="Cue_"..id;n.ZIndex=4;self.extras[id]=n end;n.Text=w.text;n.FontFace=U.font(s);n.TextColor3=U.hex(s.fontA);n.TextStrokeTransparency=.4;local wave=if s.reduce then 0 else math.sin(t*3);n.Position=UDim2.new(w.x/100,0,w.y/100,if w.animation=="float" then wave*5 else 0);n.TextTransparency=if w.animation=="pulse" then .17+wave*.16 else 0 end

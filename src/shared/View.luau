@@ -68,9 +68,13 @@ end
 -- and HUD updates cannot defer the position assignment.
 function V:cursorStep(s)
  local image=s.cursorShape=="Image"
- local show=s.cursor and Input.MouseEnabled and not Gui.MenuIsOpen
+ local camera=workspace.CurrentCamera
+ local thirdPerson=camera and (camera.CFrame.Position-camera.Focus.Position).Magnitude>1.1
+ local locked=thirdPerson and Input.MouseBehavior==Enum.MouseBehavior.LockCenter and Input.MouseEnabled and not Gui.MenuIsOpen and not self.menuOpen and not Input:GetFocusedTextBox() and Input:GetLastInputType()~=Enum.UserInputType.Touch
+ self.shiftReticleActive=locked==true
+ local show=s.cursor and not locked and Input.MouseEnabled and not Gui.MenuIsOpen
   and (not image or s.image~="") and Input:GetLastInputType()~=Enum.UserInputType.Touch
- if show then
+ if show or locked then
   if self.icon==nil then self.icon=Input.MouseIconEnabled end
   Input.MouseIconEnabled=false
  elseif self.icon~=nil then
@@ -147,6 +151,7 @@ function V:cursorStep(s)
  end
 end
 function V:step(s,hum,menu,dt,t)
+ self.menuOpen=menu
  local camera=workspace.CurrentCamera;local hrp=hum and hum.Parent and hum.Parent:FindFirstChild("HumanoidRootPart");local enabled=s.camera and hrp and hum.Health>0 and camera
  if self.cam and (not enabled or self.cam~=camera or self.hum~=hum) then self:releaseCamera() end
  if enabled then

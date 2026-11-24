@@ -769,8 +769,13 @@ function H.new(scope,parent,preview,go,drag)
  local cr=self.widgets.cross.p
  cr.BackgroundTransparency=1
  self.widgets.cross.rim.Enabled=false
- self.crossH=U.frame(cr,"H",UDim2.fromScale(0,.46),UDim2.fromScale(1,.08))
- self.crossV=U.frame(cr,"V",UDim2.fromScale(.46,0),UDim2.fromScale(.08,1))
+ self.reticleRoot=U.frame(cr,"ShiftReticle",UDim2.fromScale(.5,.5),UDim2.fromScale(1,1),nil,1)
+ self.reticleRoot.AnchorPoint=Vector2.new(.5,.5);self.reticleRoot.Active=false
+ self.reticleEdges={}
+ for i=1,48 do
+  local edge=U.frame(self.reticleRoot,"Line"..i,nil,UDim2.fromOffset(1,1),Color3.new(1,1,1),0)
+  edge.AnchorPoint=Vector2.new(.5,.5);edge.Active=false;edge.Visible=false;U.corner(edge,3);self.reticleEdges[i]=edge
+ end
  return self
 end
 function H:clearMarkers() for _,m in self.markers do m.root:Destroy() end;table.clear(self.markers) end
@@ -796,8 +801,7 @@ function H:setStyle(s)
  self.widgets.hp.p.Size=UDim2.fromOffset(264,if s.compact then 72 else 94)
  self.track.Visible=true
  self.track.Position=UDim2.fromOffset(16,if s.compact then 60 else 77)
- self.crossH.BackgroundColor3=accent
- self.crossV.BackgroundColor3=accent
+ self.reticleKey=nil
  self.hpAccent.BackgroundColor3=accent
  self.profileDot.BackgroundColor3=U.hex(s.secondary)
  for _,icon in self.dockIcons do icon:sync(s.iconAtlas) end
@@ -814,6 +818,59 @@ function H:setStyle(s)
  end
  self.settings=s
  self.width=self.view.AbsoluteSize.X
+end
+function H:reticle(s,f,t)
+ local widget=self.widgets.cross
+ widget.p.Visible=s.cross and s.lockReticle~="None" and (self.preview or f.shiftLock==true)
+ if not widget.p.Visible then return end
+ if not self.preview then widget.p.AnchorPoint=Vector2.new(.5,.5);widget.p.Position=UDim2.fromScale(.5,.5);widget.p.Rotation=0 end
+ widget.p.Size=UDim2.fromOffset(s.reticleSize,s.reticleSize)
+ local style=s.lockReticle
+ local key=style..":"..s.reticleSize..":"..s.reticleStroke
+ if self.reticleKey~=key then
+  self.reticleKey=key
+  local used=0
+  local function line(x1,y1,x2,y2)
+   used+=1
+   local edge=self.reticleEdges[used];if not edge then return end
+   local dx,dy=x2-x1,y2-y1
+   edge.Position=UDim2.fromScale((x1+x2)*.5,(y1+y2)*.5)
+   edge.Size=UDim2.new(math.sqrt(dx*dx+dy*dy),0,0,s.reticleStroke)
+   edge.Rotation=math.deg(math.atan2(dy,dx));edge.Visible=true
+  end
+  local function poly(count,r,phase,star)
+   for i=0,count-1 do
+    local a=phase+i/count*math.pi*2;local b=phase+(i+1)/count*math.pi*2
+    local r1=r*(if star and i%2==1 then .44 else 1)
+    local r2=r*(if star and (i+1)%2==1 then .44 else 1)
+    line(.5+math.cos(a)*r1,.5+math.sin(a)*r1,.5+math.cos(b)*r2,.5+math.sin(b)*r2)
+   end
+  end
+  if style=="Dot" then
+   used=1;local d=self.reticleEdges[1];d.Position=UDim2.fromScale(.5,.5);d.Size=UDim2.fromOffset(s.reticleStroke*2,s.reticleStroke*2);d.Rotation=0;d.Visible=true
+  elseif style=="Cross" then line(.08,.5,.92,.5);line(.5,.08,.5,.92)
+  elseif style=="Split Cross" then for i=0,3 do local a=i*math.pi/2;line(.5+.18*math.cos(a),.5+.18*math.sin(a),.5+.44*math.cos(a),.5+.44*math.sin(a)) end
+  elseif style=="Corners" then for _,x in {-1,1} do for _,y in {-1,1} do line(.5+x*.43,.5+y*.43,.5+x*.23,.5+y*.43);line(.5+x*.43,.5+y*.43,.5+x*.43,.5+y*.23) end end
+  elseif style=="Diamond" then poly(4,.42,-math.pi/2,false)
+  elseif style=="Triangle" then poly(3,.45,-math.pi/2,false)
+  elseif style=="Hexagon" then poly(6,.42,0,false)
+  elseif style=="Star" then poly(10,.45,-math.pi/2,true)
+  elseif style=="Petal" then poly(8,.43,-math.pi/2,true)
+  elseif style=="Compass" then poly(4,.43,0,false);poly(4,.22,0,false)
+  elseif style=="Double Ring" then poly(24,.44,0,false);poly(20,.25,0,false)
+  elseif style=="Orbit" then for i=0,21 do local a=i/24*math.pi*2;local b=(i+1)/24*math.pi*2;line(.5+.40*math.cos(a),.5+.40*math.sin(a),.5+.40*math.cos(b),.5+.40*math.sin(b)) end
+  else poly(28,.42,0,false) end
+  for i=used+1,#self.reticleEdges do self.reticleEdges[i].Visible=false end
+  self.reticleUsed=math.min(used,#self.reticleEdges)
+  self.reticlePaint=nil
+ end
+ local tm=if s.reduce or not s.reticleMotion then 0 else t*s.reticleSpeed/100
+ self.reticleRoot.Rotation=if style=="Orbit" or style=="Star" or style=="Petal" or style=="Compass" or style=="Double Ring" then tm*22 else 0
+ local col=if s.reticleRainbow then Color3.fromHSV((tm*.12)%1,.55,1) else U.hex(s.reticleColor)
+ if self.reticlePaint~=col then
+  self.reticlePaint=col
+  for i=1,self.reticleUsed do self.reticleEdges[i].BackgroundColor3=col end
+ end
 end
 function H:vitals(s,f,dt)
  local hp,max=f.hp,f.max;local w=self.widgets.hp;w.p.Visible=s.hp and hp~=nil;if hp==nil then self.last=-1;self.phase=0;return end
@@ -849,7 +906,7 @@ function H:directions(s,f,dt,t,paint)
 end
 function H:step(s,f,dt)
  if self.settings~=s or self.width~=self.view.AbsoluteSize.X then self:setStyle(s) end;self.time+=dt;local t=self.time;local paint=t>=self.paintAt;if paint then self.paintAt=t+.075 end
- self:vitals(s,f,dt);self:directions(s,f,dt,t,paint);self.name.Text=f.name;self.clock.Text=os.date("%H:%M");self.clockSub.Text=f.mode
+ self:reticle(s,f,t);self:vitals(s,f,dt);self:directions(s,f,dt,t,paint);self.name.Text=f.name;self.clock.Text=os.date("%H:%M");self.clockSub.Text=f.mode
  if paint then for i,n in self.spark do n.Visible=s.sparkles;if s.sparkles then n.BackgroundColor3=U.hex(s.secondary);n.Position=UDim2.fromScale((i*.617)%1,(i*.349-(if s.reduce then 0 else t*.014))%1) end end end
  for id,n in self.extras do if not f.widgets[id] then n:Destroy();self.extras[id]=nil end end
  for id,w in f.widgets do local n=self.extras[id];if not n then n=U.label(self.view,"",14,nil,UDim2.fromOffset(150,25));n.Name="Cue_"..id;n.ZIndex=4;self.extras[id]=n end;n.Text=w.text;n.FontFace=U.font(s);n.TextColor3=U.hex(s.fontA);n.TextStrokeTransparency=.4;local wave=if s.reduce then 0 else math.sin(t*3);n.Position=UDim2.new(w.x/100,0,w.y/100,if w.animation=="float" then wave*5 else 0);n.TextTransparency=if w.animation=="pulse" then .17+wave*.16 else 0 end
@@ -1056,7 +1113,7 @@ function E.render(a,tab,ui)
  elseif tab=="Ambient" then local sky=ui:row(106,"SkyPreview");local grad=U.gradient(sky,Color3.new(),Color3.new(),90);local sun=U.frame(sky,"Sun",nil,UDim2.fromOffset(30,30));U.corner(sun,30);ui:watch(function() local s=a.s;sky.BackgroundColor3=Color3.new(1,1,1);grad.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,U.hex(s.skyA)),ColorSequenceKeypoint.new(.64,U.hex(s.skyB)),ColorSequenceKeypoint.new(1,U.hex(s.skyC))});sun.BackgroundColor3=U.hex(s.skyC);sun.Position=UDim2.fromScale(.7,.66-.45*math.sin(s.time/240*math.pi));sun.BackgroundTransparency=.04+s.fog*.004 end);preset(ui,a,tab);ui:group(tab)
  elseif tab=="Indicators" then preview(ui,a);gallery(ui,a);ui:group(tab,{shape=true});ui:title("PER-PLAYER OVERRIDE");local id=ui:box("UserId or simulator ID","1");local label=ui:box("Label override","");local color=ui:box("Override hex",a.s.arrowA);ui:chips({"Assign current shape","Remove override"},function(k) local p=S.copy(a.s.players);if k=="Assign current shape" then p[id.Text]={label=label.Text,color=color.Text,shape=a.s.shape} else p[id.Text]=nil end;a:set("players",p);ui:message("Overrides updated") end,2)
  elseif tab=="Cursor" then local f=ui:row(94,"CursorPreview");local host=U.frame(f,"OriginalCursorPreview",UDim2.fromScale(.5,.5),UDim2.fromOffset(60,60),nil,1);host.AnchorPoint=Vector2.new(.5,.5);a.preview={cursorHost=host};preset(ui,a,tab);ui:group(tab);ui:note("Cursor animation never moves its click hotspot. Enable Show hotspot marker to compare the real mouse position with the skin; use Pointer offset X/Y only for calibration. EditableImage renders desktop SVG; imports need an authorized asset ID.",57)
- elseif tab=="Camera" then ui:note("Follow and Orbit use the current character. LeftAlt toggles shift-lock. Close Studio to capture the mouse; opening it releases the lock.",40);preset(ui,a,tab);ui:group(tab)
+ elseif tab=="Camera" then ui:note("Follow and Orbit use the current character. LeftAlt toggles shift-lock. Close Studio to capture the mouse. Choose a custom reticle or None. The stock mouse icon is hidden during third-person shift-lock.",40);preset(ui,a,tab);ui:group(tab)
  elseif tab=="Fonts" then local text=ui:note(a.s.sample,62);text:SetAttribute("AETHERKeepFontColor",true);text.TextXAlignment=Enum.TextXAlignment.Center;local gradient=U.gradient(text,Color3.new(),Color3.new(),10);local glow=U.stroke(text,U.hex(a.s.fontB),.8);glow.ApplyStrokeMode=Enum.ApplyStrokeMode.Contextual;ui:watch(function() local s=a.s;text.Text=s.sample;text.FontFace=U.font(s);text.TextSize=s.fontSize*.23;text.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA);text.TextStrokeTransparency=1-s.fontOutline/100;gradient.Enabled=s.fontGradient;gradient.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB));glow.Color=U.hex(s.fontB);glow.Transparency=1-s.fontGlow*.008;glow.Thickness=1+s.fontGlow*.023 end);local query=ui:box("Search native typefaces",a.fontQuery or "",32,function(q) if q~=(a.fontQuery or "") then a.fontQuery=q;ui:open("Fonts") end end);local fonts={};for _,n in S.fonts do if n:lower():find((a.fontQuery or ""):lower(),1,true) then table.insert(fonts,n) end end;ui:chips(fonts,function(n) a:patch({font=n,fontAsset=""}) end,3,function() return a.s.font end);ui:group(tab,{font=true});preset(ui,a,tab)
  elseif tab=="Simulator" then preview(ui,a);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
  elseif tab=="Scripts" then scripts(ui,a)
@@ -1110,7 +1167,7 @@ toggle("Neon","neon","Character outline",true);range("Neon","neonFill","Body tin
 toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA","High sky","282057");color("Ambient","skyB","Horizon","8C70C2");color("Ambient","skyC","Ground light","EAB6CD");range("Ambient","fog","Fog density %",35,0,90);range("Ambient","bloom","Bloom %",40,0,100);range("Ambient","time","Time (tenths of an hour)",166,0,239);range("Ambient","light","Brightness %",105,25,180);range("Ambient","saturation","Saturation %",9,-85,85);range("Ambient","blur","Depth blur",0,0,16);range("Ambient","fade","Atmosphere fade (ms)",700,0,3500);range("Ambient","worldContrast","Contrast %",0,-80,80);range("Ambient","worldExposure","Exposure %",0,-100,100);range("Ambient","worldGlare","Atmospheric glare %",0,0,100);range("Ambient","worldRays","Sun rays %",0,0,100);range("Ambient","worldFocus","Depth of field %",0,0,100);range("Ambient","worldFocusDistance","Focus distance (studs)",60,8,250);range("Ambient","worldBloomSize","Bloom radius",26,0,56)
 toggle("Indicators","indicators","Directional indicators",true);choice("Indicators","shape","Indicator shape","Soft Triangle",S.shapes);range("Indicators","size","Size (px)",31,14,72);range("Indicators","corners","Corner softness %",30,0,100);range("Indicators","edge","Distance from edges %",11,4,30);range("Indicators","turn","Rotation smoothing (ms)",180,0,800);range("Indicators","ink","Neon intensity %",60,0,100);range("Indicators","spread","Neon spread (px)",6,0,18);range("Indicators","arrowAlpha","Opacity %",95,10,100);range("Indicators","arrowSpeed","Animation speed %",100,40,220);color("Indicators","arrowA","Gradient start","BFA2FF");color("Indicators","arrowB","Gradient end","FF9ECE");toggle("Indicators","arrowRainbow","Rainbow gradient",false);toggle("Indicators","pulse","Pulsation",true);choice("Indicators","labels","Arrow labels","Both",{"Off","Name","Distance","Both"});toggle("Indicators","nearby","Nearby nameplates",false);range("Indicators","reach","Tracking range (studs)",800,50,2500)
 toggle("Cursor","cursor","Custom game pointer",false);choice("Cursor","cursorShape","Pointer shape","Rounded Triangle",{"Rounded Triangle","Soft Arrow","Diamond","Orbit","Spark","Chevron","Neon Pointer","Arrowhead","Split Arrow","Needle","Crystal","Spear","Star Pointer","Compass","Crosshair","Heart","Image"});range("Cursor","cursorSize","Pointer size",30,12,72);range("Cursor","cursorGlow","Pointer glow %",55,0,100);choice("Cursor","cursorPalette","Desktop AETHER palette","Aurora",{"Aurora","Sunset","Ocean","Rainbow","Mono","Custom"});range("Cursor","hotX","Hotspot X %",19,0,100);range("Cursor","hotY","Hotspot Y %",8,0,100);color("Cursor","cursorA","Gradient start","BA99FF");color("Cursor","cursorB","Gradient end","69D9FA");toggle("Cursor","cursorRainbow","Rainbow pointer",true);range("Cursor","cursorSpeed","Gradient speed %",65,10,200);choice("Cursor","cursorAnimation","Cursor animation","Sway",{"Off","Breathe","Sway","Spin","Pulse"});range("Cursor","cursorMotionSpeed","Animation speed %",100,20,200);toggle("Cursor","cursorTrail","Soft cursor trail",false);range("Cursor","cursorOffsetX","Pointer offset X (px)",0,-120,120);range("Cursor","cursorOffsetY","Pointer offset Y (px)",0,-120,120);toggle("Cursor","cursorDebug","Show hotspot marker",false);def("Cursor","image","Roblox image asset ID","asset","")
-toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Camera","lock","Shift-lock · LeftAlt",false)
+toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Camera","lock","Shift-lock · LeftAlt",false);choice("Camera","lockReticle","Shift-lock reticle","Orbit",{"None","Dot","Ring","Orbit","Cross","Split Cross","Diamond","Triangle","Hexagon","Star","Corners","Compass","Double Ring","Petal"});range("Camera","reticleSize","Reticle size (px)",28,12,64);range("Camera","reticleStroke","Reticle thickness (px)",2,1,5);color("Camera","reticleColor","Reticle color","C8A6FF");toggle("Camera","reticleRainbow","Rainbow reticle",false);toggle("Camera","reticleMotion","Reticle animation",true);range("Camera","reticleSpeed","Reticle animation %",70,0,200)
 choice("Fonts","font","Typeface","Gotham",S.fonts);choice("Fonts","weight","Weight","Bold",{"Regular","Medium","Bold","Heavy"});def("Fonts","fontAsset","Optional Roblox font family ID","asset","");text("Fonts","sample","Preview text","AETHER · Your interface",96);range("Fonts","fontSize","HUD type scale %",100,70,145);toggle("Fonts","fontGradient","Gradient lettering",true);range("Fonts","fontOutline","Text outline %",24,0,100);range("Fonts","fontGlow","Letter glow %",35,0,100);color("Fonts","fontA","Letter color","F1E6FF");color("Fonts","fontB","Letter gradient","CCA4FF")
 S.example='hud.widget("status", "Ready", 8, 38)\nfunction onHealthChanged(hp, maxHP)\n  hud.widget("status", hud.join("HP: ", hp), 8, 38)\n  if hp > 0 and hp <= maxHP * 0.3 then\n    hud.animate("status", "pulse")\n  else\n    hud.animate("status", "none")\n  end\nend'
 text("Scripts","cue","HUD script",S.example,8192);text("Scripts","luau","Luau draft",'-- ModuleScript for your own place\nreturn function(humanoid: Humanoid)\n  return humanoid.HealthChanged:Connect(function(hp)\n    print(hp, humanoid.MaxHealth)\n  end)\nend',8192)
@@ -1642,9 +1699,13 @@ end
 -- and HUD updates cannot defer the position assignment.
 function V:cursorStep(s)
  local image=s.cursorShape=="Image"
- local show=s.cursor and Input.MouseEnabled and not Gui.MenuIsOpen
+ local camera=workspace.CurrentCamera
+ local thirdPerson=camera and (camera.CFrame.Position-camera.Focus.Position).Magnitude>1.1
+ local locked=thirdPerson and Input.MouseBehavior==Enum.MouseBehavior.LockCenter and Input.MouseEnabled and not Gui.MenuIsOpen and not self.menuOpen and not Input:GetFocusedTextBox() and Input:GetLastInputType()~=Enum.UserInputType.Touch
+ self.shiftReticleActive=locked==true
+ local show=s.cursor and not locked and Input.MouseEnabled and not Gui.MenuIsOpen
   and (not image or s.image~="") and Input:GetLastInputType()~=Enum.UserInputType.Touch
- if show then
+ if show or locked then
   if self.icon==nil then self.icon=Input.MouseIconEnabled end
   Input.MouseIconEnabled=false
  elseif self.icon~=nil then
@@ -1721,6 +1782,7 @@ function V:cursorStep(s)
  end
 end
 function V:step(s,hum,menu,dt,t)
+ self.menuOpen=menu
  local camera=workspace.CurrentCamera;local hrp=hum and hum.Parent and hum.Parent:FindFirstChild("HumanoidRootPart");local enabled=s.camera and hrp and hum.Health>0 and camera
  if self.cam and (not enabled or self.cam~=camera or self.hum~=hum) then self:releaseCamera() end
  if enabled then
@@ -2397,6 +2459,7 @@ local function frame(dt, now)
         styled = table.clone(app.s)
         for k,v in app.cues.overrides do styled[k] = v end
     end
+    result.shiftLock=view.shiftReticleActive==true and not ui.opened and app.mode=="Game"
     ui:animateBackground(now)
     hud:step(styled, result, dt)
     avatar:step(if app.mode == "Game" then character else nil, styled, now)
