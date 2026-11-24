@@ -140,7 +140,7 @@ function app:page(tab, ui)
     Pages.render(self, tab, ui)
 end
 function app:onMenu(open)
-    if open and self.view then self.view:releaseLock() end
+    if open and self.view then self.view:releaseLock(self.view:nativeLockAvailable()) end
 end
 function app:drag(input, key, widget, frame)
     if self.s.locked then return end
@@ -186,10 +186,15 @@ if player.Character then bind(player.Character) end
 
 scope:on(UserInputService.InputBegan, function(input, processed)
     if processed or UserInputService:GetFocusedTextBox() then return end
-    if input.KeyCode == Enum.KeyCode.RightShift then ui:show(not ui.opened)
+    if input.KeyCode == Enum.KeyCode.F8 or (input.KeyCode == Enum.KeyCode.RightShift and not view:nativeLockAvailable()) then
+        ui:show(not ui.opened)
     elseif input.KeyCode == Enum.KeyCode.LeftAlt then
-        app.altLock = not app.altLock
-        app:set("lock", app.altLock)
+        if view:nativeLockAvailable() then
+            if app.s.lock then app:set("lock",false) end
+            ui:message("Roblox Shift-Lock has priority. Turn it off to use AETHER.")
+            return
+        end
+        app:set("lock", not app.s.lock)
     end
 end)
 

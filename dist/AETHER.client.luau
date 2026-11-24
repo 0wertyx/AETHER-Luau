@@ -1141,10 +1141,12 @@ function H.new(scope,parent,preview,go,drag,close)
  self.widgets.cross.rim.Enabled=false
  self.reticleRoot=U.frame(cr,"ShiftReticle",UDim2.fromScale(.5,.5),UDim2.fromScale(1,1),nil,1)
  self.reticleRoot.AnchorPoint=Vector2.new(.5,.5);self.reticleRoot.Active=false
- self.reticleEdges={}
+ self.reticleEdges={};self.reticleGlowEdges={}
  for i=1,48 do
   local edge=U.frame(self.reticleRoot,"Line"..i,nil,UDim2.fromOffset(1,1),Color3.new(1,1,1),0)
   edge.AnchorPoint=Vector2.new(.5,.5);edge.Active=false;edge.Visible=false;U.corner(edge,3);self.reticleEdges[i]=edge
+  local glow=U.stroke(edge,Color3.fromRGB(193,142,255),1,3)
+  glow.Enabled=false;self.reticleGlowEdges[i]=glow
  end
  return self
 end
@@ -1261,7 +1263,20 @@ function H:reticle(s,f,t)
  local col=if s.reticleRainbow then Color3.fromHSV((tm*.12)%1,.55,1) else U.hex(s.reticleColor)
  if self.reticlePaint~=col then
   self.reticlePaint=col
-  for i=1,self.reticleUsed do self.reticleEdges[i].BackgroundColor3=col end
+  for i=1,self.reticleUsed do
+   self.reticleEdges[i].BackgroundColor3=col
+   self.reticleGlowEdges[i].Color=col
+  end
+ end
+ local intensity=s.reticleGlow/100
+ local pulse=if s.reduce or not s.reticleGlowPulse then 1 else .82+.18*math.sin(t*s.reticleSpeed/100*3)
+ local enabled=s.reticleNeon and intensity>0
+ local transparency=1-intensity*pulse*.54
+ local radius=s.reticleGlowRadius*(.72+.28*pulse)
+ for i=1,self.reticleUsed do
+  local stroke=self.reticleGlowEdges[i]
+  stroke.Enabled=enabled
+  if enabled then stroke.Transparency=transparency;stroke.Thickness=radius end
  end
 end
 function H:vitals(s,f,dt)
@@ -1703,7 +1718,7 @@ local function scripts(ui,a)
  ui:chips({"Save / browse script assets"},function() a.libraryKind="Scripts";a.selection=nil;ui:open("Workshop") end,1)
 end
 function E.render(a,tab,ui)
- if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. RightShift opens Studio; LeftAlt toggles shoulder lock.",43);ui:chips({"Game","Simulator"},function(n) a:modeSet(n) end,2,function() return a.mode end);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme");ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
+ if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. F8 opens Studio. RightShift opens it only when native Shift-Lock is disabled. LeftAlt controls AETHER shoulder lock.",43);ui:chips({"Game","Simulator"},function(n) a:modeSet(n) end,2,function() return a.mode end);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme");ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
  elseif tab=="HUD" then preview(ui,a);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:control("compact");ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartPalette","heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);ui:chips({"hp","clock","profile","dock","cross"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab;for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
   avatarPreview(ui,a)
@@ -1724,7 +1739,7 @@ function E.render(a,tab,ui)
  elseif tab=="Ambient" then local sky=ui:row(106,"SkyPreview");local grad=U.gradient(sky,Color3.new(),Color3.new(),90);local sun=U.frame(sky,"Sun",nil,UDim2.fromOffset(30,30));U.corner(sun,30);ui:watch(function() local s=a.s;sky.BackgroundColor3=Color3.new(1,1,1);grad.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,U.hex(s.skyA)),ColorSequenceKeypoint.new(.64,U.hex(s.skyB)),ColorSequenceKeypoint.new(1,U.hex(s.skyC))});sun.BackgroundColor3=U.hex(s.skyC);sun.Position=UDim2.fromScale(.7,.66-.45*math.sin(s.time/240*math.pi));sun.BackgroundTransparency=.04+s.fog*.004 end);preset(ui,a,tab);ui:group(tab)
  elseif tab=="Indicators" then preview(ui,a);gallery(ui,a);ui:group(tab,{shape=true});ui:title("PER-PLAYER OVERRIDE");local id=ui:box("UserId or simulator ID","1");local label=ui:box("Label override","");local color=ui:box("Override hex",a.s.arrowA);ui:chips({"Assign current shape","Remove override"},function(k) local p=S.copy(a.s.players);if k=="Assign current shape" then p[id.Text]={label=label.Text,color=color.Text,shape=a.s.shape} else p[id.Text]=nil end;a:set("players",p);ui:message("Overrides updated") end,2)
  elseif tab=="Cursor" then local f=ui:row(94,"CursorPreview");local host=U.frame(f,"OriginalCursorPreview",UDim2.fromScale(.5,.5),UDim2.fromOffset(60,60),nil,1);host.AnchorPoint=Vector2.new(.5,.5);a.preview={cursorHost=host};preset(ui,a,tab);ui:group(tab);ui:note("Cursor animation never moves its click hotspot. Enable Show hotspot marker to compare the real mouse position with the skin; use Pointer offset X/Y only for calibration. EditableImage renders desktop SVG; imports need an authorized asset ID.",57)
- elseif tab=="Camera" then ui:note("Follow and Orbit use the current character. LeftAlt toggles shift-lock. Close Studio to capture the mouse. Choose a custom reticle or None. The stock mouse icon is hidden during third-person shift-lock.",40);preset(ui,a,tab);ui:group(tab)
+ elseif tab=="Camera" then ui:note("Native Roblox Shift-Lock has priority in Follow mode. To use AETHER shoulder lock, turn off the native Shift-Lock option, then press LeftAlt. F8 opens Studio. Both locks use the selected cosmetic reticle and neon glow.",40);preset(ui,a,tab);ui:group(tab)
  elseif tab=="Fonts" then local text=ui:note(a.s.sample,62);text:SetAttribute("AETHERKeepFontColor",true);text.TextXAlignment=Enum.TextXAlignment.Center;local gradient=U.gradient(text,Color3.new(),Color3.new(),10);local glow=U.stroke(text,U.hex(a.s.fontB),.8);glow.ApplyStrokeMode=Enum.ApplyStrokeMode.Contextual;ui:watch(function() local s=a.s;text.Text=s.sample;text.FontFace=U.font(s);text.TextSize=s.fontSize*.23;text.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA);text.TextStrokeTransparency=1-s.fontOutline/100;gradient.Enabled=s.fontGradient;gradient.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB));glow.Color=U.hex(s.fontB);glow.Transparency=1-s.fontGlow*.008;glow.Thickness=1+s.fontGlow*.023 end);local query=ui:box("Search native typefaces",a.fontQuery or "",32,function(q) if q~=(a.fontQuery or "") then a.fontQuery=q;ui:open("Fonts") end end);local fonts={};for _,n in S.fonts do if n:lower():find((a.fontQuery or ""):lower(),1,true) then table.insert(fonts,n) end end;ui:chips(fonts,function(n) a:patch({font=n,fontAsset=""}) end,3,function() return a.s.font end);ui:group(tab,{font=true});preset(ui,a,tab)
  elseif tab=="Simulator" then preview(ui,a);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
  elseif tab=="Scripts" then scripts(ui,a)
@@ -1780,7 +1795,7 @@ toggle("Neon","neon","Character outline",true);range("Neon","neonFill","Body tin
 toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA","High sky","282057");color("Ambient","skyB","Horizon","8C70C2");color("Ambient","skyC","Ground light","EAB6CD");range("Ambient","fog","Fog density %",35,0,90);range("Ambient","bloom","Bloom %",40,0,100);range("Ambient","time","Time (tenths of an hour)",166,0,239);range("Ambient","light","Brightness %",105,25,180);range("Ambient","saturation","Saturation %",9,-85,85);range("Ambient","blur","Depth blur",0,0,16);range("Ambient","fade","Atmosphere fade (ms)",700,0,3500);range("Ambient","worldContrast","Contrast %",0,-80,80);range("Ambient","worldExposure","Exposure %",0,-100,100);range("Ambient","worldGlare","Atmospheric glare %",0,0,100);range("Ambient","worldRays","Sun rays %",0,0,100);range("Ambient","worldFocus","Depth of field %",0,0,100);range("Ambient","worldFocusDistance","Focus distance (studs)",60,8,250);range("Ambient","worldBloomSize","Bloom radius",26,0,56)
 toggle("Indicators","indicators","Directional indicators",true);choice("Indicators","shape","Indicator shape","Soft Triangle",S.shapes);range("Indicators","size","Size (px)",31,14,72);range("Indicators","corners","Corner softness %",30,0,100);range("Indicators","edge","Distance from edges %",11,4,30);range("Indicators","turn","Rotation smoothing (ms)",180,0,800);range("Indicators","ink","Neon intensity %",60,0,100);range("Indicators","spread","Neon spread (px)",6,0,18);range("Indicators","arrowAlpha","Opacity %",95,10,100);range("Indicators","arrowSpeed","Animation speed %",100,40,220);color("Indicators","arrowA","Gradient start","BFA2FF");color("Indicators","arrowB","Gradient end","FF9ECE");toggle("Indicators","arrowRainbow","Rainbow gradient",false);toggle("Indicators","pulse","Pulsation",true);choice("Indicators","labels","Arrow labels","Both",{"Off","Name","Distance","Both"});toggle("Indicators","nearby","Nearby nameplates",false);range("Indicators","reach","Tracking range (studs)",800,50,2500)
 toggle("Cursor","cursor","Custom game pointer",false);choice("Cursor","cursorShape","Pointer shape","Rounded Triangle",{"Rounded Triangle","Soft Arrow","Diamond","Orbit","Spark","Chevron","Neon Pointer","Arrowhead","Split Arrow","Needle","Crystal","Spear","Star Pointer","Compass","Crosshair","Heart","Image"});range("Cursor","cursorSize","Pointer size",30,12,72);range("Cursor","cursorGlow","Pointer glow %",55,0,100);choice("Cursor","cursorPalette","Desktop AETHER palette","Aurora",{"Aurora","Sunset","Ocean","Rainbow","Mono","Custom"});range("Cursor","hotX","Hotspot X %",19,0,100);range("Cursor","hotY","Hotspot Y %",8,0,100);color("Cursor","cursorA","Gradient start","BA99FF");color("Cursor","cursorB","Gradient end","69D9FA");toggle("Cursor","cursorRainbow","Rainbow pointer",true);range("Cursor","cursorSpeed","Gradient speed %",65,10,200);choice("Cursor","cursorAnimation","Cursor animation","Sway",{"Off","Breathe","Sway","Spin","Pulse"});range("Cursor","cursorMotionSpeed","Animation speed %",100,20,200);toggle("Cursor","cursorTrail","Soft cursor trail",false);range("Cursor","cursorOffsetX","Pointer offset X (px)",0,-120,120);range("Cursor","cursorOffsetY","Pointer offset Y (px)",0,-120,120);toggle("Cursor","cursorDebug","Show hotspot marker",false);def("Cursor","image","Roblox image asset ID","asset","")
-toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Camera","lock","Shift-lock · LeftAlt",false);choice("Camera","lockReticle","Shift-lock reticle","Orbit",{"None","Dot","Ring","Orbit","Cross","Split Cross","Diamond","Triangle","Hexagon","Star","Corners","Compass","Double Ring","Petal"});range("Camera","reticleSize","Reticle size (px)",28,12,64);range("Camera","reticleStroke","Reticle thickness (px)",2,1,5);color("Camera","reticleColor","Reticle color","C8A6FF");toggle("Camera","reticleRainbow","Rainbow reticle",false);toggle("Camera","reticleMotion","Reticle animation",true);range("Camera","reticleSpeed","Reticle animation %",70,0,200)
+toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Camera","lock","Shift-lock · LeftAlt",false);choice("Camera","lockReticle","Shift-lock reticle","Orbit",{"None","Dot","Ring","Orbit","Cross","Split Cross","Diamond","Triangle","Hexagon","Star","Corners","Compass","Double Ring","Petal"});range("Camera","reticleSize","Reticle size (px)",28,12,64);range("Camera","reticleStroke","Reticle thickness (px)",2,1,5);color("Camera","reticleColor","Reticle color","C8A6FF");toggle("Camera","reticleRainbow","Rainbow reticle",false);toggle("Camera","reticleMotion","Reticle animation",true);range("Camera","reticleSpeed","Reticle animation %",70,0,200);toggle("Camera","reticleNeon","Neon reticle glow",true);range("Camera","reticleGlow","Reticle glow intensity %",65,0,100);range("Camera","reticleGlowRadius","Reticle glow radius (px)",4,1,8);toggle("Camera","reticleGlowPulse","Pulsating glow",true)
 choice("Fonts","font","Typeface","Gotham",S.fonts);choice("Fonts","weight","Weight","Bold",{"Regular","Medium","Bold","Heavy"});def("Fonts","fontAsset","Optional Roblox font family ID","asset","");text("Fonts","sample","Preview text","AETHER · Your interface",96);range("Fonts","fontSize","HUD type scale %",100,70,145);toggle("Fonts","fontGradient","Gradient lettering",true);range("Fonts","fontOutline","Text outline %",24,0,100);range("Fonts","fontGlow","Letter glow %",35,0,100);color("Fonts","fontA","Letter color","F1E6FF");color("Fonts","fontB","Letter gradient","CCA4FF")
 S.example='hud.widget("status", "Ready", 8, 38)\nfunction onHealthChanged(hp, maxHP)\n  hud.widget("status", hud.join("HP: ", hp), 8, 38)\n  if hp > 0 and hp <= maxHP * 0.3 then\n    hud.animate("status", "pulse")\n  else\n    hud.animate("status", "none")\n  end\nend'
 text("Scripts","cue","HUD script",S.example,8192);text("Scripts","luau","Luau draft",'-- ModuleScript for your own place\nreturn function(humanoid: Humanoid)\n  return humanoid.HealthChanged:Connect(function(hp)\n    print(hp, humanoid.MaxHealth)\n  end)\nend',8192)
@@ -2343,6 +2358,15 @@ end
 __aether_factories["View"] = function()
 local Input=game:GetService("UserInputService");local Gui=game:GetService("GuiService");local U=__aether_require("Util");local VectorCursor=__aether_require("VectorCursor")
 local V={};V.__index=V
+local preferences=UserSettings():GetService("UserGameSettings")
+-- Do not run a second shoulder controller while Roblox owns mouse lock.
+function V:nativeLockAvailable()
+ local ok,available=pcall(function()
+  return self.player.DevEnableMouseLock and preferences.ControlMode==Enum.ControlMode.MouseLockSwitch
+ end)
+ -- If the setting cannot be read, yield rather than fight the native controller.
+ return not ok or available
+end
 function V.new(player,layer)
  local self=setmetatable({player=player,angle=0,clock=0,trails={},trailPoints={}},V)
  -- This anchor marks the exact click pixel. Animated skin always rotates AROUND it.
@@ -2365,11 +2389,18 @@ function V.new(player,layer)
  U.corner(self.hotspotDebug,99)
  return self
 end
-function V:releaseLock()
- if self.mouse then Input.MouseBehavior=self.mouse;self.mouse=nil end;if self.lockHum then if self.lockHum.Parent then self.lockHum.AutoRotate=self.auto end;self.lockHum=nil end
+function V:releaseLock(yieldNative)
+ if self.mouse then
+  if not yieldNative and Input.MouseBehavior==Enum.MouseBehavior.LockCenter then Input.MouseBehavior=self.mouse end
+  self.mouse=nil
+ end
+ if self.lockHum then
+  if self.lockHum.Parent and not self.lockHum.AutoRotate then self.lockHum.AutoRotate=self.auto end
+  self.lockHum=nil
+ end
 end
-function V:releaseCamera()
- self:releaseLock();if self.cam then local c=self.cam;local b=self.before;if c.Parent then c.FieldOfView=b.fov;c.CameraType=b.kind;if b.subject and b.subject.Parent then c.CameraSubject=b.subject end;if b.kind==Enum.CameraType.Scriptable then c.CFrame=b.cf;c.Focus=b.focus end end;self.player.CameraMode=b.mode;self.cam=nil end
+function V:releaseCamera(yieldNative)
+ self:releaseLock(yieldNative);if self.cam then local c=self.cam;local b=self.before;if c.Parent then c.FieldOfView=b.fov;c.CameraType=b.kind;if b.subject and b.subject.Parent then c.CameraSubject=b.subject end;if b.kind==Enum.CameraType.Scriptable then c.CFrame=b.cf;c.Focus=b.focus end end;self.player.CameraMode=b.mode;self.cam=nil end
  if self.hum then if self.hum.Parent then self.hum.CameraOffset=self.offset end;self.hum=nil end;self.orbitPos=nil
 end
 function V:preview(host,s)
@@ -2428,8 +2459,12 @@ function V:cursorStep(s)
   self.hotspotDebug.Visible=false
   for _,tail in self.trails do tail.Visible=false end
   table.clear(self.trailPoints)
-  if self.icon==nil then self.icon=Input.MouseIconEnabled end
-  Input.MouseIconEnabled=false
+  if s.cross then
+   if self.icon==nil then self.icon=Input.MouseIconEnabled end
+   Input.MouseIconEnabled=false
+  else
+   self:restoreCursor()
+  end
   return
  end
  if not show then self:restoreCursor();return end
@@ -2503,21 +2538,30 @@ function V:cursorStep(s)
 end
 function V:step(s,hum,menu,dt,t)
  self.menuOpen=menu
- local camera=workspace.CurrentCamera;local hrp=hum and hum.Parent and hum.Parent:FindFirstChild("HumanoidRootPart");local enabled=s.camera and hrp and hum.Health>0 and camera
- if self.cam and (not enabled or self.cam~=camera or self.hum~=hum) then self:releaseCamera() end
+ local camera=workspace.CurrentCamera
+ local hrp=hum and hum.Parent and hum.Parent:FindFirstChild("HumanoidRootPart")
+ local native=self:nativeLockAvailable()
+ local nativeOwnsFollow=native and s.cameraMode=="Follow"
+ local requested=s.lock and s.cameraMode=="Follow" and not native
+ local enabled=(s.camera or requested) and hrp and hum.Health>0 and camera and not nativeOwnsFollow
+ self.lockOwner=if nativeOwnsFollow then "Roblox" elseif requested then "AETHER" else "None"
+ if self.cam and (not enabled or self.cam~=camera or self.hum~=hum) then self:releaseCamera(native) end
  if enabled then
   if not self.cam then self.cam=camera;self.before={fov=camera.FieldOfView,mode=self.player.CameraMode,kind=camera.CameraType,subject=camera.CameraSubject,cf=camera.CFrame,focus=camera.Focus};self.hum=hum;self.offset=hum.CameraOffset end
-  local lock=s.lock and s.cameraMode=="Follow" and not menu and not Gui.MenuIsOpen and Input:GetFocusedTextBox()==nil
+  local lock=requested and not menu and not Gui.MenuIsOpen and Input:GetFocusedTextBox()==nil and Input.MouseEnabled and Input:GetLastInputType()~=Enum.UserInputType.Touch
+  if lock and not self.mouse and Input.MouseBehavior==Enum.MouseBehavior.LockCenter then lock=false end
   local first=s.cameraMode=="First Person" and not menu;local mode=if first then Enum.CameraMode.LockFirstPerson else Enum.CameraMode.Classic;if self.player.CameraMode~=mode then self.player.CameraMode=mode end
-  local k=if s.reduce or s.follow==0 then 1 else 1-math.exp(-dt*1000/s.follow);camera.FieldOfView+=(s.fov-camera.FieldOfView)*k
-  local dest=Vector3.new(if lock then s.shoulder/10 else 0,s.cameraHeight/10,0);hum.CameraOffset=hum.CameraOffset:Lerp(dest,k)
+  local k=if s.reduce or s.follow==0 then 1 else 1-math.exp(-dt*1000/s.follow)
+  if s.camera then camera.FieldOfView+=(s.fov-camera.FieldOfView)*k end
+  local dest=self.offset+Vector3.new(if lock then s.shoulder/10 else 0,if s.camera then s.cameraHeight/10 else 0,0)
+  hum.CameraOffset=hum.CameraOffset:Lerp(dest,k)
   if s.cameraMode=="Orbit" then
    self:releaseLock();camera.CameraType=Enum.CameraType.Scriptable;local center=hrp.Position+Vector3.new(0,1+s.cameraHeight/10,0);self.angle+=if s.reduce then 0 else math.rad(s.orbitSpeed)*dt
    local desired=Vector3.new(math.sin(self.angle)*s.radius,s.radius*.25,math.cos(self.angle)*s.radius);local params=self.ray or RaycastParams.new();self.ray=params;params.FilterType=Enum.RaycastFilterType.Exclude;params.FilterDescendantsInstances={hum.Parent}
    local hit=workspace:Raycast(center,desired,params);local pos=center+desired.Unit*(if hit then math.max(.4,hit.Distance-.28) else desired.Magnitude);self.orbitPos=if hit then pos else (self.orbitPos or pos):Lerp(pos,k);camera.CFrame=CFrame.lookAt(self.orbitPos,center);camera.Focus=CFrame.new(center)
   else
    if camera.CameraType~=Enum.CameraType.Custom then camera.CameraType=Enum.CameraType.Custom end;camera.CameraSubject=hum;self.orbitPos=nil
-   if lock then if not self.mouse then self.mouse=Input.MouseBehavior;self.lockHum=hum;self.auto=hum.AutoRotate end;Input.MouseBehavior=Enum.MouseBehavior.LockCenter;hum.AutoRotate=false;local look=camera.CFrame.LookVector*Vector3.new(1,0,1);if look.Magnitude>.01 and not hum.Sit then hrp.CFrame=CFrame.lookAt(hrp.Position,hrp.Position+look) end else self:releaseLock() end
+   if lock then if not self.mouse then self.mouse=Input.MouseBehavior;self.lockHum=hum;self.auto=hum.AutoRotate end;Input.MouseBehavior=Enum.MouseBehavior.LockCenter;hum.AutoRotate=false;local look=camera.CFrame.LookVector*Vector3.new(1,0,1);if look.Magnitude>.01 and not hum.Sit then hrp.CFrame=CFrame.lookAt(hrp.Position,hrp.Position+look) end else self:releaseLock(native) end
   end
  end
  -- Rasterization and gradient work is independent of pointer position.
@@ -3059,7 +3103,7 @@ function app:page(tab, ui)
     Pages.render(self, tab, ui)
 end
 function app:onMenu(open)
-    if open and self.view then self.view:releaseLock() end
+    if open and self.view then self.view:releaseLock(self.view:nativeLockAvailable()) end
 end
 function app:drag(input, key, widget, frame)
     if self.s.locked then return end
@@ -3105,10 +3149,15 @@ if player.Character then bind(player.Character) end
 
 scope:on(UserInputService.InputBegan, function(input, processed)
     if processed or UserInputService:GetFocusedTextBox() then return end
-    if input.KeyCode == Enum.KeyCode.RightShift then ui:show(not ui.opened)
+    if input.KeyCode == Enum.KeyCode.F8 or (input.KeyCode == Enum.KeyCode.RightShift and not view:nativeLockAvailable()) then
+        ui:show(not ui.opened)
     elseif input.KeyCode == Enum.KeyCode.LeftAlt then
-        app.altLock = not app.altLock
-        app:set("lock", app.altLock)
+        if view:nativeLockAvailable() then
+            if app.s.lock then app:set("lock",false) end
+            ui:message("Roblox Shift-Lock has priority. Turn it off to use AETHER.")
+            return
+        end
+        app:set("lock", not app.s.lock)
     end
 end)
 

@@ -138,10 +138,12 @@ function H.new(scope,parent,preview,go,drag,close)
  self.widgets.cross.rim.Enabled=false
  self.reticleRoot=U.frame(cr,"ShiftReticle",UDim2.fromScale(.5,.5),UDim2.fromScale(1,1),nil,1)
  self.reticleRoot.AnchorPoint=Vector2.new(.5,.5);self.reticleRoot.Active=false
- self.reticleEdges={}
+ self.reticleEdges={};self.reticleGlowEdges={}
  for i=1,48 do
   local edge=U.frame(self.reticleRoot,"Line"..i,nil,UDim2.fromOffset(1,1),Color3.new(1,1,1),0)
   edge.AnchorPoint=Vector2.new(.5,.5);edge.Active=false;edge.Visible=false;U.corner(edge,3);self.reticleEdges[i]=edge
+  local glow=U.stroke(edge,Color3.fromRGB(193,142,255),1,3)
+  glow.Enabled=false;self.reticleGlowEdges[i]=glow
  end
  return self
 end
@@ -258,7 +260,20 @@ function H:reticle(s,f,t)
  local col=if s.reticleRainbow then Color3.fromHSV((tm*.12)%1,.55,1) else U.hex(s.reticleColor)
  if self.reticlePaint~=col then
   self.reticlePaint=col
-  for i=1,self.reticleUsed do self.reticleEdges[i].BackgroundColor3=col end
+  for i=1,self.reticleUsed do
+   self.reticleEdges[i].BackgroundColor3=col
+   self.reticleGlowEdges[i].Color=col
+  end
+ end
+ local intensity=s.reticleGlow/100
+ local pulse=if s.reduce or not s.reticleGlowPulse then 1 else .82+.18*math.sin(t*s.reticleSpeed/100*3)
+ local enabled=s.reticleNeon and intensity>0
+ local transparency=1-intensity*pulse*.54
+ local radius=s.reticleGlowRadius*(.72+.28*pulse)
+ for i=1,self.reticleUsed do
+  local stroke=self.reticleGlowEdges[i]
+  stroke.Enabled=enabled
+  if enabled then stroke.Transparency=transparency;stroke.Thickness=radius end
  end
 end
 function H:vitals(s,f,dt)

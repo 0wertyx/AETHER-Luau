@@ -1,5 +1,14 @@
 local Input=game:GetService("UserInputService");local Gui=game:GetService("GuiService");local U=require(script.Parent.Util);local VectorCursor=require(script.Parent.VectorCursor)
 local V={};V.__index=V
+local preferences=UserSettings():GetService("UserGameSettings")
+-- Do not run a second shoulder controller while Roblox owns mouse lock.
+function V:nativeLockAvailable()
+ local ok,available=pcall(function()
+  return self.player.DevEnableMouseLock and preferences.ControlMode==Enum.ControlMode.MouseLockSwitch
+ end)
+ -- If the setting cannot be read, yield rather than fight the native controller.
+ return not ok or available
+end
 function V.new(player,layer)
  local self=setmetatable({player=player,angle=0,clock=0,trails={},trailPoints={}},V)
  -- This anchor marks the exact click pixel. Animated skin always rotates AROUND it.
@@ -22,11 +31,18 @@ function V.new(player,layer)
  U.corner(self.hotspotDebug,99)
  return self
 end
-function V:releaseLock()
- if self.mouse then Input.MouseBehavior=self.mouse;self.mouse=nil end;if self.lockHum then if self.lockHum.Parent then self.lockHum.AutoRotate=self.auto end;self.lockHum=nil end
+function V:releaseLock(yieldNative)
+ if self.mouse then
+  if not yieldNative and Input.MouseBehavior==Enum.MouseBehavior.LockCenter then Input.MouseBehavior=self.mouse end
+  self.mouse=nil
+ end
+ if self.lockHum then
+  if self.lockHum.Parent and not self.lockHum.AutoRotate then self.lockHum.AutoRotate=self.auto end
+  self.lockHum=nil
+ end
 end
-function V:releaseCamera()
- self:releaseLock();if self.cam then local c=self.cam;local b=self.before;if c.Parent then c.FieldOfView=b.fov;c.CameraType=b.kind;if b.subject and b.subject.Parent then c.CameraSubject=b.subject end;if b.kind==Enum.CameraType.Scriptable then c.CFrame=b.cf;c.Focus=b.focus end end;self.player.CameraMode=b.mode;self.cam=nil end
+function V:releaseCamera(yieldNative)
+ self:releaseLock(yieldNative);if self.cam then local c=self.cam;local b=self.before;if c.Parent then c.FieldOfView=b.fov;c.CameraType=b.kind;if b.subject and b.subject.Parent then c.CameraSubject=b.subject end;if b.kind==Enum.CameraType.Scriptable then c.CFrame=b.cf;c.Focus=b.focus end end;self.player.CameraMode=b.mode;self.cam=nil end
  if self.hum then if self.hum.Parent then self.hum.CameraOffset=self.offset end;self.hum=nil end;self.orbitPos=nil
 end
 function V:preview(host,s)
@@ -85,8 +101,12 @@ function V:cursorStep(s)
   self.hotspotDebug.Visible=false
   for _,tail in self.trails do tail.Visible=false end
   table.clear(self.trailPoints)
-  if self.icon==nil then self.icon=Input.MouseIconEnabled end
-  Input.MouseIconEnabled=false
+  if s.cross then
+   if self.icon==nil then self.icon=Input.MouseIconEnabled end
+   Input.MouseIconEnabled=false
+  else
+   self:restoreCursor()
+  end
   return
  end
  if not show then self:restoreCursor();return end
@@ -160,21 +180,30 @@ function V:cursorStep(s)
 end
 function V:step(s,hum,menu,dt,t)
  self.menuOpen=menu
- local camera=workspace.CurrentCamera;local hrp=hum and hum.Parent and hum.Parent:FindFirstChild("HumanoidRootPart");local enabled=s.camera and hrp and hum.Health>0 and camera
- if self.cam and (not enabled or self.cam~=camera or self.hum~=hum) then self:releaseCamera() end
+ local camera=workspace.CurrentCamera
+ local hrp=hum and hum.Parent and hum.Parent:FindFirstChild("HumanoidRootPart")
+ local native=self:nativeLockAvailable()
+ local nativeOwnsFollow=native and s.cameraMode=="Follow"
+ local requested=s.lock and s.cameraMode=="Follow" and not native
+ local enabled=(s.camera or requested) and hrp and hum.Health>0 and camera and not nativeOwnsFollow
+ self.lockOwner=if nativeOwnsFollow then "Roblox" elseif requested then "AETHER" else "None"
+ if self.cam and (not enabled or self.cam~=camera or self.hum~=hum) then self:releaseCamera(native) end
  if enabled then
   if not self.cam then self.cam=camera;self.before={fov=camera.FieldOfView,mode=self.player.CameraMode,kind=camera.CameraType,subject=camera.CameraSubject,cf=camera.CFrame,focus=camera.Focus};self.hum=hum;self.offset=hum.CameraOffset end
-  local lock=s.lock and s.cameraMode=="Follow" and not menu and not Gui.MenuIsOpen and Input:GetFocusedTextBox()==nil
+  local lock=requested and not menu and not Gui.MenuIsOpen and Input:GetFocusedTextBox()==nil and Input.MouseEnabled and Input:GetLastInputType()~=Enum.UserInputType.Touch
+  if lock and not self.mouse and Input.MouseBehavior==Enum.MouseBehavior.LockCenter then lock=false end
   local first=s.cameraMode=="First Person" and not menu;local mode=if first then Enum.CameraMode.LockFirstPerson else Enum.CameraMode.Classic;if self.player.CameraMode~=mode then self.player.CameraMode=mode end
-  local k=if s.reduce or s.follow==0 then 1 else 1-math.exp(-dt*1000/s.follow);camera.FieldOfView+=(s.fov-camera.FieldOfView)*k
-  local dest=Vector3.new(if lock then s.shoulder/10 else 0,s.cameraHeight/10,0);hum.CameraOffset=hum.CameraOffset:Lerp(dest,k)
+  local k=if s.reduce or s.follow==0 then 1 else 1-math.exp(-dt*1000/s.follow)
+  if s.camera then camera.FieldOfView+=(s.fov-camera.FieldOfView)*k end
+  local dest=self.offset+Vector3.new(if lock then s.shoulder/10 else 0,if s.camera then s.cameraHeight/10 else 0,0)
+  hum.CameraOffset=hum.CameraOffset:Lerp(dest,k)
   if s.cameraMode=="Orbit" then
    self:releaseLock();camera.CameraType=Enum.CameraType.Scriptable;local center=hrp.Position+Vector3.new(0,1+s.cameraHeight/10,0);self.angle+=if s.reduce then 0 else math.rad(s.orbitSpeed)*dt
    local desired=Vector3.new(math.sin(self.angle)*s.radius,s.radius*.25,math.cos(self.angle)*s.radius);local params=self.ray or RaycastParams.new();self.ray=params;params.FilterType=Enum.RaycastFilterType.Exclude;params.FilterDescendantsInstances={hum.Parent}
    local hit=workspace:Raycast(center,desired,params);local pos=center+desired.Unit*(if hit then math.max(.4,hit.Distance-.28) else desired.Magnitude);self.orbitPos=if hit then pos else (self.orbitPos or pos):Lerp(pos,k);camera.CFrame=CFrame.lookAt(self.orbitPos,center);camera.Focus=CFrame.new(center)
   else
    if camera.CameraType~=Enum.CameraType.Custom then camera.CameraType=Enum.CameraType.Custom end;camera.CameraSubject=hum;self.orbitPos=nil
-   if lock then if not self.mouse then self.mouse=Input.MouseBehavior;self.lockHum=hum;self.auto=hum.AutoRotate end;Input.MouseBehavior=Enum.MouseBehavior.LockCenter;hum.AutoRotate=false;local look=camera.CFrame.LookVector*Vector3.new(1,0,1);if look.Magnitude>.01 and not hum.Sit then hrp.CFrame=CFrame.lookAt(hrp.Position,hrp.Position+look) end else self:releaseLock() end
+   if lock then if not self.mouse then self.mouse=Input.MouseBehavior;self.lockHum=hum;self.auto=hum.AutoRotate end;Input.MouseBehavior=Enum.MouseBehavior.LockCenter;hum.AutoRotate=false;local look=camera.CFrame.LookVector*Vector3.new(1,0,1);if look.Magnitude>.01 and not hum.Sit then hrp.CFrame=CFrame.lookAt(hrp.Position,hrp.Position+look) end else self:releaseLock(native) end
   end
  end
  -- Rasterization and gradient work is independent of pointer position.
