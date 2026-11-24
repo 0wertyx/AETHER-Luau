@@ -35,6 +35,12 @@ function UI.new(app,gui,scope)
  self.rail=U.frame(self.stage,"RobloxShortcuts",nil,UDim2.fromOffset(54,176),bg,.16);U.corner(self.rail,14);self.railRim=U.stroke(self.rail,Color3.fromRGB(166,138,255),.48)
  self.rail.AnchorPoint=Vector2.new(0,.5)
  self.railButtons={}
+ local coreOriginal,coreApplied={},{}
+ local chatOriginal,chatApplied,chatConfig=nil,nil,nil
+ scope:add(function()
+  for kind,original in coreOriginal do pcall(function() if StarterGui:GetCoreGuiEnabled(kind)==coreApplied[kind] then StarterGui:SetCoreGuiEnabled(kind,original) end end) end
+  if chatConfig and chatConfig.Parent and chatConfig.Enabled==chatApplied then chatConfig.Enabled=chatOriginal end
+ end)
  for index,item in {{"CHAT",Enum.CoreGuiType.Chat},{"BAG",Enum.CoreGuiType.Backpack},{"LIST",Enum.CoreGuiType.PlayerList}} do
   local button=U.button(self.rail,item[1]);button.TextSize=10;button.Size=UDim2.fromOffset(44,38);button.Position=UDim2.fromOffset(5,5+(index-1)*43)
   self.railButtons[index]=button
@@ -42,10 +48,11 @@ function UI.new(app,gui,scope)
    self:action(function()
     if item[2]==Enum.CoreGuiType.Chat then
      local config=Chat:FindFirstChildOfClass("ChatWindowConfiguration")
-     if config then config.Enabled=not config.Enabled;button.BackgroundTransparency=if config.Enabled then .12 else .6;return end
+     if config then if chatConfig~=config then chatConfig=config;chatOriginal=config.Enabled end;config.Enabled=not config.Enabled;chatApplied=config.Enabled;button.BackgroundTransparency=if config.Enabled then .12 else .6;return end
     end
     local enabled=StarterGui:GetCoreGuiEnabled(item[2])
-    StarterGui:SetCoreGuiEnabled(item[2],not enabled)
+    if coreOriginal[item[2]]==nil then coreOriginal[item[2]]=enabled end
+    StarterGui:SetCoreGuiEnabled(item[2],not enabled);coreApplied[item[2]]=not enabled
     button.BackgroundTransparency=if enabled then .6 else .12
    end)
   end)
@@ -358,7 +365,7 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.." / WALLHOP"
+ self.tag.Text=self.app.mode.." / HUD EDIT"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  for key,item in self.quickButtons do item.button.Text=item.label..(if st[key] then "  ON" else "  OFF");item.button.BackgroundColor3=if st[key] then U.hex(st.accent):Lerp(bg,.52) else soft end

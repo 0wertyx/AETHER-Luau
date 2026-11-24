@@ -162,6 +162,7 @@ function H.new(scope,parent,preview,go,drag,close)
  end
  self.wallhop=U.new("CanvasGroup",{Name="WallhopHelper",AnchorPoint=Vector2.new(.5,.5),Size=UDim2.fromOffset(210,86),BackgroundColor3=Color3.fromRGB(28,22,44),BackgroundTransparency=.15,Active=false,Interactable=false,Visible=false,ZIndex=6},parent)
  U.corner(self.wallhop,12);U.stroke(self.wallhop,Color3.fromRGB(177,146,255),.35,1)
+ self.wallhopScale=U.new("UIScale",{},self.wallhop)
  self.wallhopTitle=U.label(self.wallhop,"WALLHOP  /  PRACTICE",10,UDim2.fromOffset(12,7),UDim2.fromOffset(186,16))
  self.wallhopText=U.label(self.wallhop,"READY",15,UDim2.fromOffset(12,27),UDim2.fromOffset(186,23))
  self.wallhopDetail=U.label(self.wallhop,"Jump · camera angle",10,UDim2.fromOffset(12,55),UDim2.fromOffset(186,19))
@@ -375,12 +376,12 @@ function H:animateWidgets(s,f,dt,t)
   w.p.GroupTransparency=1-q*s[key.."Alpha"]/100
   local x,y,ox,oy=self:placement(s,key)
   local alive=key~="hp" or (f.hp~=nil and f.hp>0)
-  local idle=enabled and alive and want and not self.preview
+  local idle=enabled and alive and want and not self.preview and not f.editingHUD
   local phase=time*1.8+index*.8
   local bob=if idle and s.hudMotion=="Float" then math.sin(phase)*3*strength else 0
   local pulse=if idle and s.hudMotion=="Pulse" then math.sin(phase)*.025*strength else 0
   local entry=if enabled then (1-q)*strength else 0
-  local shake=if key=="hp" then (self.hpShake or 0) else 0
+  local shake=if key=="hp" and not f.editingHUD then (self.hpShake or 0) else 0
   w.p.Position=UDim2.new(x,ox+shake,y,oy+bob+(if y>.5 then 1 else -1)*entry*14)
   w.scale.Scale=self.factor*s[key.."Scale"]/100*(1-entry*.08+pulse)
   if key~="hp" then
@@ -412,7 +413,7 @@ function H:step(s,f,dt)
  if self.settings~=s or self.width~=self.view.AbsoluteSize.X then self:setStyle(s) end;self.time+=dt;local t=self.time;local paint=t>=self.paintAt;if paint then self.paintAt=t+.075 end
  self:reticle(s,f,t);self:vitals(s,f,dt);self:animateWidgets(s,f,dt,t);self:directions(s,f,dt,t,paint)
  local overlay=self.inputRoot
- overlay.Visible=s.inputOverlay and not self.preview
+ overlay.Visible=s.inputOverlay
  if overlay.Visible then
   local k=s.inputScale/100
   local w,h=172*k,(if s.inputMouse then 156 else 114)*k
@@ -437,10 +438,13 @@ function H:step(s,f,dt)
   end
  end
  local wh=self.wallhop
- wh.Visible=s.wallhopHelper and not self.preview
+ wh.Visible=s.wallhopHelper
  if wh.Visible then
   local vp=self.view.AbsoluteSize
-  wh.Position=UDim2.fromOffset(math.clamp(vp.X*s.wallhopX/100,105,math.max(105,vp.X-105)),math.clamp(vp.Y*s.wallhopY/100,43,math.max(43,vp.Y-43)))
+  local scale=s.wallhopScale/100
+  self.wallhopScale.Scale=scale;wh.GroupTransparency=1-s.wallhopOpacity/100
+  local halfW,halfH=105*scale,43*scale
+  wh.Position=UDim2.fromOffset(math.clamp(vp.X*s.wallhopX/100,halfW,math.max(halfW,vp.X-halfW)),math.clamp(vp.Y*s.wallhopY/100,halfH,math.max(halfH,vp.Y-halfH)))
   local camera=workspace.CurrentCamera
   local direction=camera and camera.CFrame.LookVector
   local yaw=if direction then math.atan2(direction.X,direction.Z) else 0

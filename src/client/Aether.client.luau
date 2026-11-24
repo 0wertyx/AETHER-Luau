@@ -140,6 +140,7 @@ function app:page(tab, ui)
     Pages.render(self, tab, ui)
 end
 function app:onMenu(open)
+    if open and self.editingHUD then self.editingHUD=false;self.ui.drag=nil end
     if open and self.view then self.view:releaseLock(self.view:nativeLockAvailable()) end
 end
 function app:drag(input, key, widget, frame)
@@ -167,6 +168,96 @@ local ui = Controls.new(app, studioLayer, scope)
 app.ui = ui
 local store = Storage.new(app, scope)
 app.store = store
+
+-- Non-persistent editing session. Handles exist only while arranging the live HUD.
+local editorGui=scope:add(U.new("ScreenGui",{Name="AETHER_HUD_Editor",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=100000,ZIndexBehavior=Enum.ZIndexBehavior.Global,Enabled=false},pg))
+local editor=U.frame(editorGui,"Editor",nil,nil,nil,1)
+local header=U.frame(editor,"EditorBar",UDim2.new(.5,-142,0,52),UDim2.fromOffset(284,38),Color3.fromRGB(27,21,44),.04)
+U.corner(header,12);U.stroke(header,Color3.fromRGB(188,151,255),.3)
+local instruction=U.label(header,"HUD EDIT · Drag a widget",11,UDim2.fromOffset(10,0),UDim2.fromOffset(188,38))
+local done=U.button(header,"DONE");done.Position=UDim2.fromOffset(201,4);done.Size=UDim2.fromOffset(78,30);done.Modal=true;done.ZIndex=12
+local handles={}
+local positions={"hp","clock","profile","dock","input","wallhop"}
+local function widgetFor(key)
+    if key=="input" then return hud.inputRoot end
+    if key=="wallhop" then return hud.wallhop end
+    return hud.widgets[key].p
+end
+local function coord(key,topLeft,size,vp)
+    if key=="input" or key=="wallhop" then
+        return math.clamp(math.round((topLeft.X+size.X*.5)/math.max(1,vp.X)*100),0,100),math.clamp(math.round((topLeft.Y+size.Y*.5)/math.max(1,vp.Y)*100),0,100)
+    end
+    return math.clamp(math.round(topLeft.X/math.max(1,vp.X-size.X)*100),0,100),math.clamp(math.round(topLeft.Y/math.max(1,vp.Y-size.Y)*100),0,100)
+end
+function app:editHUD(on)
+    if self.stopping then return end
+    if on then
+        ui:show(false)
+        self.editingHUD=true
+        editorGui.Enabled=true
+        self.view:releaseLock(self.view:nativeLockAvailable())
+    else
+        self.editingHUD=false
+        editorGui.Enabled=false
+        ui.drag=nil
+        ui:open("HUD")
+    end
+end
+scope:on(done.Activated,function() app:editHUD(false) end)
+for _,key in positions do
+    local b=U.button(editor,key:upper())
+    b.Name="Move_"..key;b.TextSize=11;b.BackgroundTransparency=.68;b.TextColor3=Color3.fromRGB(238,220,255);b.ZIndex=9
+    U.stroke(b,Color3.fromRGB(201,169,255),.12,1.5)
+    handles[key]=b
+    scope:on(b.InputBegan,function(input)
+        if not app.editingHUD or (input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch) then return end
+        local target=widgetFor(key)
+        if not target.Visible then return end
+        local vp=overlay.AbsoluteSize
+        local size=target.AbsoluteSize
+        local original=target.AbsolutePosition-overlay.AbsolutePosition
+        -- Preserve all currently visible classic widget positions before leaving Sketch.
+        local patch={}
+        if app.s.layoutMode=="Sketch" and key~="input" and key~="wallhop" then
+            patch.layoutMode="Custom"
+            for _,other in {"hp","clock","profile","dock"} do
+                local w=widgetFor(other)
+                local x,y=coord(other,w.AbsolutePosition-overlay.AbsolutePosition,w.AbsoluteSize,vp)
+                patch[other.."X"]=x;patch[other.."Y"]=y
+            end
+            app:patch(patch)
+        end
+        local start=Vector2.new(input.Position.X,input.Position.Y)
+        ui:begin(input,function(pos)
+            if not app.editingHUD then return end
+            local dest=original+(pos-start)
+            dest=Vector2.new(math.clamp(dest.X,0,math.max(0,vp.X-size.X)),math.clamp(dest.Y,0,math.max(0,vp.Y-size.Y)))
+            local x,y=coord(key,dest,size,vp)
+            if app.s[key.."X"]~=x or app.s[key.."Y"]~=y then app:patch({[key.."X"]=x,[key.."Y"]=y}) end
+        end)
+    end)
+end
+function app:updateEditor()
+    editorGui.Enabled=self.editingHUD==true
+    if not self.editingHUD then return end
+    for _,key in positions do
+        local b,target=handles[key],widgetFor(key)
+        b.Visible=target.Visible and (if key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
+        if b.Visible then
+            local xy=target.AbsolutePosition-editor.AbsolutePosition
+            local sz=target.AbsoluteSize
+            b.Position=UDim2.fromOffset(xy.X,xy.Y);b.Size=UDim2.fromOffset(sz.X,sz.Y)
+        end
+    end
+end
+function app:unload()
+    if self.stopping then return end
+    self.stopping=true
+    self.editingHUD=false;editorGui.Enabled=false
+    if store.dirty and store.ready and not store.pending then pcall(function() store:save() end) end
+    -- Defer destruction until the current GUI activation callback has returned.
+    task.defer(function() scope:clear() end)
+end
 ui:open("Dashboard")
 ui:show(false)
 app:log("Startup", "AETHER modules initialized")
@@ -185,7 +276,8 @@ end)
 if player.Character then bind(player.Character) end
 
 scope:on(UserInputService.InputBegan, function(input, processed)
-    if processed or UserInputService:GetFocusedTextBox() then return end
+    if app.stopping or processed or UserInputService:GetFocusedTextBox() then return end
+    if app.editingHUD then if input.KeyCode==Enum.KeyCode.F8 then app:editHUD(false) end;return end
     if input.KeyCode == Enum.KeyCode.F8 or (input.KeyCode == Enum.KeyCode.RightShift and not view:nativeLockAvailable()) then
         ui:show(not ui.opened)
     elseif input.KeyCode == Enum.KeyCode.LeftAlt then
@@ -268,12 +360,14 @@ local function frame(dt, now)
         styled = table.clone(app.s)
         for k,v in app.cues.overrides do styled[k] = v end
     end
-    result.shiftLock=view.shiftReticleActive==true and not ui.opened and app.mode=="Game"
+    result.editingHUD=app.editingHUD==true
+    result.shiftLock=view.shiftReticleActive==true and not ui.opened and not app.editingHUD and app.mode=="Game"
     ui:animateBackground(now)
     hud:step(styled, result, dt)
+    app:updateEditor()
     avatar:step(if app.mode == "Game" then character else nil, styled, now)
     world:apply(styled)
-    view:step(styled, humanoid, ui.opened, dt, now)
+    view:step(styled, humanoid, ui.opened or app.editingHUD==true, dt, now)
     if app.preview then
         if app.preview.hud then app.preview.hud:step(styled, result, dt) end
         if app.preview.avatar then app.preview.avatar:step(app.preview.rig, styled, now) end
@@ -285,7 +379,7 @@ end
 -- Use a unique binding: cleaning up an older reload cannot unbind the newer one.
 local pointerRenderBinding = "AETHER_Pointer_" .. game:GetService("HttpService"):GenerateGUID(false)
 RunService:BindToRenderStep(pointerRenderBinding, Enum.RenderPriority.Last.Value, function()
-    if not gui.Parent then return end
+    if app.stopping or not gui.Parent then return end
     local ok, err = pcall(view.cursorStep, view, app.s)
     if not ok then
         pcall(view.restoreCursor,view)
@@ -302,7 +396,7 @@ scope:add(function() RunService:UnbindFromRenderStep(pointerRenderBinding) end)
 -- Additive procedural walk runs between Animator and physics, never overriding
 -- the game's AnimationTracks. Disabled unless Character.walkAnimation is enabled.
 scope:on(RunService.PreSimulation, function(dt)
-    if not gui.Parent then return end
+    if app.stopping or not gui.Parent then return end
     local characterToAnimate = if app.mode == "Game" then character else nil
     local ok, err = pcall(walkMotion.step, walkMotion, characterToAnimate, app.s, dt)
     if not ok and not app.walkError then
@@ -313,6 +407,7 @@ end)
 
 local elapsed = 0
 scope:on(RunService.RenderStepped, function(dt)
+    if app.stopping then return end
     if not gui.Parent then scope:clear(); return end
     elapsed += math.min(dt, .1)
     local ok, err = pcall(frame, math.min(dt, .1), elapsed)
@@ -324,10 +419,9 @@ scope:on(RunService.RenderStepped, function(dt)
         end
     end
 end)
-scope:add(function()
-    app:stopCue()
-    avatar:clear()
-    walkMotion:destroy()
-    world:clear()
-    view:destroy()
-end)
+-- Individual cleanup callbacks: one failing subsystem cannot skip the others.
+scope:add(function() app:stopCue() end)
+scope:add(function() avatar:clear() end)
+scope:add(function() walkMotion:destroy() end)
+scope:add(function() world:clear() end)
+scope:add(function() view:destroy() end)

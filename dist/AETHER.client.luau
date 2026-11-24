@@ -598,6 +598,12 @@ function UI.new(app,gui,scope)
  self.rail=U.frame(self.stage,"RobloxShortcuts",nil,UDim2.fromOffset(54,176),bg,.16);U.corner(self.rail,14);self.railRim=U.stroke(self.rail,Color3.fromRGB(166,138,255),.48)
  self.rail.AnchorPoint=Vector2.new(0,.5)
  self.railButtons={}
+ local coreOriginal,coreApplied={},{}
+ local chatOriginal,chatApplied,chatConfig=nil,nil,nil
+ scope:add(function()
+  for kind,original in coreOriginal do pcall(function() if StarterGui:GetCoreGuiEnabled(kind)==coreApplied[kind] then StarterGui:SetCoreGuiEnabled(kind,original) end end) end
+  if chatConfig and chatConfig.Parent and chatConfig.Enabled==chatApplied then chatConfig.Enabled=chatOriginal end
+ end)
  for index,item in {{"CHAT",Enum.CoreGuiType.Chat},{"BAG",Enum.CoreGuiType.Backpack},{"LIST",Enum.CoreGuiType.PlayerList}} do
   local button=U.button(self.rail,item[1]);button.TextSize=10;button.Size=UDim2.fromOffset(44,38);button.Position=UDim2.fromOffset(5,5+(index-1)*43)
   self.railButtons[index]=button
@@ -605,10 +611,11 @@ function UI.new(app,gui,scope)
    self:action(function()
     if item[2]==Enum.CoreGuiType.Chat then
      local config=Chat:FindFirstChildOfClass("ChatWindowConfiguration")
-     if config then config.Enabled=not config.Enabled;button.BackgroundTransparency=if config.Enabled then .12 else .6;return end
+     if config then if chatConfig~=config then chatConfig=config;chatOriginal=config.Enabled end;config.Enabled=not config.Enabled;chatApplied=config.Enabled;button.BackgroundTransparency=if config.Enabled then .12 else .6;return end
     end
     local enabled=StarterGui:GetCoreGuiEnabled(item[2])
-    StarterGui:SetCoreGuiEnabled(item[2],not enabled)
+    if coreOriginal[item[2]]==nil then coreOriginal[item[2]]=enabled end
+    StarterGui:SetCoreGuiEnabled(item[2],not enabled);coreApplied[item[2]]=not enabled
     button.BackgroundTransparency=if enabled then .6 else .12
    end)
   end)
@@ -921,7 +928,7 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.." / WALLHOP"
+ self.tag.Text=self.app.mode.." / HUD EDIT"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  for key,item in self.quickButtons do item.button.Text=item.label..(if st[key] then "  ON" else "  OFF");item.button.BackgroundColor3=if st[key] then U.hex(st.accent):Lerp(bg,.52) else soft end
@@ -1303,6 +1310,7 @@ function H.new(scope,parent,preview,go,drag,close)
  end
  self.wallhop=U.new("CanvasGroup",{Name="WallhopHelper",AnchorPoint=Vector2.new(.5,.5),Size=UDim2.fromOffset(210,86),BackgroundColor3=Color3.fromRGB(28,22,44),BackgroundTransparency=.15,Active=false,Interactable=false,Visible=false,ZIndex=6},parent)
  U.corner(self.wallhop,12);U.stroke(self.wallhop,Color3.fromRGB(177,146,255),.35,1)
+ self.wallhopScale=U.new("UIScale",{},self.wallhop)
  self.wallhopTitle=U.label(self.wallhop,"WALLHOP  /  PRACTICE",10,UDim2.fromOffset(12,7),UDim2.fromOffset(186,16))
  self.wallhopText=U.label(self.wallhop,"READY",15,UDim2.fromOffset(12,27),UDim2.fromOffset(186,23))
  self.wallhopDetail=U.label(self.wallhop,"Jump · camera angle",10,UDim2.fromOffset(12,55),UDim2.fromOffset(186,19))
@@ -1516,12 +1524,12 @@ function H:animateWidgets(s,f,dt,t)
   w.p.GroupTransparency=1-q*s[key.."Alpha"]/100
   local x,y,ox,oy=self:placement(s,key)
   local alive=key~="hp" or (f.hp~=nil and f.hp>0)
-  local idle=enabled and alive and want and not self.preview
+  local idle=enabled and alive and want and not self.preview and not f.editingHUD
   local phase=time*1.8+index*.8
   local bob=if idle and s.hudMotion=="Float" then math.sin(phase)*3*strength else 0
   local pulse=if idle and s.hudMotion=="Pulse" then math.sin(phase)*.025*strength else 0
   local entry=if enabled then (1-q)*strength else 0
-  local shake=if key=="hp" then (self.hpShake or 0) else 0
+  local shake=if key=="hp" and not f.editingHUD then (self.hpShake or 0) else 0
   w.p.Position=UDim2.new(x,ox+shake,y,oy+bob+(if y>.5 then 1 else -1)*entry*14)
   w.scale.Scale=self.factor*s[key.."Scale"]/100*(1-entry*.08+pulse)
   if key~="hp" then
@@ -1553,7 +1561,7 @@ function H:step(s,f,dt)
  if self.settings~=s or self.width~=self.view.AbsoluteSize.X then self:setStyle(s) end;self.time+=dt;local t=self.time;local paint=t>=self.paintAt;if paint then self.paintAt=t+.075 end
  self:reticle(s,f,t);self:vitals(s,f,dt);self:animateWidgets(s,f,dt,t);self:directions(s,f,dt,t,paint)
  local overlay=self.inputRoot
- overlay.Visible=s.inputOverlay and not self.preview
+ overlay.Visible=s.inputOverlay
  if overlay.Visible then
   local k=s.inputScale/100
   local w,h=172*k,(if s.inputMouse then 156 else 114)*k
@@ -1578,10 +1586,13 @@ function H:step(s,f,dt)
   end
  end
  local wh=self.wallhop
- wh.Visible=s.wallhopHelper and not self.preview
+ wh.Visible=s.wallhopHelper
  if wh.Visible then
   local vp=self.view.AbsoluteSize
-  wh.Position=UDim2.fromOffset(math.clamp(vp.X*s.wallhopX/100,105,math.max(105,vp.X-105)),math.clamp(vp.Y*s.wallhopY/100,43,math.max(43,vp.Y-43)))
+  local scale=s.wallhopScale/100
+  self.wallhopScale.Scale=scale;wh.GroupTransparency=1-s.wallhopOpacity/100
+  local halfW,halfH=105*scale,43*scale
+  wh.Position=UDim2.fromOffset(math.clamp(vp.X*s.wallhopX/100,halfW,math.max(halfW,vp.X-halfW)),math.clamp(vp.Y*s.wallhopY/100,halfH,math.max(halfH,vp.Y-halfH)))
   local camera=workspace.CurrentCamera
   local direction=camera and camera.CFrame.LookVector
   local yaw=if direction then math.atan2(direction.X,direction.Z) else 0
@@ -2007,7 +2018,11 @@ local function scripts(ui,a)
 end
 function E.render(a,tab,ui)
  if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. F8 opens Studio. RightShift opens it only when native Shift-Lock is disabled. LeftAlt controls AETHER shoulder lock.",43);ui:chips({"Game","Simulator"},function(n) a:modeSet(n) end,2,function() return a.mode end);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme");ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
- elseif tab=="HUD" then preview(ui,a);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:control("compact");ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartPalette","heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);ui:chips({"hp","clock","profile","dock","cross"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab;for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end
+ elseif tab=="HUD" then preview(ui,a);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:control("compact");ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartPalette","heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);ui:chips({"hp","clock","profile","dock","cross","input","wallhop"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
+  if k=="input" then for _,v in {"inputOverlay","inputMouse","inputX","inputY","inputScale","inputOpacity","inputColor"} do ui:control(v) end
+  elseif k=="wallhop" then for _,v in {"wallhopHelper","wallhopX","wallhopY","wallhopScale","wallhopOpacity"} do ui:control(v) end
+  elseif k=="cross" then ui:note("Shift-Lock reticle stays at the center of the game view.",28);for _,v in {"cross","reticleSize","reticleColor","reticleNeon","reticleGlow"} do ui:control(v) end
+  else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
   avatarPreview(ui,a)
   if tab=="Character" then
@@ -2032,19 +2047,19 @@ function E.render(a,tab,ui)
   ui:title("GAME INTERACTION")
   ui:note("Shift-Lock is unchanged. Native Roblox Shift-Lock has priority in Follow mode; LeftAlt toggles AETHER lock when the native option is off. Camera orientation can affect gameplay in some experiences.",60)
   ui:title("SHIFT-LOCK / RETICLE")
-  local inputKeys={inputOverlay=true,inputMouse=true,inputX=true,inputY=true,inputScale=true,inputOpacity=true,inputColor=true,wallhopHelper=true,wallhopX=true,wallhopY=true}
+  local inputKeys={inputOverlay=true,inputMouse=true,inputX=true,inputY=true,inputScale=true,inputOpacity=true,inputColor=true,wallhopHelper=true,wallhopX=true,wallhopY=true,wallhopScale=true,wallhopOpacity=true}
   ui:group(tab,inputKeys)
   ui:title("LIVE INPUT DISPLAY")
   ui:note("Shows your own WASD, Space, Shift and mouse presses. Read-only visualization: no synthetic inputs or game automation.",44)
   for _,k in {"inputOverlay","inputMouse","inputX","inputY","inputScale","inputOpacity","inputColor"} do ui:control(k) end
   ui:title("WALLHOP HELPER")
   ui:note("Practice display: tracks your jump and horizontal camera rotation. No automatic jumps or camera movement.",42)
-  for _,k in {"wallhopHelper","wallhopX","wallhopY"} do ui:control(k) end
+  for _,k in {"wallhopHelper","wallhopX","wallhopY","wallhopScale","wallhopOpacity"} do ui:control(k) end
  elseif tab=="Fonts" then local text=ui:note(a.s.sample,62);text:SetAttribute("AETHERKeepFontColor",true);text.TextXAlignment=Enum.TextXAlignment.Center;local gradient=U.gradient(text,Color3.new(),Color3.new(),10);local glow=U.stroke(text,U.hex(a.s.fontB),.8);glow.ApplyStrokeMode=Enum.ApplyStrokeMode.Contextual;ui:watch(function() local s=a.s;text.Text=s.sample;text.FontFace=U.font(s);text.TextSize=s.fontSize*.23;text.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA);text.TextStrokeTransparency=1-s.fontOutline/100;gradient.Enabled=s.fontGradient;gradient.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB));glow.Color=U.hex(s.fontB);glow.Transparency=1-s.fontGlow*.008;glow.Thickness=1+s.fontGlow*.023 end);local query=ui:box("Search native typefaces",a.fontQuery or "",32,function(q) if q~=(a.fontQuery or "") then a.fontQuery=q;ui:open("Fonts") end end);local fonts={};for _,n in S.fonts do if n:lower():find((a.fontQuery or ""):lower(),1,true) then table.insert(fonts,n) end end;ui:chips(fonts,function(n) a:patch({font=n,fontAsset=""}) end,3,function() return a.s.font end);ui:group(tab,{font=true});preset(ui,a,tab)
  elseif tab=="Simulator" then preview(ui,a);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
  elseif tab=="Scripts" then scripts(ui,a)
  elseif tab=="Workshop" or tab=="Profiles" then library(ui,a,tab=="Profiles")
- elseif tab=="Diagnostics" then local info=ui:note("",54);local log=ui:box("Session events","",165);log.TextEditable=false;local function refresh() info.Text=string.format("%s  ·  HP %s / %s  ·  %d tracked\n%s",a.mode,tostring(a.frame.hp),tostring(a.frame.max),#a.frame.targets,a.store.status);log.Text=table.concat(a.logs,"\n") end;ui:chips({"Refresh","Clear log","Reset settings"},function(n) if n=="Clear log" then table.clear(a.logs) elseif n=="Reset settings" then a:replace(S.defaults()) end;refresh() end,3);refresh() end
+ elseif tab=="Diagnostics" then local info=ui:note("",54);local log=ui:box("Session events","",165);log.TextEditable=false;local function refresh() info.Text=string.format("%s  ·  HP %s / %s  ·  %d tracked\n%s",a.mode,tostring(a.frame.hp),tostring(a.frame.max),#a.frame.targets,a.store.status);log.Text=table.concat(a.logs,"\n") end;ui:chips({"Refresh","Clear log","Reset settings"},function(n) if n=="Clear log" then table.clear(a.logs) elseif n=="Reset settings" then a:replace(S.defaults()) end;refresh() end,3);refresh();ui:title("SESSION");ui:note("Unload stops AETHER, removes its HUD and effects, and releases its camera and mouse controls. Export a bank first to retain local-only settings.",52);ui:chips({"Unload AETHER"},function() ui:message("Press Confirm unload to remove AETHER.");ui:chips({"Confirm unload"},function() a:unload() end,1) end,1) end
 end
 return E
 end
@@ -2096,7 +2111,7 @@ toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA
 toggle("Indicators","indicators","Directional indicators",true);choice("Indicators","shape","Indicator shape","Soft Triangle",S.shapes);range("Indicators","size","Size (px)",31,14,72);range("Indicators","corners","Corner softness %",30,0,100);range("Indicators","edge","Distance from edges %",11,4,30);range("Indicators","turn","Rotation smoothing (ms)",180,0,800);range("Indicators","ink","Neon intensity %",60,0,100);range("Indicators","spread","Neon spread (px)",6,0,18);range("Indicators","arrowAlpha","Opacity %",95,10,100);range("Indicators","arrowSpeed","Animation speed %",100,40,220);color("Indicators","arrowA","Gradient start","BFA2FF");color("Indicators","arrowB","Gradient end","FF9ECE");toggle("Indicators","arrowRainbow","Rainbow gradient",false);toggle("Indicators","pulse","Pulsation",true);choice("Indicators","labels","Arrow labels","Both",{"Off","Name","Distance","Both"});toggle("Indicators","nearby","Nearby nameplates",false);range("Indicators","reach","Tracking range (studs)",800,50,2500)
 toggle("Cursor","cursor","Custom game pointer",false);choice("Cursor","cursorShape","Pointer shape","Rounded Triangle",{"Rounded Triangle","Soft Arrow","Diamond","Orbit","Spark","Chevron","Neon Pointer","Arrowhead","Split Arrow","Needle","Crystal","Spear","Star Pointer","Compass","Crosshair","Heart","Image"});range("Cursor","cursorSize","Pointer size",30,12,72);range("Cursor","cursorGlow","Pointer glow %",55,0,100);choice("Cursor","cursorPalette","Desktop AETHER palette","Aurora",{"Aurora","Sunset","Ocean","Rainbow","Mono","Custom"});range("Cursor","hotX","Hotspot X %",19,0,100);range("Cursor","hotY","Hotspot Y %",8,0,100);color("Cursor","cursorA","Gradient start","BA99FF");color("Cursor","cursorB","Gradient end","69D9FA");toggle("Cursor","cursorRainbow","Rainbow pointer",true);range("Cursor","cursorSpeed","Gradient speed %",65,10,200);choice("Cursor","cursorAnimation","Cursor animation","Sway",{"Off","Breathe","Sway","Spin","Pulse"});range("Cursor","cursorMotionSpeed","Animation speed %",100,20,200);toggle("Cursor","cursorTrail","Soft cursor trail",false);range("Cursor","cursorOffsetX","Pointer offset X (px)",0,-120,120);range("Cursor","cursorOffsetY","Pointer offset Y (px)",0,-120,120);toggle("Cursor","cursorDebug","Show hotspot marker",false);def("Cursor","image","Roblox image asset ID","asset","")
 toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Interaction","lock","Shift-lock · LeftAlt",false);choice("Interaction","lockReticle","Shift-lock reticle","Orbit",{"None","Dot","Ring","Orbit","Cross","Split Cross","Diamond","Triangle","Hexagon","Star","Corners","Compass","Double Ring","Petal"});range("Interaction","reticleSize","Reticle size (px)",28,12,64);range("Interaction","reticleStroke","Reticle thickness (px)",2,1,5);color("Interaction","reticleColor","Reticle color","C8A6FF");toggle("Interaction","reticleRainbow","Rainbow reticle",false);toggle("Interaction","reticleMotion","Reticle animation",true);range("Interaction","reticleSpeed","Reticle animation %",70,0,200);toggle("Interaction","reticleNeon","Neon reticle glow",true);range("Interaction","reticleGlow","Reticle glow intensity %",65,0,100);range("Interaction","reticleGlowRadius","Reticle glow radius (px)",4,1,8);toggle("Interaction","reticleGlowPulse","Pulsating glow",true)
-toggle("Interaction","inputOverlay","Show input overlay",false);toggle("Interaction","inputMouse","Show mouse buttons",true);range("Interaction","inputX","Input overlay X %",91,0,100);range("Interaction","inputY","Input overlay Y %",76,0,100);range("Interaction","inputScale","Input overlay size %",100,60,150);range("Interaction","inputOpacity","Input overlay opacity %",80,20,100);color("Interaction","inputColor","Pressed key color","BCA0FF");toggle("Interaction","wallhopHelper","Wallhop Helper",false);range("Interaction","wallhopX","Wallhop display X %",87,0,100);range("Interaction","wallhopY","Wallhop display Y %",42,0,100)
+toggle("Interaction","inputOverlay","Show input overlay",false);toggle("Interaction","inputMouse","Show mouse buttons",true);range("Interaction","inputX","Input overlay X %",91,0,100);range("Interaction","inputY","Input overlay Y %",76,0,100);range("Interaction","inputScale","Input overlay size %",100,60,150);range("Interaction","inputOpacity","Input overlay opacity %",80,20,100);color("Interaction","inputColor","Pressed key color","BCA0FF");toggle("Interaction","wallhopHelper","Wallhop Helper",false);range("Interaction","wallhopX","Wallhop display X %",87,0,100);range("Interaction","wallhopY","Wallhop display Y %",42,0,100);range("Interaction","wallhopScale","Wallhop display size %",100,60,150);range("Interaction","wallhopOpacity","Wallhop display opacity %",90,20,100)
 choice("Fonts","font","Typeface","Gotham",S.fonts);choice("Fonts","weight","Weight","Bold",{"Regular","Medium","Bold","Heavy"});def("Fonts","fontAsset","Optional Roblox font family ID","asset","");text("Fonts","sample","Preview text","AETHER · Your interface",96);range("Fonts","fontSize","HUD type scale %",100,70,145);toggle("Fonts","fontGradient","Gradient lettering",true);range("Fonts","fontOutline","Text outline %",24,0,100);range("Fonts","fontGlow","Letter glow %",35,0,100);color("Fonts","fontA","Letter color","F1E6FF");color("Fonts","fontB","Letter gradient","CCA4FF")
 S.example='hud.widget("status", "Ready", 8, 38)\nfunction onHealthChanged(hp, maxHP)\n  hud.widget("status", hud.join("HP: ", hp), 8, 38)\n  if hp > 0 and hp <= maxHP * 0.3 then\n    hud.animate("status", "pulse")\n  else\n    hud.animate("status", "none")\n  end\nend'
 text("Scripts","cue","HUD script",S.example,8192);text("Scripts","luau","Luau draft",'-- ModuleScript for your own place\nreturn function(humanoid: Humanoid)\n  return humanoid.HealthChanged:Connect(function(hp)\n    print(hp, humanoid.MaxHealth)\n  end)\nend',8192)
@@ -3416,6 +3431,7 @@ function app:page(tab, ui)
     Pages.render(self, tab, ui)
 end
 function app:onMenu(open)
+    if open and self.editingHUD then self.editingHUD=false;self.ui.drag=nil end
     if open and self.view then self.view:releaseLock(self.view:nativeLockAvailable()) end
 end
 function app:drag(input, key, widget, frame)
@@ -3443,6 +3459,96 @@ local ui = Controls.new(app, studioLayer, scope)
 app.ui = ui
 local store = Storage.new(app, scope)
 app.store = store
+
+-- Non-persistent editing session. Handles exist only while arranging the live HUD.
+local editorGui=scope:add(U.new("ScreenGui",{Name="AETHER_HUD_Editor",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=100000,ZIndexBehavior=Enum.ZIndexBehavior.Global,Enabled=false},pg))
+local editor=U.frame(editorGui,"Editor",nil,nil,nil,1)
+local header=U.frame(editor,"EditorBar",UDim2.new(.5,-142,0,52),UDim2.fromOffset(284,38),Color3.fromRGB(27,21,44),.04)
+U.corner(header,12);U.stroke(header,Color3.fromRGB(188,151,255),.3)
+local instruction=U.label(header,"HUD EDIT · Drag a widget",11,UDim2.fromOffset(10,0),UDim2.fromOffset(188,38))
+local done=U.button(header,"DONE");done.Position=UDim2.fromOffset(201,4);done.Size=UDim2.fromOffset(78,30);done.Modal=true;done.ZIndex=12
+local handles={}
+local positions={"hp","clock","profile","dock","input","wallhop"}
+local function widgetFor(key)
+    if key=="input" then return hud.inputRoot end
+    if key=="wallhop" then return hud.wallhop end
+    return hud.widgets[key].p
+end
+local function coord(key,topLeft,size,vp)
+    if key=="input" or key=="wallhop" then
+        return math.clamp(math.round((topLeft.X+size.X*.5)/math.max(1,vp.X)*100),0,100),math.clamp(math.round((topLeft.Y+size.Y*.5)/math.max(1,vp.Y)*100),0,100)
+    end
+    return math.clamp(math.round(topLeft.X/math.max(1,vp.X-size.X)*100),0,100),math.clamp(math.round(topLeft.Y/math.max(1,vp.Y-size.Y)*100),0,100)
+end
+function app:editHUD(on)
+    if self.stopping then return end
+    if on then
+        ui:show(false)
+        self.editingHUD=true
+        editorGui.Enabled=true
+        self.view:releaseLock(self.view:nativeLockAvailable())
+    else
+        self.editingHUD=false
+        editorGui.Enabled=false
+        ui.drag=nil
+        ui:open("HUD")
+    end
+end
+scope:on(done.Activated,function() app:editHUD(false) end)
+for _,key in positions do
+    local b=U.button(editor,key:upper())
+    b.Name="Move_"..key;b.TextSize=11;b.BackgroundTransparency=.68;b.TextColor3=Color3.fromRGB(238,220,255);b.ZIndex=9
+    U.stroke(b,Color3.fromRGB(201,169,255),.12,1.5)
+    handles[key]=b
+    scope:on(b.InputBegan,function(input)
+        if not app.editingHUD or (input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch) then return end
+        local target=widgetFor(key)
+        if not target.Visible then return end
+        local vp=overlay.AbsoluteSize
+        local size=target.AbsoluteSize
+        local original=target.AbsolutePosition-overlay.AbsolutePosition
+        -- Preserve all currently visible classic widget positions before leaving Sketch.
+        local patch={}
+        if app.s.layoutMode=="Sketch" and key~="input" and key~="wallhop" then
+            patch.layoutMode="Custom"
+            for _,other in {"hp","clock","profile","dock"} do
+                local w=widgetFor(other)
+                local x,y=coord(other,w.AbsolutePosition-overlay.AbsolutePosition,w.AbsoluteSize,vp)
+                patch[other.."X"]=x;patch[other.."Y"]=y
+            end
+            app:patch(patch)
+        end
+        local start=Vector2.new(input.Position.X,input.Position.Y)
+        ui:begin(input,function(pos)
+            if not app.editingHUD then return end
+            local dest=original+(pos-start)
+            dest=Vector2.new(math.clamp(dest.X,0,math.max(0,vp.X-size.X)),math.clamp(dest.Y,0,math.max(0,vp.Y-size.Y)))
+            local x,y=coord(key,dest,size,vp)
+            if app.s[key.."X"]~=x or app.s[key.."Y"]~=y then app:patch({[key.."X"]=x,[key.."Y"]=y}) end
+        end)
+    end)
+end
+function app:updateEditor()
+    editorGui.Enabled=self.editingHUD==true
+    if not self.editingHUD then return end
+    for _,key in positions do
+        local b,target=handles[key],widgetFor(key)
+        b.Visible=target.Visible and (if key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
+        if b.Visible then
+            local xy=target.AbsolutePosition-editor.AbsolutePosition
+            local sz=target.AbsoluteSize
+            b.Position=UDim2.fromOffset(xy.X,xy.Y);b.Size=UDim2.fromOffset(sz.X,sz.Y)
+        end
+    end
+end
+function app:unload()
+    if self.stopping then return end
+    self.stopping=true
+    self.editingHUD=false;editorGui.Enabled=false
+    if store.dirty and store.ready and not store.pending then pcall(function() store:save() end) end
+    -- Defer destruction until the current GUI activation callback has returned.
+    task.defer(function() scope:clear() end)
+end
 ui:open("Dashboard")
 ui:show(false)
 app:log("Startup", "AETHER modules initialized")
@@ -3461,7 +3567,8 @@ end)
 if player.Character then bind(player.Character) end
 
 scope:on(UserInputService.InputBegan, function(input, processed)
-    if processed or UserInputService:GetFocusedTextBox() then return end
+    if app.stopping or processed or UserInputService:GetFocusedTextBox() then return end
+    if app.editingHUD then if input.KeyCode==Enum.KeyCode.F8 then app:editHUD(false) end;return end
     if input.KeyCode == Enum.KeyCode.F8 or (input.KeyCode == Enum.KeyCode.RightShift and not view:nativeLockAvailable()) then
         ui:show(not ui.opened)
     elseif input.KeyCode == Enum.KeyCode.LeftAlt then
@@ -3544,12 +3651,14 @@ local function frame(dt, now)
         styled = table.clone(app.s)
         for k,v in app.cues.overrides do styled[k] = v end
     end
-    result.shiftLock=view.shiftReticleActive==true and not ui.opened and app.mode=="Game"
+    result.editingHUD=app.editingHUD==true
+    result.shiftLock=view.shiftReticleActive==true and not ui.opened and not app.editingHUD and app.mode=="Game"
     ui:animateBackground(now)
     hud:step(styled, result, dt)
+    app:updateEditor()
     avatar:step(if app.mode == "Game" then character else nil, styled, now)
     world:apply(styled)
-    view:step(styled, humanoid, ui.opened, dt, now)
+    view:step(styled, humanoid, ui.opened or app.editingHUD==true, dt, now)
     if app.preview then
         if app.preview.hud then app.preview.hud:step(styled, result, dt) end
         if app.preview.avatar then app.preview.avatar:step(app.preview.rig, styled, now) end
@@ -3561,7 +3670,7 @@ end
 -- Use a unique binding: cleaning up an older reload cannot unbind the newer one.
 local pointerRenderBinding = "AETHER_Pointer_" .. game:GetService("HttpService"):GenerateGUID(false)
 RunService:BindToRenderStep(pointerRenderBinding, Enum.RenderPriority.Last.Value, function()
-    if not gui.Parent then return end
+    if app.stopping or not gui.Parent then return end
     local ok, err = pcall(view.cursorStep, view, app.s)
     if not ok then
         pcall(view.restoreCursor,view)
@@ -3578,7 +3687,7 @@ scope:add(function() RunService:UnbindFromRenderStep(pointerRenderBinding) end)
 -- Additive procedural walk runs between Animator and physics, never overriding
 -- the game's AnimationTracks. Disabled unless Character.walkAnimation is enabled.
 scope:on(RunService.PreSimulation, function(dt)
-    if not gui.Parent then return end
+    if app.stopping or not gui.Parent then return end
     local characterToAnimate = if app.mode == "Game" then character else nil
     local ok, err = pcall(walkMotion.step, walkMotion, characterToAnimate, app.s, dt)
     if not ok and not app.walkError then
@@ -3589,6 +3698,7 @@ end)
 
 local elapsed = 0
 scope:on(RunService.RenderStepped, function(dt)
+    if app.stopping then return end
     if not gui.Parent then scope:clear(); return end
     elapsed += math.min(dt, .1)
     local ok, err = pcall(frame, math.min(dt, .1), elapsed)
@@ -3600,11 +3710,10 @@ scope:on(RunService.RenderStepped, function(dt)
         end
     end
 end)
-scope:add(function()
-    app:stopCue()
-    avatar:clear()
-    walkMotion:destroy()
-    world:clear()
-    view:destroy()
-end)
+-- Individual cleanup callbacks: one failing subsystem cannot skip the others.
+scope:add(function() app:stopCue() end)
+scope:add(function() avatar:clear() end)
+scope:add(function() walkMotion:destroy() end)
+scope:add(function() world:clear() end)
+scope:add(function() view:destroy() end)
 -- END CLIENT
