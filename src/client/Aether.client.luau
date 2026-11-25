@@ -52,7 +52,7 @@ studioLayer.ZIndex=2
 
 local app = {
     bank = S.blank(), mode = "Game", logs = {}, preview = nil,
-    hudTab = "hp", libraryKind = "Theme", scriptTab = "AETHER Lua",
+    hudTab = "hp", scriptTab = "AETHER Lua",
     grants = {widgets = false, appearance = false, events = false},
     sim = {hp = 100, max = 100, gen = 0, players = {}},
     frame = {hp = nil, max = nil, gen = 0, name = player.DisplayName, mode = "GAME", targets = {}, widgets = {}},
