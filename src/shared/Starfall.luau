@@ -1,34 +1,12 @@
 -- Local cosmetic falling stars; pooled, anchored, non-colliding geometry.
 local U=require(script.Parent.Util)
 local Input=game:GetService("UserInputService")
+local Shapes=require(script.Parent.FxShapes)
 local F={};F.__index=F
 local RNG=Random.new()
 local MAX_STARS=16
--- A softened five-point silhouette. Sample quadratic corner arcs once,
--- rather than merely placing round caps at the original sharp tips.
-local raw={}
-for i=0,9 do
- local angle=math.pi/2+i*math.pi/5
- local radius=if i%2==0 then 1 else .58
- raw[i+1]=Vector3.new(math.cos(angle)*radius,math.sin(angle)*radius,0)
-end
-local outline={}
-local maxRadius=0
-for i=1,10 do
- local p=raw[i]
- local a=p:Lerp(raw[(i-2)%10+1],.46)
- local b=p:Lerp(raw[i%10+1],.46)
- for _,t in {.18,.82} do
-  local q=a*(1-t)^2+p*(2*t*(1-t))+b*t^2
-  outline[#outline+1]=q
-  maxRadius=math.max(maxRadius,q.Magnitude)
- end
-end
-for i,p in outline do outline[i]=p/maxRadius end
--- Fill the rounded contour with a triangle fan. Each triangle is represented
--- by two right-triangle wedges, with their transforms computed once.
-local fill={}
-local function triangle(a,b,c)
+local fillCache={}
+local function triangle(fill,a,b,c)
  local ab,ac,bc=b-a,c-a,c-b
  local ab2,ac2,bc2=ab:Dot(ab),ac:Dot(ac),bc:Dot(bc)
  if ab2>ac2 and ab2>bc2 then c,a=a,c
@@ -46,7 +24,15 @@ local function triangle(a,b,c)
  add((a+b)*.5,right,up,back,math.abs(ab:Dot(back)))
  add((a+c)*.5,-right,up,-back,math.abs(ac:Dot(back)))
 end
-for i,p in outline do triangle(Vector3.zero,p,outline[i%#outline+1]) end
+local function geometry(name)
+ if fillCache[name] then return fillCache[name] end
+ local outline=Shapes.outline(name)
+ local fill={}
+ -- Heart is star-shaped about this interior point, with the notch above it.
+ for i,p in outline do triangle(fill,Vector3.zero,p,outline[i%#outline+1]) end
+ fillCache[name]=fill
+ return fill
+end
 local function fillPart(parent)
  return U.new("WedgePart",{Name="StarFill",Anchored=true,CanCollide=false,CanTouch=false,CanQuery=false,CastShadow=false,Transparency=1,Size=Vector3.new(.1,.1,.1),Material=Enum.Material.Neon},parent)
 end
@@ -77,7 +63,7 @@ function F:spawn(star,cam,initial)
  if forward.Magnitude<.01 then forward=Vector3.new(0,0,-1) else forward=forward.Unit end
  local right=Vector3.new(-forward.Z,0,forward.X)
  star.pos=origin+forward*RNG:NextNumber(15,85)+right*RNG:NextNumber(-65,65)+Vector3.new(0,if initial then RNG:NextNumber(-10,70) else RNG:NextNumber(45,80),0)
- star.age=0;star.scale=RNG:NextNumber(.65,1.3);star.speed=RNG:NextNumber(.7,1.35);star.phase=RNG:NextNumber(0,math.pi*2);star.tint=RNG:NextNumber();star.spinDirection=if RNG:NextNumber()<.5 then -1 else 1
+ star.age=0;star.scale=RNG:NextNumber(.65,1.3);star.speed=RNG:NextNumber(.7,1.35);star.phase=RNG:NextNumber(0,math.pi*2);star.tint=RNG:NextNumber();star.spinDirection=if RNG:NextNumber()<.5 then -1 else 1;star.kind=Shapes.names[RNG:NextInteger(1,#Shapes.names)]
 end
 function F:step(s,now)
  local cam=workspace.CurrentCamera
@@ -91,23 +77,27 @@ function F:step(s,now)
  if material==Enum.Material.Neon and s.starfallGlow==0 then material=Enum.Material.SmoothPlastic end
  while #self.pool<count do
   local star={rays={}}
-  for i=1,#fill do star.rays[i]=fillPart(self.root) end
-  star.rays[#fill+1]=part(self.root)
+  star.tail=part(self.root)
   self:spawn(star,cam,true);self.pool[#self.pool+1]=star
  end
  for i,star in self.pool do
-  if i>count then for _,p in star.rays do p.Transparency=1 end;continue end
+  if i>count then for _,p in star.rays do p.Transparency=1 end;star.tail.Transparency=1;continue end
   star.age+=dt
   star.pos+=Vector3.new(2*dt,-s.starfallSpeed*star.speed*dt,0)
   if star.pos.Y<cam.CFrame.Position.Y-25 or (star.pos-cam.CFrame.Position).Magnitude>150 or star.age>12 then self:spawn(star,cam,false) end
   local r=s.starfallSize/10*star.scale
   local opacity=s.starfallOpacity/100
   local tint=if s.starfallRainbow then Color3.fromHSV((now*.12+star.tint)%1,.55,1) else colorA:Lerp(colorB,star.tint)
-  local cf=CFrame.new(star.pos)*cam.CFrame.Rotation*CFrame.Angles(0,0,star.phase+star.age*math.rad(s.starfallRotation)*star.spinDirection)
+  star.phase=(star.phase+dt*math.rad(s.starfallRotation)*star.spinDirection)%(2*math.pi)
+  local cf=CFrame.new(star.pos)*cam.CFrame.Rotation*CFrame.Angles(0,0,star.phase)
+  local kind=if s.starfallShape=="Mixed" then star.kind else s.starfallShape
+  local fill=geometry(kind)
+  while #star.rays<#fill do star.rays[#star.rays+1]=fillPart(self.root) end
+  for j=#fill+1,#star.rays do star.rays[j].Transparency=1 end
   local thickness=math.max(.045,r*.22)
   for j,shape in fill do
    local p=star.rays[j]
-   if star.renderRadius~=r then
+   if star.renderRadius~=r or star.renderKind~=kind then
     p.Size=Vector3.new(thickness,shape.height*r,shape.length*r)
    end
    p.CFrame=cf*CFrame.new(shape.cf.Position*r)*shape.cf.Rotation
@@ -115,8 +105,8 @@ function F:step(s,now)
    if p.Material~=material then p.Material=material end
    if p.Transparency~=1-opacity then p.Transparency=1-opacity end
   end
-  star.renderRadius=r
-  local tail=star.rays[#fill+1]
+  star.renderRadius=r;star.renderKind=kind
+  local tail=star.tail
   if s.starfallTail then
    local len=math.min(10,s.starfallSpeed*.12)
    if segment(tail,star.pos+Vector3.new(0,r*.5,0),star.pos+Vector3.new(0,r+len,0),math.max(.04,r*.08)) then tail.Material=material;tail.Color=tint;tail.Transparency=1-opacity*.35 end
