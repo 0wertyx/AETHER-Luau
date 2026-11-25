@@ -659,6 +659,12 @@ local function stepAirControl(dt)
         return app.airDiagnostic
     end
     local v = root.AssemblyLinearVelocity
+    local walkSpeed = math.max(0,humanoid.WalkSpeed)
+    local speedSample = app.airGroundSpeed
+    if not speedSample or speedSample.root ~= root or speedSample.humanoid ~= humanoid then
+        speedSample = {root=root,humanoid=humanoid,speed=0,time=0}
+        app.airGroundSpeed = speedSample
+    end
     app.airPeakVertical = math.max(app.airPeakVertical or 0,math.abs(v.Y))
     local airborne = state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall
     local detection = state.Name
@@ -683,6 +689,11 @@ local function stepAirControl(dt)
         end
     end
     if not airborne then
+        if (state == Enum.HumanoidStateType.Running or state == Enum.HumanoidStateType.Landed)
+            and floor ~= Enum.Material.Air and walkSpeed > 0 then
+            speedSample.speed = walkSpeed
+            speedSample.time = os.clock()
+        end
         return "State: "..state.Name.." | floor: "..floor.Name
     end
     app.airObserved = (app.airObserved or 0)+1
@@ -696,16 +707,16 @@ local function stepAirControl(dt)
     local input = humanoid.MoveDirection
     local direction = Vector3.new(input.X,0,input.Z)
     local horizontal = Vector3.new(v.X,0,v.Z)
-    local walkSpeed = math.max(0,humanoid.WalkSpeed)
     local speed = horizontal.Magnitude
     if direction.Magnitude < .01 then app.airDiagnostic = "Skipped: MoveDirection is zero";return app.airDiagnostic end
     if app.s.airControlStrength <= 0 then app.airDiagnostic = "Skipped: strength is zero";return app.airDiagnostic end
     if dt <= 0 then app.airDiagnostic = "Skipped: physics delta time is zero";return app.airDiagnostic end
-    -- With no nominal walking speed, redirect existing momentum only.
-    -- Never generate horizontal speed from rest when the controller has set WalkSpeed to zero.
-    local cap = if walkSpeed > 0 then walkSpeed else speed
+    -- Use a recent ground-speed sample for the same avatar when airborne.
+    -- Do not invent a speed or retain a sample from a previous character.
+    local groundSpeed = if os.clock()-speedSample.time <= 2 then speedSample.speed else 0
+    local cap = if walkSpeed > 0 then walkSpeed elseif groundSpeed > 0 then groundSpeed else speed
     if cap < .01 then
-        app.airDiagnostic = string.format("Skipped: no horizontal momentum | WalkSpeed %.2f | speed %.2f | dt %.4f",walkSpeed,speed,dt)
+        app.airDiagnostic = string.format("Skipped: no speed sample | WalkSpeed %.2f | speed %.2f | ground %.2f",walkSpeed,speed,groundSpeed)
         return app.airDiagnostic
     end
     local nextVelocity = U.airRedirect(horizontal,direction,cap,app.s.airControlStrength,dt)
