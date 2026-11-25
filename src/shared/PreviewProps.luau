@@ -1,4 +1,4 @@
--- Decorative GUI-only props. No tools, hitboxes, game-world parts or physics.
+-- Local decorative props for the viewport and the local avatar. No Tools, hitboxes or collision.
 local P={};P.__index=P
 local function part(parent,name,size,color,shape)
  local p=Instance.new("Part");p.Name=name;p.Size=size;p.Color=color;p.Anchored=true;p.CanCollide=false;p.CanTouch=false;p.CanQuery=false;p.CastShadow=false;p.Material=Enum.Material.SmoothPlastic
@@ -8,11 +8,11 @@ end
 local violet=Color3.fromRGB(149,107,230)
 local pale=Color3.fromRGB(218,191,255)
 local dark=Color3.fromRGB(40,33,55)
-function P.new(parent) return setmetatable({parent=parent},P) end
+function P.new(parent,live) return setmetatable({parent=parent,live=live==true},P) end
 function P:clear() if self.root then self.root:Destroy() end;self.root=nil;self.kind=nil;self.parts=nil end
 function P:build(kind)
  self:clear();self.kind=kind
- local root=Instance.new("Folder");root.Name="AetherPreviewProps";root.Parent=self.parent;self.root=root
+ local root=Instance.new("Folder");root.Name=if self.live then "AetherMotionProps" else "AetherPreviewProps";root.Parent=self.parent;self.root=root
  local items={};self.parts=items
  if kind=="Skater" then
   items.deck=part(root,"FantasyDeck",Vector3.new(1.45,.14,3.55),violet)
@@ -39,17 +39,22 @@ local function line(p,a,b)
  local d=b-a;p.Size=Vector3.new(.025,.025,math.max(.025,d.Magnitude));p.CFrame=CFrame.lookAt((a+b)/2,b)
 end
 function P:update(rig,kind,phase,state)
- local torso=rig and rig:FindFirstChild("Torso")
- local ra=rig and rig:FindFirstChild("Right Arm")
- local la=rig and rig:FindFirstChild("Left Arm")
- local rl=rig and rig:FindFirstChild("Right Leg")
- local ll=rig and rig:FindFirstChild("Left Leg")
+ local function limb(a,b)
+  return rig and (rig:FindFirstChild(a) or rig:FindFirstChild(b))
+ end
+ local torso=limb("Torso","UpperTorso")
+ local ra=limb("Right Arm","RightHand")
+ local la=limb("Left Arm","LeftHand")
+ local rl=limb("Right Leg","RightFoot")
+ local ll=limb("Left Leg","LeftFoot")
+ local r6=ra and ra.Name=="Right Arm"
  local head=rig and rig:FindFirstChild("Head")
  local root=rig and rig:FindFirstChild("HumanoidRootPart")
  if not torso or not ra or not la or not rl or not ll or not head or not root or (kind~="Skater" and kind~="Doll Walk" and kind~="Fighter") then self:clear();return end
- if self.kind~=kind then self:build(kind) end
+ if self.kind~=kind or not self.root or self.root.Parent~=self.parent then self:build(kind) end
  local q=self.parts
  local function grip(arm,side,target)
+  if self.live or not r6 then return end
   local shoulder=torso.CFrame:PointToWorldSpace(Vector3.new(side*(torso.Size.X/2+arm.Size.X*.35),torso.Size.Y*.25,0))
   local d=target-shoulder;if d.Magnitude<.001 then return end
   local y=-d.Unit;local x=y:Cross(torso.CFrame.LookVector)
@@ -60,8 +65,14 @@ function P:update(rig,kind,phase,state)
  end
  if kind=="Fighter" then
   local cf=torso.CFrame*CFrame.new(0,-.12,-1.26)*CFrame.Angles(math.rad(-22),0,math.rad(-13))
-  grip(ra,1,cf:PointToWorldSpace(Vector3.new(0,.23,0)))
-  grip(la,-1,cf:PointToWorldSpace(Vector3.new(0,-.23,0)))
+  if self.live or not r6 then
+   -- Follow the actual hand, not the other way around.
+   local hand=ra.CFrame*CFrame.new(0,-ra.Size.Y*(if r6 then .5 else .1),0)
+   cf=hand*CFrame.Angles(math.rad(-85),0,math.rad(-8))*CFrame.new(0,-.23,0)
+  else
+   grip(ra,1,cf:PointToWorldSpace(Vector3.new(0,.23,0)))
+   grip(la,-1,cf:PointToWorldSpace(Vector3.new(0,-.23,0)))
+  end
   q.handle.CFrame=cf;q.guard.CFrame=cf*CFrame.new(0,.48,0);q.blade.CFrame=cf*CFrame.new(0,1.56,0);q.tip.CFrame=cf*CFrame.new(0,2.58,0)
  elseif kind=="Doll Walk" then
   local bar=CFrame.new(head.Position+Vector3.new(.08*math.sin(phase),1.65,0))*root.CFrame.Rotation*CFrame.Angles(0,0,.12*math.sin(phase))
@@ -73,8 +84,13 @@ function P:update(rig,kind,phase,state)
   local cf
   if state==Enum.HumanoidStateType.Freefall then
    cf=torso.CFrame*CFrame.new(0,-.5,-1.35)*CFrame.Angles(math.rad(8),math.rad(90),math.rad(8))
-   grip(ra,1,cf:PointToWorldSpace(Vector3.new(0,.12,1.03)))
-   grip(la,-1,cf:PointToWorldSpace(Vector3.new(0,.12,-1.03)))
+   if self.live or not r6 then
+    local hand=ra.CFrame*CFrame.new(0,-ra.Size.Y*(if r6 then .5 else .1),0)
+    cf=hand*CFrame.Angles(0,math.pi/2,0)*CFrame.new(0,-.12,-1.03)
+   else
+    grip(ra,1,cf:PointToWorldSpace(Vector3.new(0,.12,1.03)))
+    grip(la,-1,cf:PointToWorldSpace(Vector3.new(0,.12,-1.03)))
+   end
   else
    local a=rl.CFrame:PointToWorldSpace(Vector3.new(0,-rl.Size.Y/2,0))
    local b=ll.CFrame:PointToWorldSpace(Vector3.new(0,-ll.Size.Y/2,0))
@@ -84,7 +100,8 @@ function P:update(rig,kind,phase,state)
    end
    local center=(a+b)/2
    local z=Vector3.new(a.X-b.X,0,a.Z-b.Z)
-   if z.Magnitude<.001 then z=root.CFrame.LookVector end
+   if z.Magnitude<.001 then local f=root.CFrame.LookVector;z=Vector3.new(f.X,0,f.Z) end
+   if z.Magnitude<.001 then z=Vector3.new(0,0,-1) end
    z=z.Unit;local y=Vector3.yAxis;local x=y:Cross(z).Unit
    cf=CFrame.fromMatrix(Vector3.new(center.X,math.min(bottom(rl),bottom(ll))-.095,center.Z),x,y,z)
   end
