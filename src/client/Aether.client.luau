@@ -117,31 +117,88 @@ end
 -- Volleyball controls are session-local and never serialized into cosmetic presets.
 do
     local ReplicatedStorage=game:GetService("ReplicatedStorage")
-    local vb={originals={},multiplierRequests={},corners={},auto=false,status="Waiting for compatible game",target=nil,tiltBasis="World",tiltScale=1,normalizeTilt=true,tiltWrites=0,tiltOverrides=0}
+    local vb={originals={},multiplierRequests={},corners={},auto=false,status="Waiting for compatible game",target=nil,tiltAim="Correct edges",tiltScale=1,tiltWrites=0,tiltOverrides=0}
     app.volleyball=vb
     local attrs={
         BlockPower=true,BumpPower=true,DashPower=true,DiveSpeed=true,
         DrawPower=true,JumpPower=true,ServePower=true,SetPower=true
     }
     local tiltKey="Gameplay_TiltDirection"
+    local rf=game:GetService("ReplicatedFirst")
+    local function gameModules()
+        local controllers=rf:FindFirstChild("Controllers")
+        local g=controllers and controllers:FindFirstChild("GameController")
+        local actions=g and g:FindFirstChild("Actions")
+        local move=actions and actions:FindFirstChild("Move")
+        local jump=move and move:FindFirstChild("Jump")
+        local physics=jump and jump:FindFirstChild("Physics")
+        local handlers=g and g:FindFirstChild("Handlers")
+        if handlers and handlers:IsA("ModuleScript") and physics and physics:IsA("ModuleScript") then return handlers,physics end
+        return nil,nil
+    end
     local function available()
-        return app.mode=="Game" and typeof(player:GetAttribute(tiltKey))=="Vector3"
+        local handlers,physics=gameModules()
+        return app.mode=="Game" and handlers~=nil and physics~=nil
+    end
+    local function isJester()
+        local style=player:GetAttribute("Gameplay_Style")
+        return type(style)=="string" and (style=="Jester" or style:match("^Jester%d+$")~=nil or style=="Jinko")
+    end
+    local handlers,physics,originalTilt,wrappedTilt,lastManual,lastApplied
+    local function releaseLocalTilt()
+        if handlers and handlers.Values and lastApplied~=nil and handlers.Values.TiltDirection==lastApplied then
+            handlers.Values.TiltDirection=lastManual or Vector3.zero
+        end
+        lastManual=nil;lastApplied=nil
+    end
+    local function detachTilt()
+        releaseLocalTilt()
+        if physics and wrappedTilt and physics._handleTilt==wrappedTilt then physics._handleTilt=originalTilt end
+        handlers=nil;physics=nil;originalTilt=nil;wrappedTilt=nil
+        vb.requestedTilt=nil
+    end
+    local function attachTilt()
+        local h,p=gameModules()
+        assert(h and p,"Tilt modules unavailable")
+        local ht,pt=require(h),require(p)
+        assert(type(ht)=="table" and type(ht.Values)=="table" and typeof(ht.Values.TiltDirection)=="Vector3","Unexpected Handlers shape")
+        assert(type(pt)=="table" and type(pt._handleTilt)=="function","Unexpected Jump.Physics shape")
+        assert(not table.isfrozen(pt) and not table.isfrozen(ht.Values),"Tilt modules are read-only")
+        handlers,physics=ht,pt
+        originalTilt=pt._handleTilt
+        local original=originalTilt
+        wrappedTilt=function(...)
+            local result=table.pack(original(...))
+            local manual=ht.Values.TiltDirection
+            local desired=vb.requestedTilt
+            if vb.auto and app.mode=="Game" and not app.stopping and gui.Parent and player:GetAttribute("Gameplay_InGame")==true and isJester() and typeof(desired)=="Vector3" and vb.tiltFresh and os.clock()-vb.tiltFresh<.25 then
+                lastManual=manual
+                if manual~=desired then
+                    ht.Values.TiltDirection=desired
+                    vb.tiltWrites+=1
+                end
+                lastApplied=desired
+                vb.tiltHooks=(vb.tiltHooks or 0)+1
+            else
+                lastManual=nil;lastApplied=nil
+            end
+            return table.unpack(result,1,result.n)
+        end
+        pt._handleTilt=wrappedTilt
     end
     function vb:available() return available() end
     function vb:availabilityStatus()
         if app.mode~="Game" then return "Waiting: switch to Game mode" end
-        local missing={}
-        if typeof(player:GetAttribute(tiltKey))~="Vector3" then table.insert(missing,tiltKey) end
-        if #missing>0 then return "Waiting for attributes: "..table.concat(missing,", ") end
-        return "Game attributes detected"
+        if not available() then return "Waiting for GameController tilt modules" end
+        return if wrappedTilt and physics and physics._handleTilt==wrappedTilt then "Jump tilt hook connected" else "GameController modules detected"
     end
     function vb:tiltDebug()
-        local current=player:GetAttribute(tiltKey)
+        local current=handlers and handlers.Values and handlers.Values.TiltDirection or player:GetAttribute(tiltKey)
         local function fmt(v)
             if typeof(v)~="Vector3" then return "-" end
             return string.format("%.3f, %.3f, %.3f",v.X,v.Y,v.Z)
         end
-        return string.format("Actual: %s\nRequested: %s\nWrites: %d | observed overrides: %d",fmt(current),fmt(self.requestedTilt),self.tiltWrites,self.tiltOverrides)
+        return string.format("Local tilt: %s\nRequested: %s\nWrites: %d | jump ticks: %d",fmt(current),fmt(self.requestedTilt),self.tiltWrites,self.tiltHooks or 0)
     end
     local function write(key,value)
         local current=player:GetAttribute(key)
@@ -178,7 +235,7 @@ do
         return string.format("Requested: %.5g | Actual: %.5g | %s",requested,actual,if same then "Local match" else "Changed by game")
     end
     function vb:reset()
-        self.auto=false
+        self.auto=false;detachTilt()
         table.clear(self.multiplierRequests)
         for key in table.clone(self.originals) do restore(key) end
         self.target=nil
@@ -186,7 +243,7 @@ do
     end
     local function flatten(p) return Vector3.new(p.X,0,p.Z) end
     function vb:clearCourt()
-        self.auto=false;restore(tiltKey)
+        self.auto=false;detachTilt();restore(tiltKey)
         table.clear(self.corners);self.target=nil;self.side=nil;self.map=nil;self.courtSource=nil;self.courtPart=nil;self.courtZones=nil;self.status="Calibration cleared"
     end
     function vb:capture(index)
@@ -197,7 +254,7 @@ do
         local map=ReplicatedStorage:GetAttribute("Map")
         if map~=nil and self.map~=nil and self.map~=map then self:clearCourt() end
         if map~=nil then self.map=map end
-        self.auto=false;restore(tiltKey);self.target=nil
+        self.auto=false;detachTilt();restore(tiltKey);self.target=nil
         self.courtSource="Manual";self.courtPart=nil;self.courtZones=nil
         self.corners[index]=flatten(root.Position)
         self.status=string.format("Corner %s saved: X %.2f Z %.2f",({"A","B","C"})[index],root.Position.X,root.Position.Z)
@@ -328,14 +385,16 @@ do
         return string.format("%s | %.1f x %.1f studs",self.courtSource or "Court ready",width,length)
     end
     function vb:toggleAuto()
-        if self.auto then self.auto=false;restore(tiltKey);self.target=nil;self.status="Auto Tilt off";return end
+        if self.auto then self.auto=false;detachTilt();restore(tiltKey);self.target=nil;self.status="Auto Tilt off";return end
         if not available() then self.status=self:availabilityStatus();return end
         if not geometry() then
             if not self:detectCourt() then return end
             if not geometry() then self.status=self:calibrationStatus();return end
         end
-        self.tiltWrites=0;self.tiltOverrides=0;self.requestedTilt=nil
-        self.auto=true;self.status="Auto Tilt beta enabled"
+        local ok,err=pcall(attachTilt)
+        if not ok then detachTilt();self.status="Tilt module unavailable: "..tostring(err);return end
+        self.tiltWrites=0;self.tiltHooks=0;self.requestedTilt=nil
+        self.auto=true;self.status="Jinko curve correction enabled"
     end
     local elapsed=0
     scope:on(RunService.Heartbeat,function(dt)
@@ -347,15 +406,12 @@ do
             if next(vb.originals) or vb.auto then vb:reset() end
             return
         end
-        if not available() then
-            if vb.auto then restore(tiltKey);vb.status="Waiting for Tilt attributes" end
-            return
-        end
         if not vb.auto then return end
-        local actual=player:GetAttribute(tiltKey)
-        if vb.requestedTilt and typeof(actual)=="Vector3" and (actual-vb.requestedTilt).Magnitude>.001 then
-            vb.tiltOverrides+=1
+        if not available() or not physics or physics._handleTilt~=wrappedTilt then
+            vb.auto=false;detachTilt();vb.status="Tilt module changed; re-enable";return
         end
+        vb.requestedTilt=nil
+        if not isJester() then releaseLocalTilt();vb.target=nil;vb.status="Waiting for Jinko style";return end
         local ok,err=pcall(function()
             local map=ReplicatedStorage:GetAttribute("Map")
             if map~=nil and vb.map~=nil and map~=vb.map then vb:clearCourt();vb.status="Map changed; recalibrate";return end
@@ -382,13 +438,13 @@ do
             local side=vb.side or (if pz<half then -1 else 1)
             local depth=if side==-1 then length*.75 else length*.25
             local look=flatten(root.CFrame.LookVector)
-            local lateral=width*.5
             local dv=look:Dot(v)
-            if math.abs(dv)>.05 and (depth-pz)*dv>0 then
-                lateral=px+look:Dot(u)*(depth-pz)/dv
+            if math.abs(dv)<.15 or (depth-pz)*dv<=0 then
+                releaseLocalTilt();vb.target=nil;vb.status="Face the opposite court";return
             end
+            local straightLateral=px+look:Dot(u)*(depth-pz)/dv
             local margin=math.min(2,width*.2)
-            lateral=math.clamp(lateral,margin,width-margin)
+            local lateral=if vb.tiltAim=="Aim center" then width*.5 else math.clamp(straightLateral,margin,width-margin)
             local target=a+u*lateral+v*depth
             if vb.courtZones then
                 -- Clamp the target within the actual opposite zone's local rectangle.
@@ -401,28 +457,25 @@ do
                     0,
                     math.clamp(localPoint.Z,-opposite.Size.Z*.5+mz,opposite.Size.Z*.5-mz))))
             end
-            local heading=target-flatten(root.Position)
-            if heading.Magnitude<.01 then return end
-            -- Expose both plausible coordinate conventions; neither is verified in-game.
-            local axis=heading.Unit
-            if vb.tiltBasis=="Character" then
-                axis=flatten(root.CFrame:VectorToObjectSpace(axis))
-                if axis.Magnitude<.01 then return end
-                axis=axis.Unit
+            -- Estimate lateral correction relative to the uncurved heading.
+            -- This is an aiming heuristic, not a server-side impact guarantee.
+            local right=flatten(root.CFrame.RightVector)
+            if right.Magnitude<.01 then return end
+            right=right.Unit
+            local straight=a+u*straightLateral+v*depth
+            local lateralError=(target-straight):Dot(right)
+            local curve=math.clamp(lateralError/math.max(4,width*.15)*vb.tiltScale,-1,1)
+            if math.abs(curve)<.04 then
+                releaseLocalTilt();vb.target=target;vb.status="Straight heading inside target; manual tilt retained";return
             end
-            local proposed=axis*vb.tiltScale+Vector3.yAxis
-            if vb.normalizeTilt then proposed=proposed.Unit end
-            if typeof(actual)=="Vector3" and (actual-proposed).Magnitude>.001 then
-                write(tiltKey,proposed)
-                vb.tiltWrites+=1
-            end
-            vb.requestedTilt=proposed
+            vb.requestedTilt=right*curve+Vector3.yAxis
+            vb.tiltFresh=os.clock()
             vb.target=target
-            vb.status=string.format("Beta target X %.1f Z %.1f",target.X,target.Z)
+            vb.status=string.format("Jinko correction %.2f | target X %.1f Z %.1f",curve,target.X,target.Z)
         end)
         if not ok then
             vb.auto=false
-            pcall(restore,tiltKey)
+            pcall(detachTilt);pcall(restore,tiltKey)
             vb.status="Auto Tilt error: "..tostring(err)
         end
     end)
@@ -430,8 +483,8 @@ do
 end
 
 
--- Read-only trajectory preview. Anchored client balls are sampled by position,
--- not AssemblyLinearVelocity; no network events or ball state are modified.
+-- Read-only trajectory preview. Prefer existing controller velocity and retain
+-- position sampling as fallback. No network events or ball state are modified.
 do
     local rs=game:GetService("ReplicatedStorage")
     local tags=game:GetService("CollectionService")
@@ -439,6 +492,23 @@ do
     local esp={enabled=false,status="Off",ball=nil,samples={},segments={},clock=0,searchAt=0,drawAt=0,map=nil}
     vb.trajectory=esp
     local folder,marker,billboard,caption
+    local controller=nil
+    local function resolveController()
+        local packages=rs:FindFirstChild("Packages")
+        local knit=packages and packages:FindFirstChild("Knit")
+        if not knit then return nil end
+        local ok,c=pcall(function() return require(knit).GetController("BallController") end)
+        if ok and type(c)=="table" and type(c.ActiveBalls)=="table" then return c end
+        return nil
+    end
+    local function liveState(obj)
+        if not controller or not obj then return nil end
+        local id=obj:GetAttribute("ServerId")
+        if id==nil then return nil end
+        local state=controller.ActiveBalls[id]
+        if type(state)=="table" and state.Ball==obj then return state end
+        return nil
+    end
     local function hide()
         if folder then folder:Destroy();folder=nil end
         table.clear(esp.segments);marker=nil;billboard=nil;caption=nil
@@ -469,7 +539,7 @@ do
     local function finite(v) return v==v and v.Magnitude<1e6 end
     local function ballPosition(obj)
         if not obj or not obj:IsDescendantOf(workspace) then return nil end
-        if obj:IsA("Model") then return obj:GetPivot().Position end
+        if obj:IsA("Model") then return if obj.PrimaryPart then obj.PrimaryPart.Position else obj:GetPivot().Position end
         if obj:IsA("BasePart") then return obj.Position end
     end
     local function findBall()
@@ -485,7 +555,8 @@ do
         local active=rs:GetAttribute("ActiveBall")
         if active~=nil then
             for _,obj in candidates do
-                if obj.Name=="CLIENT_BALL_"..tostring(active) or obj:GetAttribute("ServerId")==active then return obj end
+                local serverId=obj:GetAttribute("ServerId")
+                if obj.Name=="CLIENT_BALL_"..tostring(active) or (serverId~=nil and tostring(serverId)==tostring(active)) then return obj end
             end
         end
         local client={}
@@ -508,6 +579,11 @@ do
         return Color3.fromRGB(255,205,100),"UNKNOWN COURT"
     end
     local function radiusOf(obj)
+        if obj.Name:match("^CLIENT_BALL_") or liveState(obj) then
+            local m=rs:GetAttribute("Modifier_BallSizeMultiplier")
+            if type(m)~="number" or m~=m or m<=0 then m=1 end
+            return math.clamp(1.2835*m,.05,50)
+        end
         local p=if obj:IsA("Model") then obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart",true) else obj
         if p and p:IsA("BasePart") then return math.clamp(math.min(p.Size.X,p.Size.Y,p.Size.Z)*.5,.25,12) end
         return 1
@@ -535,6 +611,22 @@ do
         if not finite(velocity) or not finite(acceleration) or velocity.Magnitude>1800 or acceleration.Magnitude>2500 then return nil end
         return velocity,acceleration
     end
+    local function velocityAcceleration(samples,timeScale)
+        local n=0;local st,stt=0,0;local sv,stv=Vector3.zero,Vector3.zero
+        local last=samples[#samples]
+        local firstTime=nil
+        for _,s in samples do
+            if not s.v then continue end
+            firstTime=firstTime or s.t
+            local t=(s.t-last.t)*timeScale
+            n+=1;st+=t;stt+=t*t;sv+=s.v;stv+=s.v*t
+        end
+        local det=n*stt-st*st
+        if n<4 or not firstTime or (last.t-firstTime)<.10 or det<1e-7 then return nil end
+        local a=(stv*n-sv*st)/det
+        if finite(a) and a.Magnitude<600 then return a end
+        return nil
+    end
     local params=RaycastParams.new()
     params.FilterType=Enum.RaycastFilterType.Include
     local filterAt=0
@@ -552,13 +644,13 @@ do
         params.FilterDescendantsInstances=valid
         filterAt=esp.clock+.75
     end
-    local function draw(pos,vel,acc,ball,map)
+    local function draw(pos,vel,acc,ball,map,timeScale,source,jerk)
         if esp.clock>=filterAt then refreshMap(map) end
         local radius=radiusOf(ball)
         local points={pos};local hit,hitTime
         for i=1,72 do
             local t=i*.05
-            local nextPos=pos+vel*t+acc*(.5*t*t)
+            local nextPos=pos+vel*t+acc*(.5*t*t)+jerk*(t*t*t/6)
             local prev=points[#points];local step=nextPos-prev
             if step.Magnitude<.001 then break end
             local result=workspace:Spherecast(prev,radius,step,params)
@@ -587,11 +679,12 @@ do
         end
         marker.Transparency=if hit then .12 else 1
         billboard.Enabled=hit~=nil
-        if hit then marker.Position=hit.Position+hit.Normal*.25;marker.Color=color;caption.Text=string.format("%s ~%.1fs",label,hitTime);caption.TextColor3=color end
-        esp.status=string.format("%s | %s | %.1f studs/s",ball.Name,label,vel.Magnitude)
+        if hit then marker.Position=hit.Position+hit.Normal*.25;marker.Color=color;caption.Text=string.format("%s ~%.1fs",label,hitTime/timeScale);caption.TextColor3=color end
+        esp.status=string.format("%s | %s | %.1f studs/s | %s",ball.Name,label,vel.Magnitude,source)
     end
     function vb:toggleTrajectory()
         esp.enabled=not esp.enabled;clearSamples();hide()
+        controller=if esp.enabled then resolveController() else nil
         esp.status=if esp.enabled then "Waiting for moving ball" else "Off"
     end
     local function tick(dt)
@@ -610,17 +703,46 @@ do
         end
         local pos=ballPosition(esp.ball)
         if not pos then hide();esp.status="Waiting for one identifiable client ball";return end
+        local scale=rs:GetAttribute("GlobalTimeScale")
+        if type(scale)~="number" or scale~=scale then scale=1 end
+        if scale<=.01 then hide();table.clear(esp.samples);esp.status="Simulation paused";return end
+        scale=math.clamp(scale,.01,20)
+        if esp.lastScale~=scale then table.clear(esp.samples);esp.lastScale=scale end
+        local state=liveState(esp.ball)
+        local direct=state and state.Velocity
+        if typeof(direct)~="Vector3" or not finite(direct) or direct.Magnitude>1800 then direct=nil end
         local samples=esp.samples;local last=samples[#samples]
-        if last and (esp.clock-last.t>.25 or (pos-last.p).Magnitude>80) then table.clear(samples);last=nil end
+        if last and (esp.clock-last.t>.25 or (pos-last.p).Magnitude>80 or (direct and last.v and (direct-last.v).Magnitude>85)) then table.clear(samples);last=nil end
         if not last or esp.clock-last.t>=.025 then
-            table.insert(samples,{t=esp.clock,p=pos})
+            table.insert(samples,{t=esp.clock,p=pos,v=direct})
             while #samples>1 and esp.clock-samples[1].t>.24 do table.remove(samples,1) end
         end
         if esp.clock<esp.drawAt then return end
         esp.drawAt=esp.clock+.05
-        local vel,acc=estimate(samples)
-        if not vel or vel.Magnitude<3 then hide();esp.status="Sampling moving ball";return end
-        draw(pos,vel,acc,esp.ball,map)
+        local vel,acc,jerk,source
+        jerk=Vector3.zero
+        if direct then
+            vel=direct
+            local g=rs:GetAttribute("Modifier_BallGravity")
+            if type(g)~="number" or g~=g or math.abs(g)>1000 then g=17 end
+            local gm=state.GravityMultiplier
+            if type(gm)~="number" or gm~=gm or math.abs(gm)>100 then gm=1 end
+            local gravity=Vector3.new(0,-g*gm,0)
+            if typeof(state.Acceleration)=="Vector3" and finite(state.Acceleration) then
+                acc=gravity+state.Acceleration
+                source="Controller physics"
+                if typeof(state.Jerk)=="Vector3" and finite(state.Jerk) and state.Jerk.Magnitude<600 then jerk=state.Jerk end
+            else
+                acc=velocityAcceleration(samples,scale) or gravity
+                source="Controller velocity"
+            end
+        else
+            vel,acc=estimate(samples)
+            if vel then vel=vel/scale;acc=acc/(scale*scale) end
+            source="Position fallback"
+        end
+        if not vel or not acc or not finite(vel) or not finite(acc) or vel.Magnitude<3 then hide();esp.status="Sampling moving ball";return end
+        draw(pos,vel,acc,esp.ball,map,scale,source,jerk)
     end
     scope:on(RunService.Heartbeat,function(dt)
         local ok,err=pcall(tick,dt)
