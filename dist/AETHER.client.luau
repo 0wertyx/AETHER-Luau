@@ -3747,10 +3747,10 @@ function M.mount(ui,a)
    b.Transparency=if s.joints and pos then 0 else 1
   end
   for i,b in lines do b.Transparency=if s.grid then 0 else 1;if i%2==0 then b.CFrame=CFrame.new(0,.006,math.floor((i-1)/2)-7+(if state=="Idle" or air or special then 0 else (lt*(if state=="Run" then 4 else 2))%1)) end end
-  local a=math.rad(s.cam);local scale=math.clamp(avatarSize.Y/5,.7,2.5);local focus=V(0,(if special then 4 else 3.1+(if air then .4 else 0))*scale,0)
+  local orbitAngle=math.rad(s.cam);local scale=math.clamp(avatarSize.Y/5,.7,2.5);local focus=V(0,(if special then 4 else 3.1+(if air then .4 else 0))*scale,0)
   local aspect=math.max(.2,view.AbsoluteSize.X/math.max(1,view.AbsoluteSize.Y));local dist=math.max(if special then 17.5 else 12.6,(if special then 11 else 8)/aspect)*math.max(scale,math.clamp(avatarSize.X/4,.8,2.5))/s.zoom
   if name=="Doll Walk" then dist*=1.15 end
-  camera.CFrame=CFrame.lookAt(focus+V(math.sin(a)*dist,2.1,-math.cos(a)*dist),focus)
+  camera.CFrame=CFrame.lookAt(focus+V(math.sin(orbitAngle)*dist,2.1,-math.cos(orbitAngle)*dist),focus)
   caption.Text=string.upper(name).." · "..player.DisplayName;status.Text=r.kind.." / "..string.upper(state).." / "..phase
   if a.s.motionPlayback=="Replicated" and a.walkMotion then replicationInfo.Text=a.walkMotion.replicatedStatus or "Replicated: waiting for game animation. Missing clips use Local fallback." end
   dirty=false
