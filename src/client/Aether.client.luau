@@ -187,7 +187,7 @@ do
     local function flatten(p) return Vector3.new(p.X,0,p.Z) end
     function vb:clearCourt()
         self.auto=false;restore(tiltKey)
-        table.clear(self.corners);self.target=nil;self.side=nil;self.map=nil;self.courtSource=nil;self.courtPart=nil;self.status="Calibration cleared"
+        table.clear(self.corners);self.target=nil;self.side=nil;self.map=nil;self.courtSource=nil;self.courtPart=nil;self.courtZones=nil;self.status="Calibration cleared"
     end
     function vb:capture(index)
         if app.mode~="Game" then self.status="Calibration needs Game mode";return end
@@ -198,7 +198,7 @@ do
         if map~=nil and self.map~=nil and self.map~=map then self:clearCourt() end
         if map~=nil then self.map=map end
         self.auto=false;restore(tiltKey);self.target=nil
-        self.courtSource="Manual";self.courtPart=nil
+        self.courtSource="Manual";self.courtPart=nil;self.courtZones=nil
         self.corners[index]=flatten(root.Position)
         self.status=string.format("Corner %s saved: X %.2f Z %.2f",({"A","B","C"})[index],root.Position.X,root.Position.Z)
     end
@@ -223,6 +223,56 @@ do
         local char=player.Character
         local root=char and char:FindFirstChild("HumanoidRootPart")
         if not root or not root:IsA("BasePart") then self.status="Detection: character root unavailable";return false end
+        -- Map.Zones distinguishes playing halves from service and total volumes.
+        local mapModel=workspace:FindFirstChild("Map")
+        local zones=mapModel and mapModel:FindFirstChild("Zones")
+        if zones then
+            local halves={}
+            local duplicates=false
+            for _,part in zones:GetChildren() do
+                if part:IsA("BasePart") and part:GetAttribute("Type")=="Court" then
+                    local team=tonumber(part:GetAttribute("Team"))
+                    if team==1 or team==2 then
+                        if halves[team] then duplicates=true end
+                        halves[team]=part
+                    end
+                end
+            end
+            local first,second=halves[1],halves[2]
+            if first and second and not duplicates then
+                local delta=flatten(second.Position-first.Position)
+                if delta.Magnitude>8 then
+                    local v=delta.Unit
+                    local u=Vector3.new(v.Z,0,-v.X)
+                    local function bounds(part)
+                        local loU,hiU,loV,hiV=math.huge,-math.huge,math.huge,-math.huge
+                        for _,x in {-1,1} do for _,z in {-1,1} do
+                            local p=flatten(part.CFrame:PointToWorldSpace(Vector3.new(x*part.Size.X*.5,0,z*part.Size.Z*.5)))
+                            local pu,pv=p:Dot(u),p:Dot(v)
+                            loU=math.min(loU,pu);hiU=math.max(hiU,pu)
+                            loV=math.min(loV,pv);hiV=math.max(hiV,pv)
+                        end end
+                        return loU,hiU,loV,hiV
+                    end
+                    local a,b,c,d=bounds(first)
+                    local e,f,g,h=bounds(second)
+                    local lo,hi=math.max(a,e),math.min(b,f)
+                    if hi-lo>4 and h-c>8 then
+                        self:clearCourt()
+                        self.map=ReplicatedStorage:GetAttribute("Map")
+                        self.corners[1]=u*lo+v*c
+                        self.corners[2]=u*hi+v*c
+                        self.corners[3]=u*lo+v*h
+                        self.courtZones={first,second}
+                        self.courtSource="Zones: "..first.Name.." / "..second.Name
+                        self.status="Detected both Type= Court zones"
+                        return true
+                    end
+                end
+            end
+            self.status="Zones found, but two distinct Court teams could not be validated. Use manual calibration."
+            return false
+        end
         local best,bestScore,bestWidth,bestLength,bestU,bestV=nil,-math.huge,nil,nil,nil,nil
         local count=0
         local function cleanName(name) return string.lower(name):gsub("[^%w]","") end
@@ -311,6 +361,9 @@ do
             if map~=nil and vb.map~=nil and map~=vb.map then vb:clearCourt();vb.status="Map changed; recalibrate";return end
             if map~=nil then vb.map=map end
             if vb.courtPart and not vb.courtPart:IsDescendantOf(workspace) then vb:clearCourt();vb.status="Court removed; toggle to detect again";return end
+            if vb.courtZones and (not vb.courtZones[1]:IsDescendantOf(workspace) or not vb.courtZones[2]:IsDescendantOf(workspace)) then
+                vb:clearCourt();vb.status="Court zones removed; toggle to detect again";return
+            end
             if player:GetAttribute("Gameplay_InGame")~=true then restore(tiltKey);vb.target=nil;vb.status="Waiting for match";return end
             local a,u,v,width,length=geometry()
             if not a then vb:clearCourt();return end
@@ -319,7 +372,8 @@ do
             if not root or not root:IsA("BasePart") then restore(tiltKey);return end
             local relative=flatten(root.Position)-a
             local px,pz=relative:Dot(u),relative:Dot(v)
-            if px<-5 or px>width+5 or pz<-5 or pz>length+5 then
+            local padding=if vb.courtZones then 45 else 5
+            if px<-5 or px>width+5 or pz<-padding or pz>length+padding then
                 restore(tiltKey);vb.target=nil;vb.status="Outside calibrated court";return
             end
             local half=length*.5
@@ -336,6 +390,17 @@ do
             local margin=math.min(2,width*.2)
             lateral=math.clamp(lateral,margin,width-margin)
             local target=a+u*lateral+v*depth
+            if vb.courtZones then
+                -- Clamp the target within the actual opposite zone's local rectangle.
+                local opposite=vb.courtZones[if side==-1 then 2 else 1]
+                local localPoint=opposite.CFrame:PointToObjectSpace(target)
+                local mx=math.min(2,opposite.Size.X*.2)
+                local mz=math.min(2,opposite.Size.Z*.2)
+                target=flatten(opposite.CFrame:PointToWorldSpace(Vector3.new(
+                    math.clamp(localPoint.X,-opposite.Size.X*.5+mx,opposite.Size.X*.5-mx),
+                    0,
+                    math.clamp(localPoint.Z,-opposite.Size.Z*.5+mz,opposite.Size.Z*.5-mz))))
+            end
             local heading=target-flatten(root.Position)
             if heading.Magnitude<.01 then return end
             -- Expose both plausible coordinate conventions; neither is verified in-game.
