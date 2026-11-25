@@ -187,7 +187,7 @@ do
     local function flatten(p) return Vector3.new(p.X,0,p.Z) end
     function vb:clearCourt()
         self.auto=false;restore(tiltKey)
-        table.clear(self.corners);self.target=nil;self.side=nil;self.map=nil;self.status="Calibration cleared"
+        table.clear(self.corners);self.target=nil;self.side=nil;self.map=nil;self.courtSource=nil;self.courtPart=nil;self.status="Calibration cleared"
     end
     function vb:capture(index)
         if app.mode~="Game" then self.status="Calibration needs Game mode";return end
@@ -198,6 +198,7 @@ do
         if map~=nil and self.map~=nil and self.map~=map then self:clearCourt() end
         if map~=nil then self.map=map end
         self.auto=false;restore(tiltKey);self.target=nil
+        self.courtSource="Manual";self.courtPart=nil
         self.corners[index]=flatten(root.Position)
         self.status=string.format("Corner %s saved: X %.2f Z %.2f",({"A","B","C"})[index],root.Position.X,root.Position.Z)
     end
@@ -215,6 +216,54 @@ do
         if length<8 or math.abs(along)>width*.2 then return nil end
         return a,u,cross.Unit,width,length
     end
+    -- Identify a full, horizontal rectangular court from explicitly named
+    -- map geometry. Do not guess from an arbitrary baseplate or half-court.
+    function vb:detectCourt()
+        if app.mode~="Game" then self.status="Detection needs Game mode";return false end
+        local char=player.Character
+        local root=char and char:FindFirstChild("HumanoidRootPart")
+        if not root or not root:IsA("BasePart") then self.status="Detection: character root unavailable";return false end
+        local best,bestScore,bestWidth,bestLength,bestU,bestV=nil,-math.huge,nil,nil,nil,nil
+        local count=0
+        local function cleanName(name) return string.lower(name):gsub("[^%w]","") end
+        for _,part in workspace:GetDescendants() do
+            if not part:IsA("BasePart") or not part.Anchored then continue end
+            if math.abs(part.CFrame.UpVector:Dot(Vector3.yAxis))<.98 then continue end
+            local n=cleanName(part.Name)
+            local parentName=part.Parent and cleanName(part.Parent.Name) or ""
+            local named=n:find("court",1,true) or n:find("playarea",1,true) or n:find("playingfield",1,true)
+            local floorName=n=="floor" or n=="ground" or n=="surface" or n=="base" or n=="sand"
+            local inCourt=parentName:find("court",1,true) or parentName:find("playarea",1,true)
+            if not named and not (floorName and inCourt) then continue end
+            if n:find("half",1,true) or n:find("line",1,true) or n:find("net",1,true) or n:find("wall",1,true) or n:find("decor",1,true) or n:find("outof",1,true) then continue end
+            local width=math.min(part.Size.X,part.Size.Z)
+            local length=math.max(part.Size.X,part.Size.Z)
+            if width<12 or length<24 or length/width<1.4 or length/width>2.7 or part.Size.Y>width*.35 then continue end
+            local p=part.CFrame:PointToObjectSpace(root.Position)
+            if math.abs(p.X)>part.Size.X*.5+5 or math.abs(p.Z)>part.Size.Z*.5+5 then continue end
+            if p.Y < -part.Size.Y*.5-4 or p.Y>part.Size.Y*.5+24 then continue end
+            local x=flatten(part.CFrame.RightVector).Unit
+            local z=flatten(part.CFrame.ZVector).Unit
+            local u,v=if part.Size.X<=part.Size.Z then x else z,if part.Size.X<=part.Size.Z then z else x
+            count+=1
+            local score=(if named then 4 else 2)-math.abs(length/width-2)*3-math.abs(p.Y-part.Size.Y*.5)*.025
+            if score>bestScore then best,bestScore,bestWidth,bestLength,bestU,bestV=part,score,width,length,u,v end
+        end
+        if not best then
+            self.status="No named full court near character. Use manual A/B/C."
+            return false
+        end
+        local center=flatten(best.Position)
+        self:clearCourt()
+        self.map=ReplicatedStorage:GetAttribute("Map")
+        self.corners[1]=center-bestU*(bestWidth*.5)-bestV*(bestLength*.5)
+        self.corners[2]=self.corners[1]+bestU*bestWidth
+        self.corners[3]=self.corners[1]+bestV*bestLength
+        self.courtPart=best
+        self.courtSource="Auto: "..best.Name
+        self.status=string.format("Detected %s (%.1f x %.1f); candidates: %d",best.Name,bestWidth,bestLength,count)
+        return true
+    end
     function vb:calibrationStatus()
         local a,b,c=self.corners[1],self.corners[2],self.corners[3]
         if not (a and b and c) then return "Capture missing corners A / B / C" end
@@ -226,12 +275,15 @@ do
         local length=(ac-u*along).Magnitude
         if length<8 then return "C is too close to the A-B edge (minimum 8 studs)" end
         if math.abs(along)>width*.2 then return "C must be across the net on A's sideline, not B's" end
-        return string.format("Court ready: %.1f x %.1f studs",width,length)
+        return string.format("%s | %.1f x %.1f studs",self.courtSource or "Court ready",width,length)
     end
     function vb:toggleAuto()
         if self.auto then self.auto=false;restore(tiltKey);self.target=nil;self.status="Auto Tilt off";return end
         if not available() then self.status=self:availabilityStatus();return end
-        if not geometry() then self.status=self:calibrationStatus();return end
+        if not geometry() then
+            if not self:detectCourt() then return end
+            if not geometry() then self.status=self:calibrationStatus();return end
+        end
         self.tiltWrites=0;self.tiltOverrides=0;self.requestedTilt=nil
         self.auto=true;self.status="Auto Tilt beta enabled"
     end
@@ -258,6 +310,7 @@ do
             local map=ReplicatedStorage:GetAttribute("Map")
             if map~=nil and vb.map~=nil and map~=vb.map then vb:clearCourt();vb.status="Map changed; recalibrate";return end
             if map~=nil then vb.map=map end
+            if vb.courtPart and not vb.courtPart:IsDescendantOf(workspace) then vb:clearCourt();vb.status="Court removed; toggle to detect again";return end
             if player:GetAttribute("Gameplay_InGame")~=true then restore(tiltKey);vb.target=nil;vb.status="Waiting for match";return end
             local a,u,v,width,length=geometry()
             if not a then vb:clearCourt();return end
