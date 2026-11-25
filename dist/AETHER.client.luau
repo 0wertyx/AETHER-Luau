@@ -4576,6 +4576,10 @@ function E.render(a,tab,ui)
   ui:watch(function() airDebug.Text="Last airborne sample: "..(a.airDiagnostic or "No airborne state recorded") end)
   local airLoop=ui:note("",52)
   ui:watch(function() airLoop.Text=string.format("Physics ticks: %d | velocity writes: %d | strength: %d%%",a.airTicks or 0,a.airWrites or 0,a.s.airControlStrength) end)
+  local airDetection=ui:note("",64)
+  ui:watch(function() airDetection.Text=string.format("Air frames: %d | menu blocked: %d | peak vertical speed: %.1f",a.airObserved or 0,a.airBlocked or 0,a.airPeakVertical or 0) end)
+  local airObserved=ui:note("",64)
+  ui:watch(function() airObserved.Text="Last detection: "..(a.airLastDetection or "No jump detected") end)
   local airReason=ui:note("",64)
   ui:watch(function() airReason.Text="Last active check: "..(a.airLastActive or "No physics callback recorded") end)
   ui:title("CAMERA")
@@ -7803,25 +7807,52 @@ end)
 local function stepAirControl(dt)
     app.airProbe = nil
     if app.mode ~= "Game" then return "Simulator mode" end
-    if not app.s.airControl then return "Disabled in settings" end
-    if app.ui.opened or app.editingHUD or UserInputService:GetFocusedTextBox() then return "Menu, HUD editor or text input open" end
     if not character or not humanoid or humanoid.Parent ~= character then return "Character or humanoid missing" end
     if humanoid.Health <= 0 or humanoid.Sit or humanoid.PlatformStand then return "Dead, seated or PlatformStand" end
     local state = humanoid:GetState()
-    if state ~= Enum.HumanoidStateType.Jumping and state ~= Enum.HumanoidStateType.Freefall then
-        if humanoid.FloorMaterial == Enum.Material.Air then
-            app.airDiagnostic = "Skipped: humanoid state "..state.Name
-        end
-        return "State: "..state.Name.." | floor: "..humanoid.FloorMaterial.Name
-    end
+    local floor = humanoid.FloorMaterial
     local root = character:FindFirstChild("HumanoidRootPart")
     if not root or not root:IsA("BasePart") or root.Anchored then
         app.airDiagnostic = "Skipped: root missing or anchored"
         return app.airDiagnostic
     end
+    local v = root.AssemblyLinearVelocity
+    app.airPeakVertical = math.max(app.airPeakVertical or 0,math.abs(v.Y))
+    local airborne = state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall
+    local detection = state.Name
+    -- Some character controllers report Running until after leaving the floor.
+    -- Accept the floor sensor only in ordinary locomotion states.
+    if not airborne and (state == Enum.HumanoidStateType.Running or state == Enum.HumanoidStateType.Landed) then
+        if floor == Enum.Material.Air then
+            airborne = true
+            detection = "FloorMaterial Air"
+        elseif math.abs(v.Y)>2 then
+            local params = RaycastParams.new()
+            params.FilterType = Enum.RaycastFilterType.Exclude
+            params.FilterDescendantsInstances = {character}
+            params.RespectCanCollide = true
+            local standingHeight = humanoid.HipHeight+root.Size.Y/2
+            if humanoid.RigType == Enum.HumanoidRigType.R6 then
+                local leg = character:FindFirstChild("Left Leg")
+                if leg and leg:IsA("BasePart") then standingHeight += leg.Size.Y end
+            end
+            local ground = workspace:Raycast(root.Position,Vector3.new(0,-math.max(standingHeight+.65,1),0),params)
+            if not ground then airborne=true;detection="Ground clearance" end
+        end
+    end
+    if not airborne then
+        return "State: "..state.Name.." | floor: "..floor.Name
+    end
+    app.airObserved = (app.airObserved or 0)+1
+    app.airLastDetection = string.format("%s | state %s | floor %s | Y %.1f",detection,state.Name,floor.Name,v.Y)
+    if not app.s.airControl then app.airDiagnostic="Skipped: disabled in settings";return app.airDiagnostic end
+    if app.ui.opened or app.editingHUD or UserInputService:GetFocusedTextBox() then
+        app.airBlocked = (app.airBlocked or 0)+1
+        app.airDiagnostic = "Skipped: menu, HUD editor or text input open"
+        return app.airDiagnostic
+    end
     local input = humanoid.MoveDirection
     local direction = Vector3.new(input.X,0,input.Z)
-    local v = root.AssemblyLinearVelocity
     local horizontal = Vector3.new(v.X,0,v.Z)
     local cap = math.max(0,humanoid.WalkSpeed)
     if direction.Magnitude < .01 then app.airDiagnostic = "Skipped: MoveDirection is zero";return app.airDiagnostic end
