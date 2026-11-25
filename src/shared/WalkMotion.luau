@@ -107,13 +107,14 @@ function W:step(character,s,dt,preview)
  local ph=self.phase;local wave=math.sin(ph);local cross=math.cos(ph)
  local weight=self.blend
  local j=self.motors
- self.signatureActive=false;self.airProgress=0
+ self.signatureActive=false;self.airProgress=0;self.previewState=state
  if fullPreview and hum.RigType==Enum.HumanoidRigType.R6 and not swimming and not climbing then
-  if airborne then self.airTime=(if self.wasAir then self.airTime or 0 else 0)+dt else self.airTime=0 end
+  if airborne then self.airTime=(if self.wasAir and self.lastAirState==state then self.airTime or 0 else 0)+dt else self.airTime=0 end
+  self.lastAirState=state
   self.wasAir=airborne
   -- Character tab repeats its preview jump; the simulator plays one turn.
   local airProgress=if airborne then (if virtual.loopAir then (self.airTime/.82)%1 else math.clamp(self.airTime/.82,0,1)) else 0
-  local signature=Signature.get(style,ph/(2*math.pi),moving,airborne,airProgress)
+  local signature=Signature.get(style,ph/(2*math.pi),moving,airborne,airProgress,jumping)
   if signature then
    local strength=math.clamp((virtual.originStrength or 100)/100,0,1)
    local function apply(m,v)
@@ -125,21 +126,44 @@ function W:step(character,s,dt,preview)
     m.Transform=basis:Inverse()*body*basis
    end
    for name,v in signature do apply(j[name],v) end
-   -- Plant the lowest foot at neutral floor height in grounded cycles.
-   -- Adjust only the visual root transform, never HumanoidRootPart.
-   if not airborne and j.Root and j.RightHip and j.LeftHip then
-    local function bottom(m,torso,animated)
-     local cf=torso*m.C0*(if animated then m.Transform else CFrame.identity)*m.C1:Inverse()
+   -- Root-local foot contact for the anchored viewport rig.
+   local root=j.Root
+   if root and j.RightHip and j.LeftHip and root.Part1 then
+    local function legCF(m,torso,animated)
+     return torso*m.C0*(if animated then m.Transform else CFrame.identity)*m.C1:Inverse()
+    end
+    local function bottom(m,cf)
      local sz=m.Part1.Size/2
      return cf.Position.Y-math.abs(cf.RightVector.Y)*sz.X-math.abs(cf.UpVector.Y)*sz.Y-math.abs(cf.LookVector.Y)*sz.Z
     end
-    local root=j.Root
     local neutral=root.C0*root.C1:Inverse()
     local posed=root.C0*root.Transform*root.C1:Inverse()
-    local floor=math.min(bottom(j.RightHip,neutral,false),bottom(j.LeftHip,neutral,false))
-    local low=math.min(bottom(j.RightHip,posed,true),bottom(j.LeftHip,posed,true))
-    local hover=if style=="Godly Aura" then .18 elseif style=="Harpy Glide" then .035 elseif style=="Skater" then .28 else 0
-    local dy=math.clamp(floor-low+hover*weight,-.85,.85)
+    local r,l=j.RightHip,j.LeftHip
+    local board=style=="Skater" and not falling and virtual.props~=false
+    local rlow=bottom(r,legCF(r,posed,true))
+    local llow=bottom(l,legCF(l,posed,true))
+    if board or style=="Harpy Glide" and not airborne then
+     local low=math.min(rlow,llow)
+     for _,m in {r,l} do
+      local d=low-bottom(m,legCF(m,posed,true))
+      local localDelta=posed:VectorToObjectSpace(Vector3.new(0,d,0))
+      m.Transform=m.C0.Rotation:Inverse()*CFrame.new(localDelta)*m.C0.Rotation*m.Transform
+     end
+     rlow=bottom(r,legCF(r,posed,true));llow=bottom(l,legCF(l,posed,true))
+    end
+    local floor=math.min(bottom(r,legCF(r,neutral,false)),bottom(l,legCF(l,neutral,false)))
+    local low=math.min(rlow,llow)
+    local hover=if style=="Godly Aura" then .16+.025*math.sin(ph*.7) elseif board then .40 else 0
+    local dy=0
+    if not airborne then
+     dy=floor-low+hover*weight
+    elseif virtual.loopAir then
+     local h=if jumping then 1.7*math.sin(math.pi*airProgress) else 1.7*(1-airProgress*airProgress)
+     dy=floor-low+h+hover*weight
+     if style=="Harpy Glide" and jumping then dy=1.8*math.sin(math.pi*airProgress)+.85 end
+    else
+     dy=hover*weight
+    end
     root.Transform=root.C0.Rotation:Inverse()*CFrame.new(0,dy,0)*root.C0.Rotation*root.Transform
    end
    self.signatureActive=true;self.airProgress=airProgress
@@ -220,6 +244,7 @@ function W:step(character,s,dt,preview)
   -- Full-body state-specific choreography; these are original preview poses.
   local st=pack or {}
   local flair=math.clamp((st.spread or .12)*.32,0,.2)
+  local airRest=st.rest or 0;local airLean=st.lean or 0;local airStride=st.stride or .20;local airRoll=st.roll or .04
   local function ang(m,x,y,z) add(m,CFrame.Angles(x*weight,y*weight,z*weight)) end
   if swimming then
    local stroke=math.sin(ph*.8)
@@ -241,10 +266,10 @@ function W:step(character,s,dt,preview)
    ang(j.Neck,-.12,0,0)
   else
    local float=st.hover or 0
-   local tuck=if jumping then .29 else .10
-   add(j.Root,CFrame.new(0,(if jumping then .25 else .12)*weight+float*.5*weight,0)*CFrame.Angles((if jumping then -.12 else .10)*weight,0,.035*wave*weight))
-   ang(j.RightShoulder,if jumping then .48 else .16,0,-.29-flair)
-   ang(j.LeftShoulder,if jumping then .38 else .16,0,.29+flair)
+   local tuck=(if jumping then .18 else .06)+airStride*.45
+   add(j.Root,CFrame.new(0,(if jumping then .25 else .12)*weight+float*.5*weight,0)*CFrame.Angles(((if jumping then -.12 else .10)+airLean)*weight,0,(.035+airRoll*.4)*wave*weight))
+   ang(j.RightShoulder,(if jumping then .48 else .16)+airRest,0,-.29-flair)
+   ang(j.LeftShoulder,(if jumping then .38 else .16)+airRest,0,.29+flair)
    ang(j.RightElbow,-.24,0,0);ang(j.LeftElbow,-.24,0,0)
    ang(j.RightHip,tuck+.10,0,0);ang(j.LeftHip,tuck-.08,0,0)
    ang(j.RightKnee,-tuck-.12,0,0);ang(j.LeftKnee,-tuck,0,0)
