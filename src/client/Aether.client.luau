@@ -637,9 +637,36 @@ scope:add(function() RunService:UnbindFromRenderStep(pointerRenderBinding) end)
 scope:on(RunService.PreAnimation, function()
     if not app.stopping and gui.Parent then walkMotion:restoreLive();peers:restore() end
 end)
+-- Optional movement mechanic for an experience whose owner explicitly enables it.
+-- Does not create forces, alter gravity, increase WalkSpeed or change vertical velocity.
+local function stepAirControl(dt)
+    if app.mode ~= "Game" or workspace:GetAttribute("AETHERAllowAirControl") ~= true or not app.s.airControl then return end
+    if app.ui.opened or UserInputService:GetFocusedTextBox() then return end
+    if not character or not humanoid or humanoid.Health <= 0 or humanoid.Sit or humanoid.PlatformStand then return end
+    local state = humanoid:GetState()
+    if state ~= Enum.HumanoidStateType.Jumping and state ~= Enum.HumanoidStateType.Freefall then return end
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if not root or not root:IsA("BasePart") or root.Anchored then return end
+    local input = humanoid.MoveDirection
+    local direction = Vector3.new(input.X,0,input.Z)
+    if direction.Magnitude < .01 then return end
+    if direction.Magnitude > 1 then direction = direction.Unit end
+    local v = root.AssemblyLinearVelocity
+    local horizontal = Vector3.new(v.X,0,v.Z)
+    local cap = math.max(0,humanoid.WalkSpeed)
+    -- Leave stronger impulses/knockback untouched.
+    if cap <= 0 or horizontal.Magnitude > cap + .1 then return end
+    local alpha = 1-math.exp(-math.clamp(dt,0,.05)*24*app.s.airControlStrength/100)
+    if alpha <= 0 then return end
+    local nextVelocity = horizontal:Lerp(direction*cap,alpha)
+    if nextVelocity.Magnitude > cap then nextVelocity = nextVelocity.Unit*cap end
+    root.AssemblyLinearVelocity = Vector3.new(nextVelocity.X,v.Y,nextVelocity.Z)
+end
+
 -- Motion Studio poses follow the real humanoid state, after Animator evaluates.
 scope:on(RunService.PreSimulation, function(dt)
     if app.stopping or not gui.Parent then return end
+    stepAirControl(dt)
     local characterToAnimate = if app.mode == "Game" then character else nil
     local ok, err = pcall(walkMotion.step, walkMotion, characterToAnimate, app.s, dt)
     if not ok and not app.walkError then

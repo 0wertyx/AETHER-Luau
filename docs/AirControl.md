@@ -1,0 +1,2 @@
+# Air Control
+AETHER Simulator supports air steering using WASD or arrows. Interaction > Air Control controls steering and response. In a Roblox experience you own, set a boolean Workspace attribute `AETHERAllowAirControl` to true in Studio, then publish the place. The live mechanic is otherwise inactive. It preserves vertical velocity, caps horizontal steering at Humanoid.WalkSpeed, and leaves stronger impulses alone. Use the normal Roblox movement controls. Studio multiplayer and collision testing are still required.

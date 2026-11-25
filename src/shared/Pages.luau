@@ -218,7 +218,12 @@ local function avatarPreview(ui,a,worldMode)
     local right=forward:Cross(Vector3.yAxis)
     local dir=forward*z+right*x
     if dir.Magnitude>1 then dir=dir.Unit end
-    velocity=velocity:Lerp(dir*16,1-math.exp(-dt*14))
+    if grounded then
+     velocity=velocity:Lerp(dir*16,1-math.exp(-dt*14))
+    elseif settings.airControl and dir.Magnitude>.01 then
+     local response=1-math.exp(-dt*24*settings.airControlStrength/100)
+     velocity=velocity:Lerp(dir*16,response)
+    end
     local pos=rootPart.Position
     local delta=velocity*dt
     sceneParams.FilterDescendantsInstances=if stage then {stage} else {}
@@ -742,6 +747,10 @@ function E.render(a,tab,ui)
    ui.page:add(function() if a.peers.statusLabel==peerStatus then a.peers.statusLabel=nil end end)
   end
   ui:watch(function() peerStatus.Text=if a.peers then a.peers.status else "Peer relay unavailable" end)
+  ui:title("AIR CONTROL")
+  ui:control("airControl");ui:control("airControlStrength")
+  local airStatus=ui:note("",44)
+  ui:watch(function() airStatus.Text=if workspace:GetAttribute("AETHERAllowAirControl")==true then "Enabled by the place owner. Steer horizontally in air using normal movement controls." else "Available in Simulator. Live movement requires explicit place-owner permission." end)
   ui:title("CAMERA")
   preset(ui,a,"Camera");ui:group("Camera")
   ui:title("CUSTOM LOCK / KEYBIND")
@@ -769,7 +778,7 @@ function E.render(a,tab,ui)
   ui:note("Practice display: tracks your jump and horizontal camera rotation. No automatic jumps or camera movement.",42)
   for _,k in {"wallhopHelper","wallhopX","wallhopY","wallhopScale","wallhopOpacity"} do ui:control(k) end
  elseif tab=="Fonts" then local text=ui:note(a.s.sample,62);text:SetAttribute("AETHERKeepFontColor",true);text.TextXAlignment=Enum.TextXAlignment.Center;local gradient=U.gradient(text,Color3.new(),Color3.new(),10);local glow=U.stroke(text,U.hex(a.s.fontB),.8);glow.ApplyStrokeMode=Enum.ApplyStrokeMode.Contextual;ui:watch(function() local s=a.s;text.Text=s.sample;text.FontFace=U.font(s);text.TextSize=s.fontSize*.23;text.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA);text.TextStrokeTransparency=1-s.fontOutline/100;gradient.Enabled=s.fontGradient;gradient.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB));glow.Color=U.hex(s.fontB);glow.Transparency=1-s.fontGlow*.008;glow.Thickness=1+s.fontGlow*.023 end);local query=ui:box("Search native typefaces",a.fontQuery or "",32,function(q) if q~=(a.fontQuery or "") then a.fontQuery=q;ui:open("Fonts") end end);local fonts={};for _,n in S.fonts do if n:lower():find((a.fontQuery or ""):lower(),1,true) then table.insert(fonts,n) end end;ui:chips(fonts,function(n) a:patch({font=n,fontAsset=""}) end,3,function() return a.s.font end);ui:group(tab,{font=true});preset(ui,a,tab)
- elseif tab=="Simulator" then preview(ui,a);ui:title("WORLD PREVIEW");avatarPreview(ui,a,true);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
+ elseif tab=="Simulator" then preview(ui,a);ui:title("WORLD PREVIEW");ui:control("airControl");ui:control("airControlStrength");avatarPreview(ui,a,true);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
  elseif tab=="Scripts" then scripts(ui,a)
  elseif tab=="Profiles" then configs(ui,a)
  elseif tab=="List" then
