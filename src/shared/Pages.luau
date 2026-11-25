@@ -792,6 +792,19 @@ function E.render(a,tab,ui)
     trajectoryElapsed+=dt
     if trajectoryElapsed>=.25 then trajectoryElapsed=0;if ui.opened then refreshTrajectory() end end
    end)
+   ui:title("JINKO STYLE / LOCAL PREVIEW")
+   ui:note("Uses the game's local style observer, including its animation and special refresh. No account slot or server multiplier is changed. Turn off to restore the original selection.",84)
+   ui:chips({"Toggle Jinko preview"},function() vb:toggleStyle();ui:sync() end,1,function() return if vb.styleEnabled then "Toggle Jinko preview" else "" end)
+   local styleStatus=ui:note("",72)
+   local function refreshStyle()
+    styleStatus.Text=(if vb.styleEnabled then "ON | " else "OFF | ")..vb.styleStatus
+   end
+   ui:watch(refreshStyle)
+   local styleElapsed=0
+   ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
+    styleElapsed+=dt
+    if styleElapsed>=.25 then styleElapsed=0;if ui.opened then refreshStyle() end end
+   end)
    ui:title("CURVE SPECIAL / EXPERIMENT")
    ui:note("Attempts a local Jinko special selection only. The server may ignore it. Stops on match exit or style change and restores the previous local special where unchanged.",84)
    ui:chips({"Toggle local Curve test"},function() vb:toggleCurve();ui:sync() end,1,function() return if vb.curveEnabled then "Toggle local Curve test" else "" end)

@@ -142,6 +142,7 @@ do
     end
     function vb:toggleCurve()
         if self.curveEnabled then stopCurve();return end
+        if self.styleEnabled then self.curveStatus="Turn off local style preview first";return end
         if app.mode~="Game" or player:GetAttribute("Gameplay_InGame")~=true then
             self.curveStatus="Enter a match in Game mode first";return
         end
@@ -169,6 +170,60 @@ do
             self.curveStatus="Local Jester selected | server response unverified"
         end)
         if not ok then stopCurve("Test failed: "..tostring(err)) end
+    end
+    vb.styleEnabled=false
+    vb.styleStatus="Off | local style preview"
+    local styleController,styleOriginal,styleApplied,styleSlot,styleOwned,styleStarted
+    local function stopStyle(reason)
+        local c,old,applied=styleController,styleOriginal,styleApplied
+        vb.styleEnabled=false
+        styleController=nil;styleOriginal=nil;styleApplied=nil
+        styleSlot=nil;styleOwned=nil;styleStarted=nil
+        if c and applied then
+            local ok,err=pcall(function()
+                if c.ForcedStyle()==applied then
+                    local authoritative=player:GetAttribute("Gameplay_ForcedStyle")
+                    c.ForcedStyle(if authoritative~=nil then authoritative else old)
+                end
+            end)
+            if not ok then
+                vb.styleStatus="Restore failed: "..tostring(err)
+                return
+            end
+        end
+        vb.styleStatus=reason or "Off | local style restored"
+    end
+    function vb:toggleStyle()
+        if self.styleEnabled then stopStyle();return end
+        if app.mode~="Game" then self.styleStatus="Switch to Game mode";return end
+        if self.curveEnabled then stopCurve() end
+        local ok,err=pcall(function()
+            local packages=ReplicatedStorage:FindFirstChild("Packages")
+            local knit=packages and packages:FindFirstChild("Knit")
+            local content=ReplicatedStorage:FindFirstChild("Content")
+            local styles=content and content:FindFirstChild("Style")
+            assert(knit and styles and styles:IsA("ModuleScript"),"Style registry unavailable")
+            local registry=require(styles)
+            local c=require(knit).GetController("StyleController")
+            assert(type(c)=="table","StyleController unavailable")
+            local desired=registry:Get("Jester")
+            assert(type(desired)=="table" and type(desired.Metadata)=="table","Jester not found in registry")
+            local current=c.Style()
+            if current==desired or (type(current)=="table" and current.Id=="Jester") then
+                self.styleStatus="Jinko already selected locally";return
+            end
+            local original=c.ForcedStyle()
+            assert(original==nil and player:GetAttribute("Gameplay_ForcedStyle")==nil,"Game has a forced style; preview unavailable")
+            local slot=c.CurrentStyleSlot()
+            local owned=c.Styles()[slot or 1]
+            styleController,styleOriginal,styleApplied=c,original,"Jester"
+            styleSlot,styleOwned,styleStarted=slot,owned,os.clock()
+            c.ForcedStyle(styleApplied)
+            assert(c.ForcedStyle()==styleApplied,"Local preview selection not confirmed")
+            self.styleEnabled=true
+            self.styleStatus="Waiting for local style observer"
+        end)
+        if not ok then stopStyle("Preview failed: "..tostring(err)) end
     end
     local attrs={
         BlockPower=true,BumpPower=true,DashPower=true,DiveSpeed=true,
@@ -284,6 +339,7 @@ do
     function vb:reset()
         self.auto=false;detachTilt()
         stopCurve()
+        stopStyle()
         table.clear(self.multiplierRequests)
         for key in table.clone(self.originals) do restore(key) end
         self.target=nil
@@ -451,11 +507,30 @@ do
         elapsed=0
         if app.stopping or not gui.Parent then
             if vb.curveEnabled then stopCurve() end
+            if vb.styleEnabled then stopStyle() end
             return
         end
         if app.mode~="Game" then
-            if next(vb.originals) or vb.auto or vb.curveEnabled then vb:reset() end
+            if next(vb.originals) or vb.auto or vb.curveEnabled or vb.styleEnabled then vb:reset() end
             return
+        end
+        if vb.styleEnabled then
+            local ok,err=pcall(function()
+                local c=styleController
+                local slot=c.CurrentStyleSlot()
+                if player:GetAttribute("Gameplay_ForcedStyle")~=nil or c.ForcedStyle()~=styleApplied
+                    or slot~=styleSlot or c.Styles()[slot or 1]~=styleOwned then
+                    stopStyle("Off | game style or slot changed")
+                    return
+                end
+                local current=c.Style()
+                if type(current)=="table" and current.Id==styleApplied then
+                    vb.styleStatus="Local Jinko active | server ownership unchanged"
+                elseif os.clock()-styleStarted>2 then
+                    stopStyle("Local style observer did not confirm Jinko")
+                end
+            end)
+            if not ok then stopStyle("Preview error: "..tostring(err)) end
         end
         if vb.curveEnabled then
             if player:GetAttribute("Gameplay_InGame")~=true then
