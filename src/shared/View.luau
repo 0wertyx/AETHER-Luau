@@ -88,7 +88,8 @@ function V:cursorStep(s)
  local image=s.cursorShape=="Image"
  local camera=workspace.CurrentCamera
  local thirdPerson=camera and (camera.CFrame.Position-camera.Focus.Position).Magnitude>1.1
- local locked=thirdPerson and Input.MouseBehavior==Enum.MouseBehavior.LockCenter and Input.MouseEnabled and not Gui.MenuIsOpen and not self.menuOpen and not Input:GetFocusedTextBox() and Input:GetLastInputType()~=Enum.UserInputType.Touch
+ local ownsLock=self.mouse~=nil and self.lockHum~=nil
+ local locked=thirdPerson and (ownsLock or (not s.lock and self:nativeLockAvailable())) and Input.MouseBehavior==Enum.MouseBehavior.LockCenter and Input.MouseEnabled and not Gui.MenuIsOpen and not self.menuOpen and not Input:GetFocusedTextBox() and Input:GetLastInputType()~=Enum.UserInputType.Touch
  self.shiftReticleActive=locked==true
  local show=s.cursor and not locked and Input.MouseEnabled and not Gui.MenuIsOpen
   and (not image or s.image~="") and Input:GetLastInputType()~=Enum.UserInputType.Touch
@@ -166,11 +167,13 @@ function V:step(s,hum,menu,dt,t)
  local nativeOwnsFollow=native and s.cameraMode=="Follow"
  local requested=s.lock and s.cameraMode=="Follow" and not native
  local enabled=(s.camera or requested) and hrp and hum.Health>0 and camera and not nativeOwnsFollow
- self.lockOwner=if nativeOwnsFollow then "Roblox" elseif requested then "AETHER" else "None"
+ self.lockOwner=if s.lock and nativeOwnsFollow then "Waiting for Roblox Shift Lock off" elseif nativeOwnsFollow then "Roblox" elseif requested then "AETHER" else "None"
  if self.cam and (not enabled or self.cam~=camera or self.hum~=hum) then self:releaseCamera(native) end
  if enabled then
   if not self.cam then self.cam=camera;self.before={fov=camera.FieldOfView,mode=self.player.CameraMode,kind=camera.CameraType,subject=camera.CameraSubject,cf=camera.CFrame,focus=camera.Focus};self.hum=hum;self.offset=hum.CameraOffset end
-  local lock=requested and not menu and not Gui.MenuIsOpen and Input:GetFocusedTextBox()==nil and Input.MouseEnabled and Input:GetLastInputType()~=Enum.UserInputType.Touch
+  local thirdPerson=(camera.CFrame.Position-camera.Focus.Position).Magnitude>1.1
+  local lock=requested and thirdPerson and not hum.Sit and not menu and not Gui.MenuIsOpen and Input:GetFocusedTextBox()==nil and Input.MouseEnabled and Input:GetLastInputType()~=Enum.UserInputType.Touch
+  -- Yield to a game-owned centered mouse rather than acquiring another lock.
   if lock and not self.mouse and Input.MouseBehavior==Enum.MouseBehavior.LockCenter then lock=false end
   local first=s.cameraMode=="First Person" and not menu;local mode=if first then Enum.CameraMode.LockFirstPerson else Enum.CameraMode.Classic;if self.player.CameraMode~=mode then self.player.CameraMode=mode end
   local k=if s.reduce or s.follow==0 then 1 else 1-math.exp(-dt*1000/s.follow)
