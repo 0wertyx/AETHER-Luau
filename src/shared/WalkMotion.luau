@@ -768,11 +768,12 @@ function W:applyAirTilt(character,direction,dt,degrees,preview)
  local parent=part0(joint)
  if not parent then return end
  local target=Vector2.zero
- if direction and direction.Magnitude>.01 and degrees>0 then
+ if direction and direction.Magnitude>.01 and type(degrees)=="number" and degrees==degrees and math.abs(degrees)<math.huge and degrees~=0 then
   local localDir=parent.CFrame:VectorToObjectSpace(direction)
   local planar=Vector2.new(localDir.X,localDir.Z)
   if planar.Magnitude>1 then planar=planar.Unit end
-  local angle=math.rad(math.clamp(degrees,0,65))
+  -- Static orientation repeats every full turn; reduce before creating vectors.
+  local angle=math.rad(math.fmod(degrees,360))
   target=Vector2.new(planar.Y*angle,-planar.X*angle)
  end
  local current=self.airTiltAngles or Vector2.zero
