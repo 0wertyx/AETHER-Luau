@@ -18,6 +18,7 @@ local S = module("Schema")
 local Hud = module("Hud")
 local Avatar = module("Avatar")
 local WalkMotion = module("WalkMotion")
+local PreviewProps = module("PreviewProps")
 local World = module("World")
 local View = module("View")
 local Controls = module("Controls")
@@ -285,6 +286,7 @@ end
 local hud = Hud.new(scope, overlay, false, function(tab) app.ui:open(tab) end,nil,function(key) app:set(key,false) end)
 local avatar = Avatar.new(workspace, false)
 local walkMotion = WalkMotion.new()
+local motionProps = PreviewProps.new(workspace, true)
 local world = World.new()
 local view = View.new(player, pointer)
 app.view = view
@@ -473,6 +475,7 @@ scope:on(player.CharacterAdded, bind)
 scope:on(player.CharacterRemoving, function(char)
     if character == char then character, humanoid = nil, nil end
     avatar:clear()
+    motionProps:clear()
 end)
 if player.Character then bind(player.Character) end
 
@@ -610,6 +613,23 @@ scope:on(RunService.PreSimulation, function(dt)
     elseif ok then app.walkError = false end
 end)
 
+-- Props follow the already evaluated local pose without modifying character parts.
+scope:on(RunService.RenderStepped, function()
+    if app.stopping or not gui.Parent then motionProps:clear();return end
+    local config = walkMotion.liveConfig
+    local active = app.mode == "Game" and character and humanoid and humanoid.Health > 0
+        and app.s.walkAnimation and not app.s.reduce and walkMotion.liveStyle == app.s.walkStyle
+        and config and config.props and walkMotion.liveSettings == app.s
+    local ok, err = pcall(function()
+        if active then motionProps:update(character, config.style, walkMotion.liveTime * 4, humanoid:GetState())
+        else motionProps:clear() end
+    end)
+    if not ok then
+        motionProps:clear()
+        if not app.motionPropError then app.motionPropError = true;warn("AETHER motion props:", err) end
+    else app.motionPropError = false end
+end)
+
 local elapsed = 0
 scope:on(RunService.RenderStepped, function(dt)
     if app.stopping then return end
@@ -637,5 +657,6 @@ end)
 scope:add(function() app:stopCue() end)
 scope:add(function() avatar:clear() end)
 scope:add(function() walkMotion:destroy() end)
+scope:add(function() motionProps:clear() end)
 scope:add(function() world:clear() end)
 scope:add(function() view:destroy() end)
