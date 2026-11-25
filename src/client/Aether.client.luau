@@ -482,15 +482,17 @@ if player.Character then bind(player.Character) end
 scope:on(UserInputService.InputBegan, function(input, processed)
     if app.stopping or processed or UserInputService:GetFocusedTextBox() then return end
     if app.editingHUD then if input.KeyCode==Enum.KeyCode.F8 then app:editHUD(false) end;return end
-    if input.KeyCode == Enum.KeyCode.F8 or (input.KeyCode == Enum.KeyCode.RightShift and not view:nativeLockAvailable()) then
+    if input.KeyCode == Enum.KeyCode.F8 then
         ui:show(not ui.opened)
-    elseif input.KeyCode == Enum.KeyCode.LeftAlt then
-        if view:nativeLockAvailable() then
-            if app.s.lock then app:set("lock",false) end
-            ui:message("Roblox Shift-Lock has priority. Turn it off to use AETHER.")
-            return
+    elseif input.KeyCode == Enum.KeyCode.LeftAlt and app.mode=="Game" and not ui.opened and not game:GetService("GuiService").MenuIsOpen then
+        local enable=not app.s.lock
+        if enable then
+            app:patch({lock=true,cameraMode="Follow"})
+            if view:nativeLockAvailable() then ui:message("Alt Lock requested. Turn Roblox Settings > Shift Lock Switch OFF.") end
+        else
+            app:set("lock",false)
+            view:releaseLock(view:nativeLockAvailable())
         end
-        app:set("lock", not app.s.lock)
     end
 end)
 
