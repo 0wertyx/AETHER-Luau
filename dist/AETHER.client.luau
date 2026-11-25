@@ -5698,6 +5698,9 @@ end
 local function draggingCamera()
  return Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) or Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton3)
 end
+local function anyMouseHeld()
+ return Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or draggingCamera()
+end
 function V:releaseLock(yieldNative)
  local owned=self.mouse~=nil or self.lockHum~=nil
  self.mouse=nil
@@ -5708,7 +5711,7 @@ function V:releaseLock(yieldNative)
  if not owned then return end
  self.shiftReticleActive=false
  self.motionTrail:hide()
- if yieldNative then self.releaseFrames=nil;return end
+ if yieldNative then self.releaseFrames=nil;self.releaseWaitForButtons=nil;return end
  -- Never restore a stale LockCurrentPosition captured during a mouse drag.
  -- Respect a real held camera button; release our own centered capture only.
  local behavior=Input.MouseBehavior
@@ -5720,14 +5723,25 @@ function V:releaseLock(yieldNative)
  -- A bounded post-camera handoff prevents the old capture from surviving
  -- the frame in which our lock was released. No synthetic button events.
  self.releaseFrames=2
+ self.releaseWaitForButtons=anyMouseHeld()
+ -- Hide both cursor layers immediately, including the frame before RenderStepped.
+ self:hideCapturedCursor()
 end
 function V:finishLockRelease()
  if not self.releaseFrames then return end
- if self.mouse or self:nativeLockAvailable() then self.releaseFrames=nil;return end
+ if self.mouse or self:nativeLockAvailable() then self.releaseFrames=nil;self.releaseWaitForButtons=nil;return end
  local camera=workspace.CurrentCamera
- if not camera or camera.CameraType~=Enum.CameraType.Custom or self.player.CameraMode==Enum.CameraMode.LockFirstPerson or (camera.CFrame.Position-camera.Focus.Position).Magnitude<=1.1 or draggingCamera() then
-  self.releaseFrames=nil;return
+ if not camera or camera.CameraType~=Enum.CameraType.Custom or self.player.CameraMode==Enum.CameraMode.LockFirstPerson or (camera.CFrame.Position-camera.Focus.Position).Magnitude<=1.1 then
+  self.releaseFrames=nil;self.releaseWaitForButtons=nil;return
  end
+ -- A held camera button is not a completed handoff. Keep the pending release
+ -- until the actual button state is up; do not simulate mouse-up or fight a drag.
+ if draggingCamera() or (self.releaseWaitForButtons and anyMouseHeld()) then
+  self.releaseWaitForButtons=true
+  self.releaseFrames=2
+  return
+ end
+ self.releaseWaitForButtons=nil
  if Input.MouseBehavior~=Enum.MouseBehavior.Default then Input.MouseBehavior=Enum.MouseBehavior.Default end
  self.releaseFrames-=1
  if self.releaseFrames<=0 then self.releaseFrames=nil end
@@ -5762,6 +5776,13 @@ function V:preview(host,s)
   host.Size=UDim2.fromOffset(size,size)
  end
 end
+function V:hideCapturedCursor()
+ self.pointer.Visible=false
+ self.hotspotDebug.Visible=false
+ self.motionTrail:hide()
+ if self.icon==nil then self.icon=Input.MouseIconEnabled end
+ Input.MouseIconEnabled=false
+end
 function V:restoreCursor()
  if self.pointer and self.pointer.Parent then self.pointer.Visible=false end
  self.motionTrail:hide()
@@ -5786,18 +5807,15 @@ function V:cursorStep(s)
  local ownsLock=self.mouse~=nil and self.lockHum~=nil
  local locked=thirdPerson and ownsLock and Input.MouseBehavior==Enum.MouseBehavior.LockCenter and Input.MouseEnabled and not Gui.MenuIsOpen and not self.menuOpen and not Input:GetFocusedTextBox() and Input:GetLastInputType()~=Enum.UserInputType.Touch
  self.shiftReticleActive=locked==true
- local show=s.cursor and not locked and Input.MouseEnabled and not Gui.MenuIsOpen
-  and (not image or s.image~="") and Input:GetLastInputType()~=Enum.UserInputType.Touch
- if locked then
-  self.pointer.Visible=false
-  self.hotspotDebug.Visible=false
-  self.motionTrail:hide()
-  if s.cross then
-   if self.icon==nil then self.icon=Input.MouseIconEnabled end
-   Input.MouseIconEnabled=false
-  else
-   self:restoreCursor()
-  end
+ local desktopMouse=Input.MouseEnabled and Input:GetLastInputType()~=Enum.UserInputType.Touch
+ local handoff=self.releaseFrames~=nil
+ local cameraDrag=draggingCamera() and Input.MouseBehavior~=Enum.MouseBehavior.Default
+ local show=s.cursor and not locked and desktopMouse and not Gui.MenuIsOpen
+  and (not image or s.image~="")
+ -- A locked mouse has no free pointer position. Never draw our skin or trail
+ -- during the release handoff or a held camera drag.
+ if desktopMouse and not Gui.MenuIsOpen and not Input:GetFocusedTextBox() and (locked or handoff or cameraDrag) then
+  self:hideCapturedCursor()
   return
  end
  if not show then self:restoreCursor();return end
@@ -5881,7 +5899,7 @@ function V:step(s,hum,menu,dt,t)
    local hit=workspace:Raycast(center,desired,params);local pos=center+desired.Unit*(if hit then math.max(.4,hit.Distance-.28) else desired.Magnitude);self.orbitPos=if hit then pos else (self.orbitPos or pos):Lerp(pos,k);camera.CFrame=CFrame.lookAt(self.orbitPos,center);camera.Focus=CFrame.new(center)
   else
    if camera.CameraType~=Enum.CameraType.Custom then camera.CameraType=Enum.CameraType.Custom end;camera.CameraSubject=hum;self.orbitPos=nil
-   if lock then if not self.mouse then self.mouse=Enum.MouseBehavior.Default;self.lockHum=hum;self.auto=hum.AutoRotate;self.releaseFrames=nil end;Input.MouseBehavior=Enum.MouseBehavior.LockCenter;hum.AutoRotate=false;local look=camera.CFrame.LookVector*Vector3.new(1,0,1);if look.Magnitude>.01 and not hum.Sit then hrp.CFrame=CFrame.lookAt(hrp.Position,hrp.Position+look) end else self:releaseLock(native) end
+   if lock then if not self.mouse then self.mouse=Enum.MouseBehavior.Default;self.lockHum=hum;self.auto=hum.AutoRotate;self.releaseFrames=nil;self.releaseWaitForButtons=nil end;Input.MouseBehavior=Enum.MouseBehavior.LockCenter;hum.AutoRotate=false;local look=camera.CFrame.LookVector*Vector3.new(1,0,1);if look.Magnitude>.01 and not hum.Sit then hrp.CFrame=CFrame.lookAt(hrp.Position,hrp.Position+look) end else self:releaseLock(native) end
   end
  end
  -- Rasterization and gradient work is independent of pointer position.
