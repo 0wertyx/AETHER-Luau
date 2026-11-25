@@ -58,7 +58,7 @@ function H.new(scope,parent,preview,go,drag,close,showPanels)
  end
  for _,k in {"hp","clock","profile","dock","cross"} do
   local d=sizes[k]
-  local p=U.new("CanvasGroup",{Name=k,BackgroundTransparency=1,GroupColor3=Color3.new(1,1,1),Size=UDim2.fromOffset(d.X,d.Y),BorderSizePixel=0,ZIndex=3},parent)
+  local p=U.new(if k=="cross" then "Frame" else "CanvasGroup",{Name=k,BackgroundTransparency=1,Size=UDim2.fromOffset(d.X,d.Y),BorderSizePixel=0,ZIndex=3},parent)
   -- A gradient on a CanvasGroup tints the entire composited texture.
   -- Put glass shading on a separate first child; leave text and glyphs untouched.
   local background=U.frame(p,"GlassBackground",nil,nil,Color3.new(1,1,1),0)
@@ -141,10 +141,12 @@ function H.new(scope,parent,preview,go,drag,close,showPanels)
  self.reticleRoot.AnchorPoint=Vector2.new(.5,.5);self.reticleRoot.Active=false
  self.reticleEdges={};self.reticleGlowEdges={}
  for i=1,48 do
+  local glow=U.frame(self.reticleRoot,"SoftGlow"..i,nil,UDim2.fromOffset(1,1),Color3.new(1,1,1),1)
+  glow.AnchorPoint=Vector2.new(.5,.5);glow.Active=false;glow.Interactable=false;glow.Visible=false;glow.ZIndex=4
+  U.new("UICorner",{CornerRadius=UDim.new(.5,0)},glow);self.reticleGlowEdges[i]=glow
   local edge=U.frame(self.reticleRoot,"Line"..i,nil,UDim2.fromOffset(1,1),Color3.new(1,1,1),0)
-  edge.AnchorPoint=Vector2.new(.5,.5);edge.Active=false;edge.Visible=false;U.corner(edge,3);self.reticleEdges[i]=edge
-  local glow=U.stroke(edge,Color3.fromRGB(193,142,255),1,3)
-  glow.Enabled=false;self.reticleGlowEdges[i]=glow
+  edge.AnchorPoint=Vector2.new(.5,.5);edge.Active=false;edge.Interactable=false;edge.Visible=false;edge.ZIndex=5
+  U.new("UICorner",{CornerRadius=UDim.new(.5,0)},edge);self.reticleEdges[i]=edge
  end
  -- A read-only key display. It neither intercepts nor generates any game input.
  self.inputRoot=U.new("CanvasGroup",{Name="InputOverlay",AnchorPoint=Vector2.new(.5,.5),Size=UDim2.fromOffset(172,114),BackgroundTransparency=1,Active=false,Interactable=false,Visible=false,ZIndex=6},parent)
@@ -257,14 +259,14 @@ function H:setStyle(s)
   w.p.AnchorPoint=Vector2.new(x,y)
   w.p.Position=UDim2.new(x,ox,y,oy)
   w.p.Rotation=s[k.."Turn"]
-  w.scale.Scale=factor*s[k.."Scale"]/100
-  w.p.GroupTransparency=1-s[k.."Alpha"]/100
+  w.scale.Scale=if k=="cross" then 1 else factor*s[k.."Scale"]/100
+  if w.p:IsA("CanvasGroup") then w.p.GroupTransparency=1-s[k.."Alpha"]/100 end
   w.p.Visible=s[k]
   w.rim.Color=accent
   w.rim.Transparency=1-s.rim/100
   w.g.Color=ColorSequence.new(a,b)
   w.p.BackgroundTransparency=1
-  w.p.GroupColor3=Color3.new(1,1,1)
+  if w.p:IsA("CanvasGroup") then w.p.GroupColor3=Color3.new(1,1,1) end
   local legacyGradient=w.p:FindFirstChildOfClass("UIGradient")
   if legacyGradient then legacyGradient:Destroy() end
   w.background.BackgroundTransparency=1-s.glass/100
@@ -299,9 +301,12 @@ function H:reticle(s,f,t)
  widget.p.Visible=s.cross and s.lockReticle~="None" and (self.preview or f.shiftLock==true)
  if not widget.p.Visible then return end
  if not self.preview then widget.p.AnchorPoint=Vector2.new(.5,.5);widget.p.Position=UDim2.fromScale(.5,.5);widget.p.Rotation=0 end
- widget.p.Size=UDim2.fromOffset(s.reticleSize,s.reticleSize)
+ local scale=(if self.preview then self.factor or 1 else 1)*s.crossScale/100
+ local px=math.max(6,math.round(s.reticleSize*scale))
+ local strokePx=math.max(1,math.round(s.reticleStroke*scale))
+ widget.p.Size=UDim2.fromOffset(px,px)
  local style=s.lockReticle
- local key=style..":"..s.reticleSize..":"..s.reticleStroke
+ local key=style..":"..px..":"..strokePx
  if self.reticleKey~=key then
   self.reticleKey=key
   local used=0
@@ -309,8 +314,8 @@ function H:reticle(s,f,t)
    used+=1
    local edge=self.reticleEdges[used];if not edge then return end
    local dx,dy=x2-x1,y2-y1
-   edge.Position=UDim2.fromScale((x1+x2)*.5,(y1+y2)*.5)
-   edge.Size=UDim2.new(math.sqrt(dx*dx+dy*dy),0,0,s.reticleStroke)
+   edge.Position=UDim2.fromOffset((x1+x2)*.5*px,(y1+y2)*.5*px)
+   edge.Size=UDim2.fromOffset(math.max(strokePx,math.sqrt(dx*dx+dy*dy)*px+strokePx*.65),strokePx)
    edge.Rotation=math.deg(math.atan2(dy,dx));edge.Visible=true
   end
   local function poly(count,r,phase,star)
@@ -322,7 +327,7 @@ function H:reticle(s,f,t)
    end
   end
   if style=="Dot" then
-   used=1;local d=self.reticleEdges[1];d.Position=UDim2.fromScale(.5,.5);d.Size=UDim2.fromOffset(s.reticleStroke*2,s.reticleStroke*2);d.Rotation=0;d.Visible=true
+   used=1;local d=self.reticleEdges[1];d.Position=UDim2.fromScale(.5,.5);d.Size=UDim2.fromOffset(strokePx*2,strokePx*2);d.Rotation=0;d.Visible=true
   elseif style=="Cross" then line(.08,.5,.92,.5);line(.5,.08,.5,.92)
   elseif style=="Split Cross" then for i=0,3 do local a=i*math.pi/2;line(.5+.18*math.cos(a),.5+.18*math.sin(a),.5+.44*math.cos(a),.5+.44*math.sin(a)) end
   elseif style=="Corners" then for _,x in {-1,1} do for _,y in {-1,1} do line(.5+x*.43,.5+y*.43,.5+x*.23,.5+y*.43);line(.5+x*.43,.5+y*.43,.5+x*.43,.5+y*.23) end end
@@ -335,7 +340,7 @@ function H:reticle(s,f,t)
   elseif style=="Double Ring" then poly(24,.44,0,false);poly(20,.25,0,false)
   elseif style=="Orbit" then for i=0,21 do local a=i/24*math.pi*2;local b=(i+1)/24*math.pi*2;line(.5+.40*math.cos(a),.5+.40*math.sin(a),.5+.40*math.cos(b),.5+.40*math.sin(b)) end
   else poly(28,.42,0,false) end
-  for i=used+1,#self.reticleEdges do self.reticleEdges[i].Visible=false end
+  for i=used+1,#self.reticleEdges do self.reticleEdges[i].Visible=false;self.reticleGlowEdges[i].Visible=false end
   self.reticleUsed=math.min(used,#self.reticleEdges)
   self.reticlePaint=nil
  end
@@ -346,18 +351,23 @@ function H:reticle(s,f,t)
   self.reticlePaint=col
   for i=1,self.reticleUsed do
    self.reticleEdges[i].BackgroundColor3=col
-   self.reticleGlowEdges[i].Color=col
+   self.reticleGlowEdges[i].BackgroundColor3=col
   end
  end
  local intensity=s.reticleGlow/100
  local pulse=if s.reduce or not s.reticleGlowPulse then 1 else .82+.18*math.sin(t*s.reticleSpeed/100*3)
  local enabled=s.reticleNeon and intensity>0
- local transparency=1-intensity*pulse*.54
- local radius=s.reticleGlowRadius*(.72+.28*pulse)
+ local alpha=s.crossAlpha/100
+ local radius=math.max(1,s.reticleGlowRadius*scale*(.72+.28*pulse))
  for i=1,self.reticleUsed do
-  local stroke=self.reticleGlowEdges[i]
-  stroke.Enabled=enabled
-  if enabled then stroke.Transparency=transparency;stroke.Thickness=radius end
+  local edge=self.reticleEdges[i];local glow=self.reticleGlowEdges[i]
+  edge.BackgroundTransparency=1-alpha
+  glow.Visible=enabled
+  if enabled then
+   glow.Position=edge.Position;glow.Rotation=edge.Rotation
+   glow.Size=UDim2.fromOffset(edge.Size.X.Offset+radius*2,edge.Size.Y.Offset+radius*2)
+   glow.BackgroundTransparency=1-intensity*pulse*alpha*.16
+  end
  end
 end
 function H:vitals(s,f,dt)
@@ -406,7 +416,7 @@ function H:vitals(s,f,dt)
  self.heartTint2=(self.heartTint2 or hb):Lerp(hb,mix)
  local angle=if s.heartDirection=="Horizontal" then 0 elseif s.heartDirection=="Diagonal" then 45 elseif s.heartDirection=="Reverse" then 270 elseif s.heartDirection=="Orbit" and not dead and not s.reduce then (90+self.time*s.heartGradientSpeed*.6)%360 else 90
  self.heart:paint(self.heartTint,self.heartTint2,if dead then 0 else math.clamp(s.heartGlow+beat*25,0,100),8,self.heartMid,angle)
- self.heart.root.GroupTransparency=if dead then .55 else 0
+ self.heart:opacity(if dead then .55 else 0)
  local shake=if not s.reduce and not dead and self.effect=="Damage" and self.age<.28 then math.sin(self.age*100)*3*(1-self.age/.28) else 0;self.hpShake=shake;w.rim.Color=self.tint;w.rim.Transparency=if dead then .9 else 1-math.min(1,(s.rim+beat*15)/100)
  self.shine.Visible=s.hudShine and not dead and not s.reduce and self.bar>.02 and s.hudMotion~="Off"
  if self.shine.Visible then
@@ -468,9 +478,9 @@ function H:directions(s,f,dt,t,paint)
   local k=if s.reduce or s.turn==0 then 1 else 1-math.exp(-dt*4500/s.turn);local angle=math.deg(math.atan2(dir.X,-dir.Y));m.pos=(m.pos or dest):Lerp(dest,k);m.angle=m.angle or angle;m.angle+=((angle-m.angle+180)%360-180)*k;m.root.Position=UDim2.fromOffset(m.pos.X,m.pos.Y);m.glyph.root.Rotation=m.angle
   local pulse=if s.pulse and not s.reduce then 1+.075*math.sin(t*4*s.arrowSpeed/100) else 1;m.root.Size=UDim2.fromOffset(sz*pulse,sz*pulse);m.fade=if s.reduce then 1 else math.min(1,m.fade+dt*6)
   if paint or m.style~=s then local time=if s.reduce then 0 else t;local c=if custom then U.hex(custom.color) elseif s.arrowRainbow then Color3.fromHSV((time*.14*s.arrowSpeed/100)%1,.68,1) else U.hex(s.arrowA);local b=if s.arrowRainbow then Color3.fromHSV((time*.14*s.arrowSpeed/100+.29)%1,.62,1) else U.hex(s.arrowB);m.glyph:paint(c,b,s.ink,s.spread);m.label.FontFace=U.font(s);m.style=s end
-  local title=if custom and custom.label~="" then custom.label else p.label;local dist=math.round(p.distance).."m";m.label.Visible=s.labels~="Off";m.label.Text=if s.labels=="Both" then title.." · "..math.round(p.distance).." st" elseif s.labels=="Distance" then math.round(p.distance).." st" else title
+  local title=if custom and custom.label~="" then custom.label else p.label;local dist=math.round(p.distance).."m";m.glyph:opacity(1-m.fade*s.arrowAlpha/100);m.label.TextTransparency=1-m.fade*s.arrowAlpha/100;m.label.Visible=s.labels~="Off";m.label.Text=if s.labels=="Both" then title.." · "..math.round(p.distance).." st" elseif s.labels=="Distance" then math.round(p.distance).." st" else title
  end end
- for id,m in self.markers do if m.serial~=self.serial then m.fade=if s.reduce then 0 else math.max(0,m.fade-dt*7) end;if m.fade<=0 then m.root:Destroy();self.markers[id]=nil else local alpha=1-m.fade*s.arrowAlpha/100;m.glyph.root.GroupTransparency=alpha;m.label.TextTransparency=alpha end end
+ for id,m in self.markers do if m.serial~=self.serial then m.fade=if s.reduce then 0 else math.max(0,m.fade-dt*7) end;if m.fade<=0 then m.root:Destroy();self.markers[id]=nil else local alpha=1-m.fade*s.arrowAlpha/100;m.glyph:opacity(alpha);m.label.TextTransparency=alpha end end
 end
 function H:step(s,f,dt)
  if self.settings~=s or self.width~=self.view.AbsoluteSize.X then self:setStyle(s) end;self.time+=dt;local t=self.time;local paint=t>=self.paintAt;if paint then self.paintAt=t+.075 end
