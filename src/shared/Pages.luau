@@ -1,5 +1,6 @@
 local U=require(script.Parent.Util);local S=require(script.Parent.Schema);local MotionPacks=require(script.Parent.MotionPacks);local Symbol=require(script.Parent.Symbol);local Hud=require(script.Parent.Hud);local Avatar=require(script.Parent.Avatar);local Cues=require(script.Parent.Cues);local Http=game:GetService("HttpService")
 local WalkMotion=require(script.Parent.WalkMotion)
+local PreviewProps=require(script.Parent.PreviewProps)
 local Input=game:GetService("UserInputService")
 local E={}
 local function names(t) local a=U.keys(t);return a end
@@ -31,6 +32,8 @@ local function avatarPreview(ui,a,worldMode)
  local generation=0
  local characterScope=nil
  local motion=WalkMotion.new()
+ local props=PreviewProps.new(w)
+ local showProps=true
  local rootPart=nil
  local joints={}
  local motors={}
@@ -76,7 +79,7 @@ local function avatarPreview(ui,a,worldMode)
   local aspect=math.max(.1,view.AbsoluteSize.X/math.max(1,view.AbsoluteSize.Y))
   local half=math.rad(cam.FieldOfView*.5)
   local angle=math.min(half,math.atan(math.tan(half)*aspect))
-  local distance=if worldMode and full then 12*zoom else radius/math.sin(angle)*(if worldMode then 1.12 else 1.26)*zoom
+  local distance=if worldMode and full then 12*zoom else radius/math.sin(angle)*(if worldMode then 1.12 else 1.48)*zoom
   local offset=Vector3.new(math.sin(yaw)*math.cos(pitch),math.sin(pitch),-math.cos(yaw)*math.cos(pitch))
   local pos=center+offset*distance
   if worldMode and full and stage then
@@ -258,7 +261,7 @@ local function avatarPreview(ui,a,worldMode)
      elseif demoState=="Climb" then Enum.HumanoidStateType.Climbing
      else Enum.HumanoidStateType.Running
     local airborne=demoState=="Jump" or demoState=="Fall"
-    virtual={movement=if demoState=="Idle" then 0 elseif demoState=="Walk" then .78 else 1,grounded=not airborne,jumping=demoState=="Jump",state=state,speed=if demoState=="Run" then 24 else 16,fullPose=true,originStrength=demoOrigin}
+    virtual={movement=if demoState=="Idle" then 0 elseif demoState=="Walk" then .78 else 1,grounded=not airborne,jumping=demoState=="Jump",state=state,speed=if demoState=="Run" then 24 else 16,fullPose=true,originStrength=demoOrigin,loopAir=true}
    end
    motion:step(rig,demo,dt,virtual)
   else
@@ -271,6 +274,7 @@ local function avatarPreview(ui,a,worldMode)
     if link.forward then e.p1.CFrame=e.p0.CFrame*offset else e.p0.CFrame=e.p1.CFrame*offset:Inverse() end
    end
   end
+  if showProps and not settings.reduce and motion.signatureActive then props:update(rig,settings.walkStyle,motion.phase,motion.airProgress) else props:clear() end
  end
  local function refresh(char)
   generation+=1
@@ -308,7 +312,7 @@ local function avatarPreview(ui,a,worldMode)
  local function bind(char)
   if characterScope then characterScope:clear() end
   characterScope=U.scope()
-  generation+=1;avatar:clear();motion:bind(nil);rootPart=nil;table.clear(joints);table.clear(motors)
+  generation+=1;avatar:clear();props:clear();motion:bind(nil);rootPart=nil;table.clear(joints);table.clear(motors)
   if previewState.rig then previewState.rig:Destroy();previewState.rig=nil end
   label.Text="Loading avatar...";label.Visible=true
   if not char then return end
@@ -423,6 +427,7 @@ local function avatarPreview(ui,a,worldMode)
   end,4,function() return demoState end)
   ui:chips({"0.5x","1x","1.5x","2x"},function(n) speed=tonumber(n:sub(1,-2)) or 1;ui:sync() end,4,function() return tostring(speed).."x" end)
   ui:chips({"50%","75%","100%"},function(n) demoStrength=tonumber(n:sub(1,-2)) or 100;ui:sync() end,3,function() return tostring(demoStrength).."%" end)
+  ui:chips({"Props on","Props off"},function(n) showProps=n=="Props on";if not showProps then props:clear() end;ui:sync() end,2,function() return if showProps then "Props on" else "Props off" end)
   ui:title("R6 · LIMB ORIGIN MOTION")
   ui:note("Animate shoulder and hip positions as well as rotation. Compare the original rotation-only preview with the stylized offsets.",42)
   ui:chips({"Origin off","Origin 50%","Origin 100%"},function(n)
@@ -452,7 +457,7 @@ local function avatarPreview(ui,a,worldMode)
   CAS:UnbindAction(actionName)
   hovered=false;endOrbit()
   if characterScope then characterScope:clear() end
-  motion:destroy();avatar:clear();sceneClear()
+  motion:destroy();props:clear();avatar:clear();sceneClear()
  end)
  bind(player.Character)
 end
