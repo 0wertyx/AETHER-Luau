@@ -30,7 +30,7 @@ function W:restoreLive()
 end
 function W:bind(character)
  if self.character==character then return end
- self:restoreLive();table.clear(self.livePose)
+ self:restoreLive();self:stopReplicated();table.clear(self.livePose)
  self.liveTime=0;self.liveAir=0;self.liveWasAir=false;self.liveStyle=nil;self.liveState=nil;self.liveTransition=nil;self.liveRetry=0
  self.character=character;self.phase=0;self.blend=0;self.hover=0;self.airTime=0;self.wasAir=false;self.signatureActive=false;self.airProgress=0
  table.clear(self.motors)
@@ -83,10 +83,60 @@ local tracks={
 }
 local runtimeNames={"Root","RightShoulder","LeftShoulder","RightHip","LeftHip","Neck"}
 local secondaryNames={"Waist","RightElbow","LeftElbow","RightKnee","LeftKnee","RightAnkle","LeftAnkle","RightWrist","LeftWrist"}
-local function mapped(m,cf)
- local basis=c0(m).Rotation
- local scale=if part0(m) then math.clamp(part0(m).Size.Y/2,.5,1.7) else 1
- return basis:Inverse()*CFrame.new(cf.Position*scale)*cf.Rotation*basis
+-- Published animations are used only from the experience's explicit library.
+function W:stopReplicated(status)
+ local track=self.replicatedTrack
+ self.replicatedTrack=nil;self.replicatedAsset=nil;self.replicatedAnimator=nil
+ if track then
+  pcall(function() track:Stop(.14) end)
+  task.delay(.2,function() pcall(function() track:Destroy() end) end)
+ end
+ self.replicatedStatus=status
+end
+function W:replicatedStep(hum,s,config,state,rate)
+ if s.motionPlayback~="Replicated" then
+  if self.replicatedTrack then self:stopReplicated() end
+  return false
+ end
+ local kind=if hum.RigType==Enum.HumanoidRigType.R15 then "R15" else "R6"
+ local library=game:GetService("ReplicatedStorage"):FindFirstChild("AetherAnimationLibrary")
+ local rigs=library and library:FindFirstChild(kind)
+ local style=rigs and rigs:FindFirstChild(config.style)
+ local asset=style and style:FindFirstChild(state)
+ local animator=hum:FindFirstChildOfClass("Animator")
+ if not animator or not asset or not asset:IsA("Animation") or not asset.AnimationId:match("^rbxassetid://[1-9]%d*$") then
+  self:stopReplicated("LOCAL FALLBACK · missing published "..kind.." / "..config.style.." / "..state.." or server Animator")
+  return false
+ end
+ local stamp=asset.AnimationId
+ local speed=math.max(.01,config.speed*rate)
+ if self.replicatedTrack and self.replicatedAnimator==animator and self.replicatedAsset==stamp then
+  if self.replicatedTrack.Length<=0 and os.clock()-(self.replicatedStarted or 0)>4 then
+   self.replicatedFailedAsset=stamp;self.replicatedRetryAt=os.clock()+10
+   self:stopReplicated("LOCAL FALLBACK · clip failed to load (check asset permissions)")
+   return false
+  end
+  self.replicatedTrack:AdjustSpeed(speed)
+  return true
+ end
+ self:stopReplicated()
+ if self.replicatedFailedAsset==stamp and os.clock()<(self.replicatedRetryAt or 0) then
+  self.replicatedStatus="LOCAL FALLBACK · clip load retry pending";return false
+ end
+ local ok,track=pcall(function()
+  local loaded=animator:LoadAnimation(asset)
+  loaded.Priority=Enum.AnimationPriority.Action;loaded.Looped=state~="Jump"
+  loaded:Play(.14,1,speed)
+  return loaded
+ end)
+ if not ok or not track then
+  self.replicatedFailedAsset=stamp;self.replicatedRetryAt=os.clock()+10
+  self.replicatedStatus="LOCAL FALLBACK · published clip unavailable";return false
+ end
+ self.replicatedTrack=track;self.replicatedAnimator=animator;self.replicatedAsset=stamp;self.replicatedStarted=os.clock()
+ self.replicatedStatus="ANIMATOR · "..kind.." / "..config.style.." / "..state.." · requires asset permission"
+ table.clear(self.livePose);self.liveFrom=nil;self.liveTransition=0
+ return true
 end
 function W:liveStep(character,s,dt)
  self:restoreLive()
@@ -94,12 +144,12 @@ function W:liveStep(character,s,dt)
  if not character then return end
  local hum=character:FindFirstChildOfClass("Humanoid")
  if not hum or hum.Health<=0 or hum.Sit or s.reduce or not s.walkAnimation or (s.walkIntensity or 0)<=0 then
-  table.clear(self.livePose);self.liveStyle=nil;self.liveState=nil;self.liveWasAir=false;self.liveTime=0;self.liveTransition=nil
+  self:stopReplicated();table.clear(self.livePose);self.liveStyle=nil;self.liveState=nil;self.liveWasAir=false;self.liveTime=0;self.liveTransition=nil
   return
  end
  local hs=hum:GetState()
  if hs==Enum.HumanoidStateType.Seated or hs==Enum.HumanoidStateType.Dead or hs==Enum.HumanoidStateType.Physics or hs==Enum.HumanoidStateType.Ragdoll or hs==Enum.HumanoidStateType.FallingDown or hs==Enum.HumanoidStateType.PlatformStanding or hs==Enum.HumanoidStateType.GettingUp then
-  table.clear(self.livePose);self.liveStyle=nil;self.liveState=nil;self.liveWasAir=false;self.liveTransition=nil;return
+  self:stopReplicated();table.clear(self.livePose);self.liveStyle=nil;self.liveState=nil;self.liveWasAir=false;self.liveTransition=nil;return
  end
  dt=math.clamp(dt,0,.1)
  self.liveRetry+=dt
@@ -134,43 +184,8 @@ function W:liveStep(character,s,dt)
  local targetRate=MotionStudio.speedFactor(config,state,movementSpeed)
  self.liveRate=if changed or self.liveRate==nil then targetRate else self.liveRate+(targetRate-self.liveRate)*(1-math.exp(-dt*12))
  self.liveTime+=dt*config.speed*self.liveRate
- local authored,hover=MotionStudio.runtimePose(config,self.liveTime,state,self.liveAir,hum.RigType)
- local targets={}
- for _,name in runtimeNames do
-  local m=self.motors[name]
-  if m and m.Parent then targets[m]=mapped(m,authored[name]) end
- end
- for _,name in secondaryNames do
-  local m=self.motors[name]
-  if m and m.Parent then targets[m]=mapped(m,authored[name] or CFrame.identity) end
- end
- local root=self.motors.Root
- -- Match grounded foot contact on R6 without changing HumanoidRootPart position.
- if root and targets[root] and part1(root) and not air and state~="Climb" and state~="Swim" then
-  local neutral=c0(root)*c1(root):Inverse()
-  local posed=c0(root)*targets[root]*c1(root):Inverse()
-  local floor,low=math.huge,math.huge
-  for _,side in {"Right","Left"} do
-   local restCF,poseCF=neutral,posed
-   local foot=nil
-   local names=if hum.RigType==Enum.HumanoidRigType.R15 then {side.."Hip",side.."Knee",side.."Ankle"} else {side.."Hip"}
-   for _,name in names do
-    local m=self.motors[name]
-    if not m or not part1(m) or not targets[m] then break end
-    restCF=restCF*c0(m)*c1(m):Inverse()
-    poseCF=poseCF*c0(m)*targets[m]*c1(m):Inverse()
-    foot=part1(m)
-   end
-   if foot then
-    local sz=foot.Size/2
-    local function bottom(cf) return cf.Position.Y-math.abs(cf.RightVector.Y)*sz.X-math.abs(cf.UpVector.Y)*sz.Y-math.abs(cf.LookVector.Y)*sz.Z end
-    floor=math.min(floor,bottom(restCF));low=math.min(low,bottom(poseCF))
-   end
-  end
-  local correction=if floor<math.huge and low<math.huge then math.clamp(floor-low,-1.5,1.5) else 0
-  local basis=c0(root).Rotation
-  targets[root]=basis:Inverse()*CFrame.new(0,correction+hover,0)*basis*targets[root]
- end
+ if self:replicatedStep(hum,s,config,state,self.liveRate) then return end
+ local targets=MotionStudio.jointTargets(self.motors,config,self.liveTime,state,self.liveAir,hum.RigType)
  self.liveTransition=math.min(1,(self.liveTransition or 0)+dt/.14)
  local k=self.liveTransition*self.liveTransition*(3-2*self.liveTransition)
  for m,target in targets do
@@ -679,7 +694,7 @@ function W:step(character,s,dt,preview)
  end
 end
 function W:destroy()
- self:restoreLive();table.clear(self.livePose)
+ self:stopReplicated();self:restoreLive();table.clear(self.livePose)
  self.character=nil
  table.clear(self.motors)
 end

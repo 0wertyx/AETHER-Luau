@@ -711,6 +711,168 @@ function M.runtimePose(config,t,state,airTime,rigType)
  if rigType==Enum.HumanoidRigType.R15 then M.retargetR15(result,name,t,state,config.intensity) end
  return result,hover*config.intensity
 end
+local function part1(m) return select(2,M.jointFrames(m)) end
+local function c0(m) return select(3,M.jointFrames(m)) end
+local function c1(m) return select(4,M.jointFrames(m)) end
+local runtimeNames={"Root","RightShoulder","LeftShoulder","RightHip","LeftHip","Neck"}
+local secondaryNames={"Waist","RightElbow","LeftElbow","RightKnee","LeftKnee","RightAnkle","LeftAnkle","RightWrist","LeftWrist"}
+local function mapped(m,cf)
+ local _,_,jointC0=M.jointFrames(m)
+ local basis=jointC0.Rotation
+ local a=M.jointFrames(m)
+ local scale=if a then math.clamp(a.Size.Y/2,.5,1.7) else 1
+ return basis:Inverse()*CFrame.new(cf.Position*scale)*cf.Rotation*basis
+end
+-- Shared by live procedural playback and the Studio animation exporter.
+function M.jointTargets(motors,config,t,state,airTime,rigType)
+ local air=state=="Jump" or state=="Fall"
+ local authored,hover=M.runtimePose(config,t,state,airTime,rigType)
+ local targets={}
+ for _,name in runtimeNames do
+  local m=motors[name]
+  if m and m.Parent then targets[m]=mapped(m,authored[name]) end
+ end
+ for _,name in secondaryNames do
+  local m=motors[name]
+  if m and m.Parent then targets[m]=mapped(m,authored[name] or CFrame.identity) end
+ end
+ local root=motors.Root
+ -- Match grounded foot contact on R6 without changing HumanoidRootPart position.
+ if root and targets[root] and part1(root) and not air and state~="Climb" and state~="Swim" then
+  local neutral=c0(root)*c1(root):Inverse()
+  local posed=c0(root)*targets[root]*c1(root):Inverse()
+  local floor,low=math.huge,math.huge
+  for _,side in {"Right","Left"} do
+   local restCF,poseCF=neutral,posed
+   local foot=nil
+   local names=if rigType==Enum.HumanoidRigType.R15 then {side.."Hip",side.."Knee",side.."Ankle"} else {side.."Hip"}
+   for _,name in names do
+    local m=motors[name]
+    if not m or not part1(m) or not targets[m] then break end
+    restCF=restCF*c0(m)*c1(m):Inverse()
+    poseCF=poseCF*c0(m)*targets[m]*c1(m):Inverse()
+    foot=part1(m)
+   end
+   if foot then
+    local sz=foot.Size/2
+    local function bottom(cf) return cf.Position.Y-math.abs(cf.RightVector.Y)*sz.X-math.abs(cf.UpVector.Y)*sz.Y-math.abs(cf.LookVector.Y)*sz.Z end
+    floor=math.min(floor,bottom(restCF));low=math.min(low,bottom(poseCF))
+   end
+  end
+  local correction=if floor<math.huge and low<math.huge then math.clamp(floor-low,-1.5,1.5) else 0
+  local basis=c0(root).Rotation
+  targets[root]=basis:Inverse()*CFrame.new(0,correction+hover,0)*basis*targets[root]
+ end
+ return targets
+end
+M.exportStates={"Idle","Walk","Run","Climb","Fall","Jump","Swim"}
+local function folder(parent,name)
+ local f=parent:FindFirstChild(name)
+ if f then assert(f:IsA("Folder"),"Expected Folder: "..name);return f end
+ f=Instance.new("Folder");f.Name=name;f.Parent=parent;return f
+end
+local function exportContext(rig)
+ assert(Run:IsStudio() and not Run:IsRunning(),"Export in Studio Edit mode, not a live session")
+ assert(typeof(rig)=="Instance" and rig:IsA("Model"),"Select a reference R6 or R15 rig")
+ local hum=assert(rig:FindFirstChildOfClass("Humanoid"),"Rig requires Humanoid")
+ local root=assert(rig:FindFirstChild("HumanoidRootPart"),"Rig requires HumanoidRootPart")
+ local motors,children={},{}
+ local r15=hum.RigType==Enum.HumanoidRigType.R15
+ for _,name in M.channels do
+  local m=M.findJoint(rig,name)
+  if m then
+   local a,b=M.jointFrames(m)
+   assert(a and b,"Missing joint endpoints: "..name)
+   motors[name]=m;children[a]=children[a] or {}
+   table.insert(children[a],{part=b,joint=m})
+  elseif r15 or table.find(runtimeNames,name) then error("Missing "..name.." on "..rig.Name) end
+ end
+ local visited={}
+ local function validate(part)
+  assert(not visited[part],"Invalid joint tree")
+  visited[part]=true
+  for _,entry in children[part] or {} do validate(entry.part) end
+ end
+ validate(root)
+ local count=0;for _ in visited do count+=1 end
+ assert(count==(if r15 then 16 else 7),"Incomplete rig hierarchy: "..tostring(count).." parts")
+ return {rig=rig,kind=if r15 then "R15" else "R6",rigType=hum.RigType,root=root,motors=motors,children=children}
+end
+local function defaultDuration(name,state)
+ if state=="Jump" then return if name=="Harpy Glide" then 1.32/2.2 else 1.2 end
+ if state=="Fall" then return 1.2 end
+ if state=="Idle" then return 4 end
+ if state=="Climb" or state=="Swim" then
+  local trait=aquaticTraits[name] or aquaticTraits.Natural
+  return tau/((if state=="Climb" then 5.4 else 4.5)*trait[1])
+ end
+ if name=="Cartwheel Flow" then return 6 end
+ if keys[name] then
+  if name=="Godly Aura" then return if state=="Walk" then 4.2 else 3.6 end
+  return tau/(profile(name).cadence*(if state=="Run" then 1.5 else 1))
+ end
+ return tau/(profile(name).cadence*(if state=="Run" then 1.3 else .9))
+end
+local function exportClip(ctx,name,state,opts)
+ assert(table.find(Schema.defs.walkStyle.min,name),"Unknown style")
+ assert(table.find(M.exportStates,state),"Unknown state")
+ local fps=math.clamp(math.round(opts.fps or 60),15,120)
+ local duration=math.clamp(opts.duration or defaultDuration(name,state),.1,30)
+ local config={style=name,speed=1,adaptive=false,intensity=math.clamp((opts.intensity or 65)/100,0,1),origin=math.clamp((opts.origin or 100)/100,0,1.5),props=opts.props~=false}
+ local seq=Instance.new("KeyframeSequence");seq.Name=state;seq.Loop=state~="Jump";seq.Priority=Enum.AnimationPriority.Action
+ seq:SetAttribute("AetherStyle",name);seq:SetAttribute("AetherRig",ctx.kind);seq:SetAttribute("AetherFPS",fps)
+ seq:SetAttribute("AetherIntensity",config.intensity*100);seq:SetAttribute("AetherOrigin",config.origin*100);seq:SetAttribute("AetherProps",config.props)
+ local function addPose(parent,part,joint,transforms)
+  local p=Instance.new("Pose");p.Name=part.Name;p.Weight=1;p.CFrame=if joint then (transforms[joint] or CFrame.identity) else CFrame.identity
+  p.EasingStyle=Enum.PoseEasingStyle.Linear;p.Parent=parent
+  for _,entry in ctx.children[part] or {} do addPose(p,entry.part,entry.joint,transforms) end
+ end
+ local frames=math.ceil(duration*fps)
+ for i=0,frames do
+  local t=math.min(i/fps,duration)
+  local airTime=t
+  if name=="Harpy Glide" and state=="Fall" then airTime+=1.32/2.2 end
+  local transforms=M.jointTargets(ctx.motors,config,t,state,airTime,ctx.rigType)
+  local frame=Instance.new("Keyframe");frame.Name=if i==frames then "End" else "Frame_"..i;frame.Time=t
+  addPose(frame,ctx.root,nil,transforms);frame.Parent=seq
+ end
+ return seq
+end
+-- Export only in the owner's Studio Edit mode. No private APIs or asset publishing.
+-- One clip per state; no network access. Existing asset references are never overwritten.
+function M.exportLibrary(rig,opts)
+ opts=opts or {}
+ local ctx=exportContext(rig)
+ local root=folder(game:GetService("ServerStorage"),"AetherAnimationExports")
+ local library=folder(game:GetService("ReplicatedStorage"),"AetherAnimationLibrary")
+ local out=folder(root,ctx.kind);local ids=folder(library,ctx.kind)
+ local names=opts.styles or Schema.defs.walkStyle.min
+ local count=0
+ for _,name in names do
+  local style=folder(out,name);local idStyle=folder(ids,name)
+  for _,state in opts.states or M.exportStates do
+   if style:FindFirstChild(state) then
+    if not opts.replace then continue end
+   end
+   local seq=exportClip(ctx,name,state,opts)
+   local old=style:FindFirstChild(state);if old then old:Destroy() end
+   seq.Parent=style
+   local animation=idStyle:FindFirstChild(state)
+   if not animation then
+    animation=Instance.new("Animation");animation.Name=state;animation.Parent=idStyle
+    for _,key in {"AetherIntensity","AetherOrigin","AetherProps","AetherFPS"} do animation:SetAttribute(key,seq:GetAttribute(key)) end
+   elseif animation:IsA("Animation") and animation.AnimationId=="" then
+    for _,key in {"AetherIntensity","AetherOrigin","AetherProps","AetherFPS"} do animation:SetAttribute(key,seq:GetAttribute(key)) end
+   end
+   count+=1
+   if count%4==0 then task.wait() end
+  end
+ end
+ return count, out, ids
+end
+function M.exportClip(rig,style,state,opts)
+ return exportClip(exportContext(rig),style,state,opts or {})
+end
 local function differences(draft,saved)
  local n=0
  for _,k in previewKeys do
@@ -859,6 +1021,10 @@ function M.mount(ui,a)
   s.pack=n;s.speed=s.packRates[n] or 1;s.enabled=true;s.t=0;s.pitch=if n=="Godly Aura" then 9 else 0;s.yaw=0;s.roll=0;sync()
  end,3,function() return s.pack end)
  ui:chips({"Animation on","Animation off"},function(n) s.enabled=n=="Animation on";sync() end,2,function() return if s.enabled then "Animation on" else "Animation off" end)
+ ui:title("PLAYBACK MODE")
+ ui:control("motionPlayback")
+ local replicationInfo=ui:note("",58)
+ ui:watch(function() replicationInfo.Text=if a.s.motionPlayback=="Replicated" then "Replicated: uses published Animation IDs from this place. Missing clips fall back to Local. Baked intensity/origin cannot be changed without re-export." else "Local: continuous procedural motion, visible only on your client." end)
  ui:title("PLAYBACK & CAMERA")
  ui:chips({"Adaptive speed","Fixed speed"},function(n) s.adaptive=n=="Adaptive speed";sync() end,2,function() return if s.adaptive then "Adaptive speed" else "Fixed speed" end)
  slider("Pack speed multiplier",.25,2,.05,"speed",function(v) return string.format("%.2fx",v) end,function()
@@ -996,6 +1162,7 @@ function M.mount(ui,a)
   if name=="Doll Walk" then dist*=1.15 end
   camera.CFrame=CFrame.lookAt(focus+V(math.sin(a)*dist,2.1,-math.cos(a)*dist),focus)
   caption.Text=string.upper(name).." · "..player.DisplayName;status.Text=r.kind.." / "..string.upper(state).." / "..phase
+  if a.s.motionPlayback=="Replicated" and a.walkMotion then replicationInfo.Text=a.walkMotion.replicatedStatus or "Replicated: waiting for game animation. Missing clips use Local fallback." end
   dirty=false
  end
  -- Refresh only when the local avatar or appearance changes.

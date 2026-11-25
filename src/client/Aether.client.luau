@@ -297,6 +297,7 @@ end
 local hud = Hud.new(scope, overlay, false, function(tab) app.ui:open(tab) end,nil,function(key) app:set(key,false) end)
 local avatar = Avatar.new(workspace, false)
 local walkMotion = WalkMotion.new()
+app.walkMotion = walkMotion
 local motionProps = PreviewProps.new(workspace, true)
 local world = World.new()
 local view = View.new(player, pointer)
