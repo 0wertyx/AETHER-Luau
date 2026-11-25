@@ -48,7 +48,7 @@ function W:step(character,s,dt,preview)
  local floating=style=="Floating" or style=="Glide" or style=="Ethereal"
  local enabled=s.walkAnimation and not s.reduce and (preview or (hum.Health>0 and not hum.Sit))
  local virtual=if type(preview)=="table" then preview else nil
- local state=if virtual and not virtual.grounded then (if virtual.jumping then Enum.HumanoidStateType.Jumping else Enum.HumanoidStateType.Freefall) elseif preview then Enum.HumanoidStateType.Running else hum:GetState()
+ local state=if virtual and virtual.state then virtual.state elseif virtual and not virtual.grounded then (if virtual.jumping then Enum.HumanoidStateType.Jumping else Enum.HumanoidStateType.Freefall) elseif preview then Enum.HumanoidStateType.Running else hum:GetState()
  local jumping=state==Enum.HumanoidStateType.Jumping
  local falling=state==Enum.HumanoidStateType.Freefall
  local climbing=state==Enum.HumanoidStateType.Climbing
@@ -57,6 +57,7 @@ function W:step(character,s,dt,preview)
  local grounded=if virtual then virtual.grounded elseif preview then true else hum.FloorMaterial~=Enum.Material.Air
  local movement=if virtual then virtual.movement elseif preview then 1 else hum.MoveDirection.Magnitude
  local intensity=math.clamp((s.walkIntensity or 65)/100,0,1)
+ local fullPreview=virtual and virtual.fullPose==true
  local target=0
  if enabled then
   if pack then
@@ -68,9 +69,10 @@ function W:step(character,s,dt,preview)
    target=intensity*(if grounded then movement else 0)
   end
  end
- self.blend+=(target-self.blend)*(1-math.exp(-dt*9))
+ if fullPreview and enabled then target=intensity end
+ self.blend+=(target-self.blend)*(1-math.exp(-dt*(if fullPreview then 14 else 9)))
  if self.blend<.002 then return end
- local speed=math.clamp(hum.WalkSpeed/16,.6,2.3)
+ local speed=math.clamp((if virtual and virtual.speed then virtual.speed else hum.WalkSpeed)/16,.6,2.3)
  local moving=math.clamp(movement,0,1)
  local cadence=if pack then pack.cadence*(.62+.38*moving)*speed
   elseif floating then (2.3+2.8*moving)*speed else 7.8*speed
@@ -78,6 +80,64 @@ function W:step(character,s,dt,preview)
  local ph=self.phase;local wave=math.sin(ph);local cross=math.cos(ph)
  local weight=self.blend
  local j=self.motors
+ -- In the isolated viewport, author full poses in body-part axes. R6 uses
+ -- rotated C0 joint frames, so transform the pose into each motor's basis.
+ -- Keep the existing additive live-character behavior unchanged.
+ local function pose(m,cf)
+  if not m or not m.Parent then return end
+  if not fullPreview then add(m,cf);return end
+  local x,y,z=cf:ToOrientation()
+  local isShoulder=m==j.RightShoulder or m==j.LeftShoulder
+  local isHip=m==j.RightHip or m==j.LeftHip
+  local isElbow=m==j.RightElbow or m==j.LeftElbow
+  if isShoulder or isHip then z=-z end
+  if isElbow then x=-x end
+  local limb=isShoulder or isHip or isElbow or m==j.RightKnee or m==j.LeftKnee or m==j.RightAnkle or m==j.LeftAnkle
+  local gain=if limb then 2.35 elseif m==j.Root then 1.8 else 1.65
+  local rx=math.clamp(x*gain,-1.7,1.7)
+  local ry=math.clamp(y*gain,-1.2,1.2)
+  local rz=math.clamp(z*gain,-1.5,1.5)
+  local basis=m.C0.Rotation
+  local body=CFrame.new(cf.Position*(if m==j.Root then 2 else 1.4))*CFrame.fromOrientation(rx,ry,rz)
+  m.Transform=m.Transform*basis:Inverse()*body*basis
+ end
+ local add=pose
+ if fullPreview and (airborne or climbing or swimming) then
+  -- Full-body state-specific choreography; these are original preview poses.
+  local st=pack or {}
+  local flair=math.clamp((st.spread or .12)*.32,0,.2)
+  local function ang(m,x,y,z) add(m,CFrame.Angles(x*weight,y*weight,z*weight)) end
+  if swimming then
+   local stroke=math.sin(ph*.8)
+   add(j.Root,CFrame.Angles(-.55*weight,0,.07*wave*weight))
+   ang(j.RightShoulder,.65+.22*stroke,.12,-.16-flair)
+   ang(j.LeftShoulder,.65-.22*stroke,-.12,.16+flair)
+   ang(j.RightElbow,-.45-.12*stroke,0,0);ang(j.LeftElbow,-.45+.12*stroke,0,0)
+   ang(j.RightHip,.27*wave,0,0);ang(j.LeftHip,-.27*wave,0,0)
+   ang(j.RightKnee,-.22-.14*cross,0,0);ang(j.LeftKnee,-.22+.14*cross,0,0)
+   ang(j.Neck,.22,0,0)
+  elseif climbing then
+   local lift=math.sin(ph*.85)
+   add(j.Root,CFrame.new(0,.07*math.abs(cross)*weight,0)*CFrame.Angles(.07*weight,0,0))
+   ang(j.RightShoulder,.58+.23*lift,.08,-.13-flair)
+   ang(j.LeftShoulder,.58-.23*lift,-.08,.13+flair)
+   ang(j.RightElbow,-.36-.16*lift,0,0);ang(j.LeftElbow,-.36+.16*lift,0,0)
+   ang(j.RightHip,.22+.31*lift,0,0);ang(j.LeftHip,.22-.31*lift,0,0)
+   ang(j.RightKnee,-.3-.17*lift,0,0);ang(j.LeftKnee,-.3+.17*lift,0,0)
+   ang(j.Neck,-.12,0,0)
+  else
+   local float=st.hover or 0
+   local tuck=if jumping then .29 else .10
+   add(j.Root,CFrame.new(0,(if jumping then .25 else .12)*weight+float*.5*weight,0)*CFrame.Angles((if jumping then -.12 else .10)*weight,0,.035*wave*weight))
+   ang(j.RightShoulder,if jumping then .48 else .16,0,-.29-flair)
+   ang(j.LeftShoulder,if jumping then .38 else .16,0,.29+flair)
+   ang(j.RightElbow,-.24,0,0);ang(j.LeftElbow,-.24,0,0)
+   ang(j.RightHip,tuck+.10,0,0);ang(j.LeftHip,tuck-.08,0,0)
+   ang(j.RightKnee,-tuck-.12,0,0);ang(j.LeftKnee,-tuck,0,0)
+   ang(j.Neck,if jumping then -.07 else .07,0,0)
+  end
+  return
+ end
  if pack then
   -- Original procedural interpretation of an avatar pack (not purchased clips).
   -- Each state has its own posture, on both R6 and R15; optional joints on R15.
@@ -87,7 +147,7 @@ function W:step(character,s,dt,preview)
   local stride=if airborne then .08 elseif climbing then .25
    elseif swimming then .15 else pack.stride
   local walk=if airborne then .14 elseif moving>.08 then moving else 0
-  local run=if moving>.08 and hum.WalkSpeed>19 then 1 else 0
+  local run=if moving>.08 and ((virtual and virtual.speed or hum.WalkSpeed)>19) then 1 else 0
   local cycle=gait*walk
   local swing=stride*cycle*(1+run*.3)
   local pitch=pack.lean*(if moving>.08 or airborne then 1 else .32)
@@ -292,7 +352,7 @@ function W:step(character,s,dt,preview)
    rootRoll=math.sin(ph*.5)*.08
   end
   local r6=hum.RigType==Enum.HumanoidRigType.R6
-  local scale=if r6 then .78 else 1
+  local scale=if r6 and not fullPreview then .78 else 1
   local leftKnee=-(pack.knee or 0)*(.3+.7*math.max(0,-gait))*walk+kneeBend
   local rightKnee=-(pack.knee or 0)*(.3+.7*math.max(0,gait))*walk+kneeBend
   if airborne then rightKnee-=.13;leftKnee-=.13 end
@@ -334,11 +394,11 @@ function W:step(character,s,dt,preview)
   add(j.LeftAnkle,CFrame.Angles((foot*.53-wave*.035)*weight,0,0))
  else
   -- Natural / Heroic / Bouncy: subtle animation layered over existing walk.
-  local power=if style=="Heroic" then .22 elseif style=="Bouncy" then .21 else .15
-  local leg=wave*power*weight
+  local power=if fullPreview then (if style=="Heroic" then .37 elseif style=="Bouncy" then .32 else .29) else (if style=="Heroic" then .22 elseif style=="Bouncy" then .21 else .15)
+  local leg=wave*power*weight*(if fullPreview then moving else 1)
   local arm=-leg*.82
-  local dip=(if style=="Bouncy" then .085 else .036)*math.abs(cross)*weight
-  local twist=wave*(if style=="Heroic" then .09 else .043)*weight
+  local dip=(if style=="Bouncy" then .085 else .036)*math.abs(cross)*weight*(if fullPreview then .2+.8*moving else 1)
+  local twist=wave*(if style=="Heroic" then .09 else .043)*weight*(if fullPreview then .2+.8*moving else 1)
   add(j.RightHip,CFrame.Angles(leg,0,0))
   add(j.LeftHip,CFrame.Angles(-leg,0,0))
   add(j.RightShoulder,CFrame.Angles(arm,0,twist*.32))
@@ -348,6 +408,11 @@ function W:step(character,s,dt,preview)
   add(j.Waist,CFrame.new(0,dip,0)*CFrame.Angles(dip*.18,twist,0))
   add(j.Neck,CFrame.Angles(0,-twist*.36,0))
   add(j.Root,CFrame.new(0,dip*.5,0)*CFrame.Angles(0,twist*.55,0))
+ end
+ if fullPreview and style=="Cartwheel Flow" and moving>.08 and j.Root then
+  -- Full cartwheel roll is confined to the isolated GUI rig.
+  local basis=j.Root.C0.Rotation
+  j.Root.Transform=j.Root.Transform*basis:Inverse()*CFrame.Angles(0,0,ph*.52)*basis
  end
 end
 function W:destroy()
