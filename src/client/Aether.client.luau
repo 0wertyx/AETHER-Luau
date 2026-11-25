@@ -117,7 +117,7 @@ end
 -- Volleyball controls are session-local and never serialized into cosmetic presets.
 do
     local ReplicatedStorage=game:GetService("ReplicatedStorage")
-    local vb={originals={},corners={},auto=false,status="Waiting for compatible game",target=nil}
+    local vb={originals={},corners={},auto=false,status="Waiting for compatible game",target=nil,tiltBasis="World",tiltScale=1,normalizeTilt=true,tiltWrites=0,tiltOverrides=0}
     app.volleyball=vb
     local attrs={
         BlockPower=true,BumpPower=true,DashPower=true,DiveSpeed=true,
@@ -131,6 +131,14 @@ do
             and type(player:GetAttribute("Multiplier_BumpPower"))=="number"
     end
     function vb:available() return available() end
+    function vb:tiltDebug()
+        local current=player:GetAttribute(tiltKey)
+        local function fmt(v)
+            if typeof(v)~="Vector3" then return "-" end
+            return string.format("%.3f, %.3f, %.3f",v.X,v.Y,v.Z)
+        end
+        return string.format("Actual: %s\nRequested: %s\nWrites: %d | observed overrides: %d",fmt(current),fmt(self.requestedTilt),self.tiltWrites,self.tiltOverrides)
+    end
     local function write(key,value)
         local current=player:GetAttribute(key)
         local entry=vb.originals[key]
@@ -196,6 +204,7 @@ do
         if self.auto then self.auto=false;restore(tiltKey);self.target=nil;self.status="Auto Tilt off";return end
         assert(available(),"Volleyball attributes not available")
         assert(geometry(),"Capture three corners: A, adjacent B across width, C across net at same sideline")
+        self.tiltWrites=0;self.tiltOverrides=0;self.requestedTilt=nil
         self.auto=true;self.status="Auto Tilt beta enabled"
     end
     local elapsed=0
@@ -209,6 +218,10 @@ do
             return
         end
         if not vb.auto then return end
+        local actual=player:GetAttribute(tiltKey)
+        if vb.requestedTilt and typeof(actual)=="Vector3" and (actual-vb.requestedTilt).Magnitude>.001 then
+            vb.tiltOverrides+=1
+        end
         local ok,err=pcall(function()
             if ReplicatedStorage:GetAttribute("Map")~=vb.map then vb:clearCourt();return end
             if player:GetAttribute("Gameplay_InGame")~=true then restore(tiltKey);vb.target=nil;vb.status="Waiting for match";return end
@@ -238,10 +251,20 @@ do
             local target=a+u*lateral+v*depth
             local heading=target-flatten(root.Position)
             if heading.Magnitude<.01 then return end
-            -- Experimental interpretation: world-space unit vector with positive Y.
-            -- Actual ball-flight mapping is not established by the replicated attribute.
-            local proposed=(heading.Unit+Vector3.yAxis).Unit
-            write(tiltKey,proposed)
+            -- Expose both plausible coordinate conventions; neither is verified in-game.
+            local axis=heading.Unit
+            if vb.tiltBasis=="Character" then
+                axis=flatten(root.CFrame:VectorToObjectSpace(axis))
+                if axis.Magnitude<.01 then return end
+                axis=axis.Unit
+            end
+            local proposed=axis*vb.tiltScale+Vector3.yAxis
+            if vb.normalizeTilt then proposed=proposed.Unit end
+            if typeof(actual)=="Vector3" and (actual-proposed).Magnitude>.001 then
+                write(tiltKey,proposed)
+                vb.tiltWrites+=1
+            end
+            vb.requestedTilt=proposed
             vb.target=target
             vb.status=string.format("Beta target X %.1f Z %.1f",target.X,target.Z)
         end)

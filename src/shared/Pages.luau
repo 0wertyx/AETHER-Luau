@@ -775,8 +775,23 @@ function E.render(a,tab,ui)
     if label=="Clear court" then vb:clearCourt() else vb:toggleAuto() end
     ui:sync()
    end,2)
+   ui:chips({"World coordinates","Character coordinates"},function(label)
+    vb.tiltBasis=if label=="World coordinates" then "World" else "Character"
+    vb.requestedTilt=nil;ui:sync()
+   end,2,function() return if vb.tiltBasis=="World" then "World coordinates" else "Character coordinates" end)
+   ui:chips({"Unit vector","Keep Y = 1"},function(label)
+    vb.normalizeTilt=label=="Unit vector";vb.requestedTilt=nil;ui:sync()
+   end,2,function() return if vb.normalizeTilt then "Unit vector" else "Keep Y = 1" end)
+   local strength=ui:box("Tilt horizontal scale",tostring(vb.tiltScale),32,function(raw)
+    local n=assert(tonumber(raw),"Enter a number")
+    assert(n==n and n>=0 and n<=10,"Enter 0 to 10")
+    vb.tiltScale=n;vb.requestedTilt=nil
+   end)
+   ui:watch(function() if not strength:IsFocused() then strength.Text=tostring(vb.tiltScale) end end)
    local status=ui:note("",64)
    ui:watch(function() status.Text=(if vb.auto then "AUTO TILT ON | " else "AUTO TILT OFF | ")..vb.status end)
+   local diagnostic=ui:note("",80)
+   ui:watch(function() diagnostic.Text=vb:tiltDebug() end)
   end
   ui:title("AIR REDIRECTION")
   ui:control("airControl");ui:control("airControlStrength");ui:control("airControlSpeed");ui:control("airTiltAngle");ui:control("bunnyHop")
