@@ -796,9 +796,50 @@ scope:on(RunService.PostSimulation,function()
     app.airDiagnostic = string.format("Applied | speed %.1f | WalkSpeed %.1f | cap %.1f | physics delta %.1f",probe.speed,probe.walkSpeed,probe.cap,difference)
 end)
 
+-- Hold Space to request ordinary grounded jumps. No jump-power or state overrides.
+local function stepBunnyHop()
+    if app.mode ~= "Game" or not app.s.bunnyHop or UserInputService:GetFocusedTextBox() or not UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+        app.bunnyHopStatus = "Idle"
+        app.bunnyHopNext = nil
+        return
+    end
+    local char = player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local root = hum and hum.RootPart
+    if not hum or not root or root.Anchored or hum.Health<=0 or hum.Sit or hum.PlatformStand then
+        app.bunnyHopStatus = "Waiting for character"
+        return
+    end
+    if app.bunnyHopHum ~= hum then
+        app.bunnyHopHum = hum
+        app.bunnyHopNext = nil
+    end
+    local state=hum:GetState()
+    if hum.FloorMaterial == Enum.Material.Air or (state~=Enum.HumanoidStateType.Running and state~=Enum.HumanoidStateType.Landed) then
+        app.bunnyHopStatus = "Waiting for landing"
+        app.bunnyHopNext = nil
+        return
+    end
+    if not hum:GetStateEnabled(Enum.HumanoidStateType.Jumping) then
+        app.bunnyHopStatus = "Jump disabled"
+        return
+    end
+    if os.clock() < (app.bunnyHopNext or 0) then return end
+    hum.Jump = true
+    app.bunnyHopNext = os.clock()+.15
+    app.bunnyHopCount = (app.bunnyHopCount or 0)+1
+    app.bunnyHopStatus = "Jump requested"
+end
+
 -- Motion Studio poses follow the real humanoid state, after Animator evaluates.
 scope:on(RunService.PreSimulation, function(dt)
     if app.stopping or not gui.Parent then return end
+    local hopOk, hopErr = pcall(stepBunnyHop)
+    if not hopOk then
+        app.bunnyHopStatus = "Error: "..tostring(hopErr)
+        if app.bunnyHopError~=hopErr then app:log("Bunny Hop",tostring(hopErr)) end
+        app.bunnyHopError=hopErr
+    else app.bunnyHopError=nil end
     app.airTicks = (app.airTicks or 0)+1
     local airOk, airResult = pcall(stepAirControl,dt)
     if airOk then
