@@ -594,16 +594,20 @@ RunService:BindToRenderStep(pointerRenderBinding, Enum.RenderPriority.Last.Value
 end)
 scope:add(function() RunService:UnbindFromRenderStep(pointerRenderBinding) end)
 
--- Additive procedural walk runs between Animator and physics, never overriding
--- the game's AnimationTracks. Disabled unless Character.walkAnimation is enabled.
+-- Remove last frame's local visual layer before Animator evaluates.
+scope:on(RunService.PreAnimation, function()
+    if not app.stopping and gui.Parent then walkMotion:restoreLive() end
+end)
+-- Motion Studio poses follow the real humanoid state, after Animator evaluates.
 scope:on(RunService.PreSimulation, function(dt)
     if app.stopping or not gui.Parent then return end
     local characterToAnimate = if app.mode == "Game" then character else nil
     local ok, err = pcall(walkMotion.step, walkMotion, characterToAnimate, app.s, dt)
     if not ok and not app.walkError then
         app.walkError = true
+        app:log("Motion", tostring(err))
         warn("AETHER walk cycle:", err)
-    end
+    elseif ok then app.walkError = false end
 end)
 
 local elapsed = 0
