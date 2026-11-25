@@ -60,7 +60,7 @@ function U.airRedirect(horizontal,input,cap,strength,dt)
  local speed=horizontal.Magnitude
  local response=math.clamp(strength,0,100)/100
  dt=math.clamp(dt,0,.05)
- if magnitude<.01 or cap<=0 or response<=0 or dt<=0 or speed>cap+.1 then return horizontal end
+ if magnitude<.01 or cap<=0 or response<=0 or dt<=0 then return horizontal end
  local target=math.atan2(input.Z,input.X)
  local angle=target
  if speed>.05 then
@@ -69,9 +69,10 @@ function U.airRedirect(horizontal,input,cap,strength,dt)
   local maxTurn=math.rad(900)*response*dt
   angle=current+math.clamp(delta,-maxTurn,maxTurn)
  end
- local boundedSpeed=math.min(speed,cap)
- local targetSpeed=math.max(boundedSpeed,cap*math.min(magnitude,1))
- local nextSpeed=boundedSpeed+(targetSpeed-boundedSpeed)*(1-math.exp(-24*response*dt))
+ -- Keep existing momentum, including speeds above the nominal WalkSpeed.
+ -- Steering cannot accelerate past the greater of current speed and WalkSpeed.
+ local targetSpeed=math.max(speed,cap*math.min(magnitude,1))
+ local nextSpeed=speed+(targetSpeed-speed)*(1-math.exp(-24*response*dt))
  return Vector3.new(math.cos(angle)*nextSpeed,0,math.sin(angle)*nextSpeed)
 end
 function U.keys(t) local a={};for k in t do table.insert(a,k) end;table.sort(a);return a end

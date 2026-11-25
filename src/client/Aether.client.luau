@@ -640,22 +640,46 @@ end)
 -- Optional local air steering mechanic controlled by the Air Redirection toggle.
 -- Does not create forces, alter gravity, increase WalkSpeed or change vertical velocity.
 local function stepAirControl(dt)
+    app.airProbe = nil
     if app.mode ~= "Game" or not app.s.airControl then return end
     if app.ui.opened or app.editingHUD or UserInputService:GetFocusedTextBox() then return end
     if not character or not humanoid or humanoid.Parent ~= character or humanoid.Health <= 0 or humanoid.Sit or humanoid.PlatformStand then return end
     local state = humanoid:GetState()
-    if state ~= Enum.HumanoidStateType.Jumping and state ~= Enum.HumanoidStateType.Freefall then return end
+    if state ~= Enum.HumanoidStateType.Jumping and state ~= Enum.HumanoidStateType.Freefall then
+        if humanoid.FloorMaterial == Enum.Material.Air then
+            app.airDiagnostic = "Skipped: humanoid state "..state.Name
+        end
+        return
+    end
     local root = character:FindFirstChild("HumanoidRootPart")
-    if not root or not root:IsA("BasePart") or root.Anchored then return end
+    if not root or not root:IsA("BasePart") or root.Anchored then
+        app.airDiagnostic = "Skipped: root missing or anchored"
+        return
+    end
     local input = humanoid.MoveDirection
     local direction = Vector3.new(input.X,0,input.Z)
     local v = root.AssemblyLinearVelocity
     local horizontal = Vector3.new(v.X,0,v.Z)
     local cap = math.max(0,humanoid.WalkSpeed)
+    if direction.Magnitude < .01 then app.airDiagnostic = "Skipped: MoveDirection is zero";return end
+    if cap <= 0 or app.s.airControlStrength <= 0 or dt <= 0 then
+        app.airDiagnostic = "Skipped: WalkSpeed, strength or delta time is zero";return
+    end
     local nextVelocity = U.airRedirect(horizontal,direction,cap,app.s.airControlStrength,dt)
     if (nextVelocity-horizontal).Magnitude < .0001 then return end
     root.AssemblyLinearVelocity = Vector3.new(nextVelocity.X,v.Y,nextVelocity.Z)
+    app.airProbe = {root=root,expected=nextVelocity,speed=horizontal.Magnitude,cap=cap}
 end
+
+-- Observe the result without fighting the experience's physics controller.
+scope:on(RunService.PostSimulation,function()
+    local probe = app.airProbe
+    app.airProbe = nil
+    if not probe or app.stopping or not gui.Parent or not probe.root.Parent then return end
+    local v = probe.root.AssemblyLinearVelocity
+    local difference = (Vector3.new(v.X,0,v.Z)-probe.expected).Magnitude
+    app.airDiagnostic = string.format("Applied | speed %.1f / WalkSpeed %.1f | physics delta %.1f",probe.speed,probe.cap,difference)
+end)
 
 -- Motion Studio poses follow the real humanoid state, after Animator evaluates.
 scope:on(RunService.PreSimulation, function(dt)

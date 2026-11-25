@@ -4572,6 +4572,8 @@ function E.render(a,tab,ui)
   ui:control("airControl");ui:control("airControlStrength")
   local airStatus=ui:note("",44)
   ui:watch(function() airStatus.Text=if a.mode=="Simulator" then "Simulator: steer with movement controls. Horizontal momentum is preserved." else "Live: steer in midair. Jump height is unchanged; game physics may override local steering." end)
+  local airDebug=ui:note("",44)
+  ui:watch(function() airDebug.Text="Last airborne sample: "..(a.airDiagnostic or "No steering sample yet") end)
   ui:title("CAMERA")
   preset(ui,a,"Camera");ui:group("Camera")
   ui:title("CUSTOM LOCK / KEYBIND")
@@ -5852,7 +5854,7 @@ function U.airRedirect(horizontal,input,cap,strength,dt)
  local speed=horizontal.Magnitude
  local response=math.clamp(strength,0,100)/100
  dt=math.clamp(dt,0,.05)
- if magnitude<.01 or cap<=0 or response<=0 or dt<=0 or speed>cap+.1 then return horizontal end
+ if magnitude<.01 or cap<=0 or response<=0 or dt<=0 then return horizontal end
  local target=math.atan2(input.Z,input.X)
  local angle=target
  if speed>.05 then
@@ -5861,9 +5863,10 @@ function U.airRedirect(horizontal,input,cap,strength,dt)
   local maxTurn=math.rad(900)*response*dt
   angle=current+math.clamp(delta,-maxTurn,maxTurn)
  end
- local boundedSpeed=math.min(speed,cap)
- local targetSpeed=math.max(boundedSpeed,cap*math.min(magnitude,1))
- local nextSpeed=boundedSpeed+(targetSpeed-boundedSpeed)*(1-math.exp(-24*response*dt))
+ -- Keep existing momentum, including speeds above the nominal WalkSpeed.
+ -- Steering cannot accelerate past the greater of current speed and WalkSpeed.
+ local targetSpeed=math.max(speed,cap*math.min(magnitude,1))
+ local nextSpeed=speed+(targetSpeed-speed)*(1-math.exp(-24*response*dt))
  return Vector3.new(math.cos(angle)*nextSpeed,0,math.sin(angle)*nextSpeed)
 end
 function U.keys(t) local a={};for k in t do table.insert(a,k) end;table.sort(a);return a end
@@ -7794,22 +7797,46 @@ end)
 -- Optional local air steering mechanic controlled by the Air Redirection toggle.
 -- Does not create forces, alter gravity, increase WalkSpeed or change vertical velocity.
 local function stepAirControl(dt)
+    app.airProbe = nil
     if app.mode ~= "Game" or not app.s.airControl then return end
     if app.ui.opened or app.editingHUD or UserInputService:GetFocusedTextBox() then return end
     if not character or not humanoid or humanoid.Parent ~= character or humanoid.Health <= 0 or humanoid.Sit or humanoid.PlatformStand then return end
     local state = humanoid:GetState()
-    if state ~= Enum.HumanoidStateType.Jumping and state ~= Enum.HumanoidStateType.Freefall then return end
+    if state ~= Enum.HumanoidStateType.Jumping and state ~= Enum.HumanoidStateType.Freefall then
+        if humanoid.FloorMaterial == Enum.Material.Air then
+            app.airDiagnostic = "Skipped: humanoid state "..state.Name
+        end
+        return
+    end
     local root = character:FindFirstChild("HumanoidRootPart")
-    if not root or not root:IsA("BasePart") or root.Anchored then return end
+    if not root or not root:IsA("BasePart") or root.Anchored then
+        app.airDiagnostic = "Skipped: root missing or anchored"
+        return
+    end
     local input = humanoid.MoveDirection
     local direction = Vector3.new(input.X,0,input.Z)
     local v = root.AssemblyLinearVelocity
     local horizontal = Vector3.new(v.X,0,v.Z)
     local cap = math.max(0,humanoid.WalkSpeed)
+    if direction.Magnitude < .01 then app.airDiagnostic = "Skipped: MoveDirection is zero";return end
+    if cap <= 0 or app.s.airControlStrength <= 0 or dt <= 0 then
+        app.airDiagnostic = "Skipped: WalkSpeed, strength or delta time is zero";return
+    end
     local nextVelocity = U.airRedirect(horizontal,direction,cap,app.s.airControlStrength,dt)
     if (nextVelocity-horizontal).Magnitude < .0001 then return end
     root.AssemblyLinearVelocity = Vector3.new(nextVelocity.X,v.Y,nextVelocity.Z)
+    app.airProbe = {root=root,expected=nextVelocity,speed=horizontal.Magnitude,cap=cap}
 end
+
+-- Observe the result without fighting the experience's physics controller.
+scope:on(RunService.PostSimulation,function()
+    local probe = app.airProbe
+    app.airProbe = nil
+    if not probe or app.stopping or not gui.Parent or not probe.root.Parent then return end
+    local v = probe.root.AssemblyLinearVelocity
+    local difference = (Vector3.new(v.X,0,v.Z)-probe.expected).Magnitude
+    app.airDiagnostic = string.format("Applied | speed %.1f / WalkSpeed %.1f | physics delta %.1f",probe.speed,probe.cap,difference)
+end)
 
 -- Motion Studio poses follow the real humanoid state, after Animator evaluates.
 scope:on(RunService.PreSimulation, function(dt)
