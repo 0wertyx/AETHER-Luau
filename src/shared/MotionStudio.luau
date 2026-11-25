@@ -388,11 +388,13 @@ local function cloneRig(char)
  local humanoid=model:FindFirstChildOfClass("Humanoid")
  if not humanoid then model:Destroy();return nil end
  local kind=if humanoid.RigType==Enum.HumanoidRigType.R15 then "R15" else "R6"
- local parts,body,original,localCF={},{},{},{}
+ local parts,body,original,localCF,decals={},{},{},{},{}
  for _,obj in model:GetDescendants() do
   if not obj.Parent then continue end
   if obj:IsA("LuaSourceContainer") or obj:IsA("Animator") or obj:IsA("AnimationController") or obj:IsA("Tool") or obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Highlight") or obj:IsA("Sound") then
    obj:Destroy()
+  elseif obj:IsA("Decal") or obj:IsA("Texture") then
+   table.insert(decals,{object=obj,transparency=obj.Transparency})
   elseif obj:IsA("BasePart") then
    obj.Anchored=true;obj.CanCollide=false;obj.CanTouch=false;obj.CanQuery=false;obj.CastShadow=false;obj.LocalTransparencyModifier=0
    if obj==root then obj.Transparency=1 end
@@ -450,7 +452,7 @@ local function cloneRig(char)
   if o and o~=b and o~=root then table.insert(followers,{part=b,owner=o}) end
  end
  model.Name="MotionStudioAvatar"
- return {model=model,root=root,kind=kind,parts=parts,body=body,original=original,links=links,detached=detached,owner=owner,followers=followers}
+ return {model=model,root=root,kind=kind,parts=parts,body=body,original=original,links=links,detached=detached,owner=owner,followers=followers,decals=decals}
 end
 local function avatarPose(r,p,O,intensity)
  local cf={[r.root]=CFrame.identity};local pivots={}
@@ -486,7 +488,7 @@ function M.mount(ui,a)
  local view=U.new("ViewportFrame",{Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.fromRGB(26,24,36),BorderSizePixel=0,Ambient=Color3.fromRGB(155,147,174),LightColor=Color3.fromRGB(247,240,255),LightDirection=V(-1,-1,-.6),Active=true},frame);U.corner(view,10)
  local world=U.new("WorldModel",{},view)
  local camera=U.new("Camera",{FieldOfView=35},view);view.CurrentCamera=camera
- local rigData=nil
+ local rigData=nil;local avatarStatus="Loading avatar..."
  local player=game:GetService("Players").LocalPlayer
  local violet=Color3.fromRGB(186,153,243)
  local avatarSize=V(4,5,2)
@@ -516,7 +518,7 @@ function M.mount(ui,a)
   local saved=a.s.walkStyle or "Natural"
   local applied=a.s.walkAnimation and saved==s.pack and a.s.walkIntensity==s.intensity
   local ready=rigData~=nil
-  confirm.Text=if not ready then "LOADING AVATAR..." elseif applied then "APPLIED ✓" else "CONFIRM · "..s.pack
+  confirm.Text=if not ready then "AVATAR NOT READY" elseif applied then "APPLIED ✓" else "CONFIRM · "..s.pack
   confirm.Active=ready and not applied;confirm.AutoButtonColor=ready and not applied
   confirm.BackgroundColor3=if ready and not applied then Color3.fromRGB(106,74,158) else Color3.fromRGB(49,43,62)
   selection.Text="Preview: "..s.pack.." / Saved: "..saved..(if a.s.walkAnimation then "" else " (disabled)")..(if rigData and rigData.kind=="R15" then " · R15 adapted poses; props are R6 only" else "")
@@ -616,11 +618,15 @@ function M.mount(ui,a)
   local air=state=="Jump" or state=="Fall"
   local O,I=s.origin/100,s.intensity/100
   local r=rigData
-  if not r then caption.Text="YOUR AVATAR";status.Text="Loading avatar...";dirty=false;return end
+  if not r then caption.Text="YOUR AVATAR";status.Text=avatarStatus;dirty=false;return end
   local cf,pivots=avatarPose(r,p,O,I)
   for _,b in r.parts do
    b.CFrame=cf[b] or CFrame.identity
    b.Transparency=if visible(b) then r.original[b] else 1
+  end
+  for _,d in r.decals do
+   local parent=d.object.Parent
+   d.object.Transparency=if parent and visible(parent) then d.transparency else 1
   end
   -- Real R6 props are positioned before the global rigid-body rotation.
   local model=r.model
@@ -685,7 +691,7 @@ function M.mount(ui,a)
    if scope.dead or ticket~=generation or char~=player.Character or not char then return end
    local ok,new=pcall(cloneRig,char)
    if not ok or not new then
-    if not rigData then caption.Text="YOUR AVATAR";status.Text="Avatar unavailable · retry or respawn" end
+    if not rigData then avatarStatus="Avatar unavailable · refresh or respawn";mark() end
     return
    end
    clearAvatar();rigData=new
@@ -699,7 +705,7 @@ function M.mount(ui,a)
  end
  local function bind(char)
   if charScope then charScope:clear();charScope=nil end
-  generation+=1;clearAvatar()
+  generation+=1;avatarStatus="Loading avatar...";clearAvatar()
   if not char then return end
   charScope=U.scope()
   local function appearance(obj)
