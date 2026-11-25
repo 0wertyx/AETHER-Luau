@@ -3238,7 +3238,31 @@ for i=1,10 do
  end
 end
 for i,p in outline do outline[i]=p/maxRadius end
-local VERTICES=#outline
+-- Fill the rounded contour with a triangle fan. Each triangle is represented
+-- by two right-triangle wedges, with their transforms computed once.
+local fill={}
+local function triangle(a,b,c)
+ local ab,ac,bc=b-a,c-a,c-b
+ local ab2,ac2,bc2=ab:Dot(ab),ac:Dot(ac),bc:Dot(bc)
+ if ab2>ac2 and ab2>bc2 then c,a=a,c
+ elseif ac2>bc2 then a,b=b,a end
+ ab,ac,bc=b-a,c-a,c-b
+ local right=ac:Cross(ab).Unit
+ local up=bc:Cross(right).Unit
+ local back=bc.Unit
+ local height=math.abs(ab:Dot(up))
+ local function add(position,x,y,z,length)
+  if height>.0001 and length>.0001 then
+   fill[#fill+1]={cf=CFrame.fromMatrix(position,x,y,z),height=height,length=length}
+  end
+ end
+ add((a+b)*.5,right,up,back,math.abs(ab:Dot(back)))
+ add((a+c)*.5,-right,up,-back,math.abs(ac:Dot(back)))
+end
+for i,p in outline do triangle(Vector3.zero,p,outline[i%#outline+1]) end
+local function fillPart(parent)
+ return U.new("WedgePart",{Name="StarFill",Anchored=true,CanCollide=false,CanTouch=false,CanQuery=false,CastShadow=false,Transparency=1,Size=Vector3.new(.1,.1,.1),Material=Enum.Material.Neon},parent)
+end
 local function part(parent,shape)
  return U.new("Part",{Name="StarRay",Shape=shape or Enum.PartType.Block,Anchored=true,CanCollide=false,CanTouch=false,CanQuery=false,CastShadow=false,Transparency=1,Size=Vector3.new(.1,.1,.1),Material=Enum.Material.Neon},parent)
 end
@@ -3280,9 +3304,8 @@ function F:step(s,now)
  if material==Enum.Material.Neon and s.starfallGlow==0 then material=Enum.Material.SmoothPlastic end
  while #self.pool<count do
   local star={rays={}}
-  for i=1,VERTICES do star.rays[i]=part(self.root,Enum.PartType.Cylinder) end
-  for i=1,VERTICES do star.rays[VERTICES+i]=part(self.root,Enum.PartType.Ball) end
-  star.rays[VERTICES*2+1]=part(self.root)
+  for i=1,#fill do star.rays[i]=fillPart(self.root) end
+  star.rays[#fill+1]=part(self.root)
   self:spawn(star,cam,true);self.pool[#self.pool+1]=star
  end
  for i,star in self.pool do
@@ -3294,17 +3317,19 @@ function F:step(s,now)
   local opacity=s.starfallOpacity/100
   local tint=if s.starfallRainbow then Color3.fromHSV((now*.12+star.tint)%1,.55,1) else colorA:Lerp(colorB,star.tint)
   local cf=CFrame.new(star.pos)*cam.CFrame.Rotation*CFrame.Angles(0,0,star.phase+star.age*math.rad(s.starfallRotation)*star.spinDirection)
-  local width=math.max(.045,r*.29)
-  for j=1,VERTICES do
-   local a=cf:PointToWorldSpace(outline[j]*r)
-   local b=cf:PointToWorldSpace(outline[j%VERTICES+1]*r)
+  local thickness=math.max(.045,r*.22)
+  for j,shape in fill do
    local p=star.rays[j]
-   if segment(p,a,b,width) then p.Color=tint;p.Material=material;p.Transparency=1-opacity end
-   local joint=star.rays[VERTICES+j]
-   joint.Size=Vector3.one*width
-   joint.Position=a;joint.Color=tint;joint.Material=material;joint.Transparency=1-opacity
+   if star.renderRadius~=r then
+    p.Size=Vector3.new(thickness,shape.height*r,shape.length*r)
+   end
+   p.CFrame=cf*CFrame.new(shape.cf.Position*r)*shape.cf.Rotation
+   if p.Color~=tint then p.Color=tint end
+   if p.Material~=material then p.Material=material end
+   if p.Transparency~=1-opacity then p.Transparency=1-opacity end
   end
-  local tail=star.rays[VERTICES*2+1]
+  star.renderRadius=r
+  local tail=star.rays[#fill+1]
   if s.starfallTail then
    local len=math.min(10,s.starfallSpeed*.12)
    if segment(tail,star.pos+Vector3.new(0,r*.5,0),star.pos+Vector3.new(0,r+len,0),math.max(.04,r*.08)) then tail.Material=material;tail.Color=tint;tail.Transparency=1-opacity*.35 end
