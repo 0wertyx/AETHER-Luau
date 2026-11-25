@@ -90,7 +90,7 @@ function W:liveStep(character,s,dt)
   return
  end
  local hs=hum:GetState()
- if hs==Enum.HumanoidStateType.Seated or hs==Enum.HumanoidStateType.Dead or hs==Enum.HumanoidStateType.Swimming or hs==Enum.HumanoidStateType.Climbing or hs==Enum.HumanoidStateType.Physics or hs==Enum.HumanoidStateType.Ragdoll or hs==Enum.HumanoidStateType.FallingDown or hs==Enum.HumanoidStateType.PlatformStanding or hs==Enum.HumanoidStateType.GettingUp then
+ if hs==Enum.HumanoidStateType.Seated or hs==Enum.HumanoidStateType.Dead or hs==Enum.HumanoidStateType.Physics or hs==Enum.HumanoidStateType.Ragdoll or hs==Enum.HumanoidStateType.FallingDown or hs==Enum.HumanoidStateType.PlatformStanding or hs==Enum.HumanoidStateType.GettingUp then
   table.clear(self.livePose);self.liveStyle=nil;self.liveState=nil;self.liveWasAir=false;self.liveTransition=nil;return
  end
  dt=math.clamp(dt,0,.1)
@@ -98,13 +98,23 @@ function W:liveStep(character,s,dt)
  if self.liveRetry>=.35 and (not self.motors.Root or not self.motors.Root.Parent or not self.motors.RightHip or not self.motors.RightHip.Parent or not self.motors.LeftHip or not self.motors.LeftHip.Parent) then
   self:bind(nil);self:bind(character)
  end
- local state=if hs==Enum.HumanoidStateType.Jumping then "Jump" elseif hs==Enum.HumanoidStateType.Freefall then "Fall" elseif hum.MoveDirection.Magnitude<.08 then "Idle" elseif hum.WalkSpeed>19 then "Run" else "Walk"
+ local rootPart=character:FindFirstChild("HumanoidRootPart")
+ local v=if rootPart and rootPart:IsA("BasePart") then rootPart.AssemblyLinearVelocity else Vector3.zero
+ local horizontal=Vector3.new(v.X,0,v.Z).Magnitude
+ local isRun=horizontal>(if self.liveState=="Run" then 11 else 13)
+ local state=if hs==Enum.HumanoidStateType.Climbing then "Climb"
+  elseif hs==Enum.HumanoidStateType.Swimming then "Swim"
+  elseif hs==Enum.HumanoidStateType.Jumping then "Jump"
+  elseif hs==Enum.HumanoidStateType.Freefall then "Fall"
+  elseif hum.MoveDirection.Magnitude<.08 then "Idle"
+  elseif isRun then "Run" else "Walk"
+ local movementSpeed=if state=="Climb" then math.abs(v.Y) elseif state=="Swim" then v.Magnitude else horizontal
  local air=state=="Jump" or state=="Fall"
  if self.liveSettings~=s then self.liveSettings=s;self.liveConfig=MotionStudio.runtimeSettings(s) end
  local config=self.liveConfig
  local styleChanged=self.liveStyle~=config.style
  local changed=styleChanged or self.liveState~=state
- if styleChanged then self.liveTime=0;self.liveAir=0 end
+ if styleChanged then self.liveTime=0;self.liveAir=0;self.liveRate=nil end
  if air then
   self.liveAir=if self.liveWasAir and not styleChanged then self.liveAir+dt*config.speed else 0
  else self.liveAir=0 end
@@ -113,7 +123,9 @@ function W:liveStep(character,s,dt)
   self.liveFrom=table.clone(self.livePose);self.liveTransition=0
  end
  self.liveStyle=config.style;self.liveState=state
- self.liveTime+=dt*config.speed
+ local targetRate=MotionStudio.speedFactor(config,state,movementSpeed)
+ self.liveRate=if changed or self.liveRate==nil then targetRate else self.liveRate+(targetRate-self.liveRate)*(1-math.exp(-dt*12))
+ self.liveTime+=dt*config.speed*self.liveRate
  local authored,hover=MotionStudio.runtimePose(config,self.liveTime,state,self.liveAir)
  local targets={}
  for _,name in runtimeNames do
@@ -126,7 +138,7 @@ function W:liveStep(character,s,dt)
  end
  local root=self.motors.Root
  -- Match grounded foot contact on R6 without changing HumanoidRootPart position.
- if root and targets[root] and root.Part1 and not air then
+ if root and targets[root] and root.Part1 and not air and state~="Climb" and state~="Swim" then
   local neutral=root.C0*root.C1:Inverse()
   local posed=root.C0*targets[root]*root.C1:Inverse()
   local floor,low=math.huge,math.huge
