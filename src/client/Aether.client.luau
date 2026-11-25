@@ -411,6 +411,7 @@ end
 function app:onMenu(open)
     if open and self.editingHUD then self.editingHUD=false;self.ui.drag=nil end
     if open and self.view then self.view:releaseLock(self.view:nativeLockAvailable()) end
+    if self.refreshGameInput then self:refreshGameInput() end
 end
 function app:drag(input, key, widget, frame, source)
     local panel=key=="top" or key=="rail"
@@ -470,6 +471,47 @@ local view = View.new(player, pointer)
 app.view = view
 local ui = Controls.new(app, studioLayer, scope)
 app.ui = ui
+-- Decorative layers must not claim game input, even with a centered mouse.
+-- When the Studio menu is closed, preserve the HUD artwork but temporarily
+-- make its controls noninteractive. Restore their original flags on open.
+do
+    local saved = setmetatable({}, {__mode="k"})
+    local passing = false
+    local function disable(obj)
+        if not obj:IsA("GuiObject") then return end
+        if not saved[obj] then saved[obj]={active=obj.Active,interactable=obj.Interactable} end
+        obj.Active=false;obj.Interactable=false
+    end
+    local function pointerOnly(obj)
+        if obj:IsA("GuiObject") then obj.Active=false;obj.Interactable=false end
+    end
+    pointerOnly(pointer)
+    for _,obj in pointer:GetDescendants() do pointerOnly(obj) end
+    scope:on(pointer.DescendantAdded,pointerOnly)
+    for _,layer in {overlay,studioLayer} do
+        scope:on(layer.DescendantAdded,function(obj) if passing then disable(obj) end end)
+    end
+    function app:refreshGameInput()
+        local pass=self.s.gameInputPassthrough and self.mode=="Game" and not ui.opened and not self.editingHUD
+        if pass==passing then return end
+        passing=pass
+        if pass then
+            for _,layer in {overlay,studioLayer} do
+                disable(layer)
+                for _,obj in layer:GetDescendants() do disable(obj) end
+            end
+        else
+            for obj,flags in saved do
+                if obj.Parent then obj.Active=flags.active;obj.Interactable=flags.interactable end
+            end
+            table.clear(saved)
+            ui.panel.Interactable=ui.opened
+        end
+    end
+    scope:on(RunService.Heartbeat,function()
+        if not app.stopping and gui.Parent then app:refreshGameInput() end
+    end)
+end
 local store = Storage.new(app, scope)
 app.store = store
 
@@ -667,6 +709,10 @@ if player.Character then bind(player.Character) end
 
 scope:on(UserInputService.InputBegan, function(input, processed)
     if app.stopping then return end
+    if input.UserInputType==Enum.UserInputType.MouseButton2 then
+        app.m2Presses=(app.m2Presses or 0)+1
+        app.m2Last=string.format("M2 down | processed: %s | menu: %s",tostring(processed),tostring(ui.opened))
+    end
     if app.bindingLockKey and ui.opened and ui.tab=="Interaction" then
         if input.UserInputType==Enum.UserInputType.Keyboard and not UserInputService:GetFocusedTextBox() then
             local name=input.KeyCode.Name
@@ -694,6 +740,12 @@ scope:on(UserInputService.InputBegan, function(input, processed)
             view:releaseLock(view:nativeLockAvailable())
         end
     end
+end)
+
+scope:on(UserInputService.InputEnded,function(input,processed)
+    if app.stopping or input.UserInputType~=Enum.UserInputType.MouseButton2 then return end
+    app.m2Releases=(app.m2Releases or 0)+1
+    app.m2LastRelease="M2 up | processed: "..tostring(processed)
 end)
 
 local function targetsFromGame()
