@@ -131,11 +131,12 @@ end
 function A:clear()
  if self.scope then self.scope:clear();self.scope=nil end
  self.root=nil;self.highlight=nil;self.emitter=nil;self.trail=nil;self.light=nil;self.neonEnergy=0;self.neonHP=nil
- self.key="";self.char=nil;self.lastAt=nil;self.walk=0;self.phase=0
+ self.key="";self.char=nil;self.lastAt=nil;self.walk=0;self.phase=0;self.glowKey=nil
  table.clear(self.feathers);table.clear(self.trims);table.clear(self.beads)
  table.clear(self.ornaments);table.clear(self.parts);table.clear(self.frames);table.clear(self.geoWings);table.clear(self.geoHalos);table.clear(self.haloV2);table.clear(self.sketchEdges);table.clear(self.diamonds);table.clear(self.diamondTime)
 end
 function A:add(partInstance)
+ partInstance:SetAttribute("AetherEmissive",partInstance.Material==Enum.Material.Neon)
  table.insert(self.parts,partInstance)
  return partInstance
 end
@@ -292,6 +293,7 @@ function A:step(char,s,t)
  local body=char and (char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart"))
  local head=char and char:FindFirstChild("Head")
  self:bind(char,body,head,s);if not self.root then return end
+ self:syncVisualGlow(s)
  local dt=math.clamp(t-(self.lastAt or t),0,.08);self.lastAt=t
  local hum=char:FindFirstChildOfClass("Humanoid")
  local running=if hum then hum.MoveDirection.Magnitude else 0
@@ -599,6 +601,18 @@ function A:step(char,s,t)
    self.light.Range=s.neonRange
    self.light.Brightness=s.neonLight*.035*(1+energy*.45)
   end
+ end
+end
+function A:syncVisualGlow(s)
+ local key=tostring(s.sketchGlow)..":"..tostring(s.haloGlow)
+ if self.glowKey==key then return end
+ self.glowKey=key
+ for _,p in self.parts do
+  if not p:GetAttribute("AetherEmissive") or p.Name=="HaloV2Outline" then continue end
+  local intensity=nil
+  if p.Name:find("Wing") or p.Name:find("Feather") then intensity=s.sketchGlow
+  elseif p.Name:find("Halo") then intensity=s.haloGlow end
+  if intensity~=nil then p.Material=if intensity>0 then Enum.Material.Neon else Enum.Material.SmoothPlastic end
  end
 end
 function A.mannequin(world)
