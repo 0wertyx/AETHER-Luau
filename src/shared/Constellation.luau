@@ -1,11 +1,13 @@
 -- Decorative menu-only background. No external assets or services.
 local U=require(script.Parent.Util)
 local Input=game:GetService("UserInputService")
+local Shapes=require(script.Parent.FxShapes)
 local FX={};FX.__index=FX
 local MAX_LINKS=100
 local MAX_NODES=24
 local RNG=Random.new()
-local kinds={"Rings","Squares","Crystals","Triangles","Hexagons","Stars","Dots"}
+local kinds=Shapes.names
+local aliases={Squares="Rounded Square",Crystals="Diamond",Triangles="Rounded Triangle",Hexagons="Rounded Hexagon",Stars="Rounded Star",Dots="Circle"}
 
 local function frame(parent,name)
  local f=U.frame(parent,name,nil,UDim2.fromOffset(1,1),Color3.new(1,1,1),1)
@@ -48,29 +50,24 @@ local function drawNode(n,kind,r,color,opacity)
  if n.key==key then return end
  n.key=key
  root.Size=UDim2.fromOffset(r*2,r*2)
- root.Rotation=if kind=="Crystals" then 45 else 0
- root.BackgroundColor3=color
- local simple=kind=="Dots" or kind=="Squares" or kind=="Crystals" or kind=="Rings"
- root.BackgroundTransparency=if simple and kind~="Rings" then 1-opacity else 1
- local corner=root:FindFirstChildOfClass("UICorner")
- if not corner then corner=U.corner(root,0) end
- corner.CornerRadius=if kind=="Rings" or kind=="Dots" then UDim.new(.5,0) else UDim.new(0,0)
+ root.Rotation=0
+ root.BackgroundTransparency=1
  local rim=root:FindFirstChildOfClass("UIStroke")
  if not rim then rim=Instance.new("UIStroke");rim.ApplyStrokeMode=Enum.ApplyStrokeMode.Border;rim.Parent=root end
- rim.Enabled=kind=="Rings";rim.Color=color;rim.Transparency=1-opacity;rim.Thickness=1
- local count=if simple then 0 elseif kind=="Triangles" then 3 elseif kind=="Hexagons" then 6 else 10
- local function vertex(i)
-  local a=-math.pi/2+i*math.pi*2/count
-  local radius=if kind=="Stars" and i%2==1 then r*.45 else r
-  return Vector2.new(r+math.cos(a)*radius,r+math.sin(a)*radius)
- end
- for j=1,count do
+ local ring=kind=="Rings"
+ rim.Enabled=ring;rim.Color=color;rim.Transparency=1-opacity;rim.Thickness=1
+ local corner=root:FindFirstChildOfClass("UICorner")
+ if not corner then corner=U.corner(root,0) end
+ corner.CornerRadius=if ring then UDim.new(.5,0) else UDim.new(0,0)
+ local spans=if ring then {} else Shapes.spans(aliases[kind] or kind)
+ for j,p in spans do
   local e=n.edges[j]
-  if not e then e=frame(root,"Edge");n.edges[j]=e end
-  segment(e,vertex(j-1),vertex(j%count),1)
+  if not e then e=frame(root,"Fill");e.AnchorPoint=Vector2.zero;n.edges[j]=e end
+  e.Position=UDim2.fromScale(p.x,p.y)
+  e.Size=UDim2.fromScale(p.w,p.h)
   e.BackgroundColor3=color;e.BackgroundTransparency=1-opacity;e.Visible=true
  end
- for j=count+1,#n.edges do n.edges[j].Visible=false end
+ for j=#spans+1,#n.edges do n.edges[j].Visible=false end
 end
 function FX:step(dt,s)
  -- Called once per Roblox RenderStepped via Controls:animateBackground.
