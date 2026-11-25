@@ -530,7 +530,7 @@ function M.runtimePose(config,t,state,airTime)
  if name=="Cartwheel Flow" and (state=="Walk" or state=="Run") then
   result.Root=angle(0,0,t*240)*result.Root
  else
-  result.Root=angle((spin+tilt)*config.intensity,0,0)*result.Root
+  result.Root=angle(spin+tilt,0,0)*result.Root
  end
  local hover=if name=="Godly Aura" then .18+.045*math.sin(t*tau/3.6) else (profile(name).hover or 0)
  if name=="Harpy Glide" or name=="Skater" then hover=0 end
