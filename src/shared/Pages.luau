@@ -585,23 +585,9 @@ function E.render(a,tab,ui)
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
   if tab=="Character" then
-   ui:title("AETHER MOTION STUDIO V12.2")
-   ui:chips({"Motion Studio","Avatar Preview"},function(n) a.motionStudioView=n;ui:open("Character") end,2,function() return a.motionStudioView or "Motion Studio" end)
-   if a.motionStudioView=="Avatar Preview" then avatarPreview(ui,a) else MotionStudio.mount(ui,a) end
+   ui:title("AETHER MOTION STUDIO V12.3")
+   MotionStudio.mount(ui,a)
   else avatarPreview(ui,a) end
-  if tab=="Character" then
-   ui:title("ANIMATION PACK-INSPIRED MOTION")
-   ui:note("Original AETHER styles based on the feel of Roblox avatar packs, not copied animation assets. Procedural R6/R15 poses for idle, walk, run, jump/fall, swim and climb. Visual-only motion.",55)
-   ui:chips({"Toy","Robot","Ninja","Bubbly","Stylish","Mage","Levitation","Oldschool","Vampire","Astronaut","Zombie","Cartoony"},
-    function(style) a:patch({walkAnimation=true,walkStyle=style}) end,4,
-    function() return a.s.walkStyle end)
-   ui:title("COMMUNITY-INSPIRED ANIMATIONS")
-   ui:note("26 original interpretations of creator-made Roblox UGC locomotion: float, swoop, slither, doll-like steps, cartoon bounce, skating and more. Use Walking intensity to adjust the effect.",54)
-   local ugc={}
-   for i=13,#MotionPacks.order do table.insert(ugc,MotionPacks.order[i]) end
-   ui:chips(ugc,function(style) a:patch({walkAnimation=true,walkStyle=style}) end,4,
-    function() return a.s.walkStyle end)
-  end
   if tab=="Halos" then
    ui:title("HALO V2 / INDIVIDUAL LAYERS")
    ui:note("Each layer has its own toggle. Combine styles or use them independently of the legacy halo.",36)
@@ -628,6 +614,9 @@ function E.render(a,tab,ui)
    local skip={}
    for i in S.haloV2Styles do for _,suffix in S.haloV2Fields do skip["haloV2"..i..suffix]=true end end
    ui:group(tab,skip)
+  elseif tab=="Character" then
+   ui:title("CHARACTER EFFECTS")
+   ui:group(tab,{walkStyle=true,walkIntensity=true})
   else preset(ui,a,tab);ui:group(tab) end
  elseif tab=="Ambient" then local sky=ui:row(106,"SkyPreview");local grad=U.gradient(sky,Color3.new(),Color3.new(),90);local sun=U.frame(sky,"Sun",nil,UDim2.fromOffset(30,30));U.corner(sun,30);ui:watch(function() local s=a.s;sky.BackgroundColor3=Color3.new(1,1,1);grad.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,U.hex(s.skyA)),ColorSequenceKeypoint.new(.64,U.hex(s.skyB)),ColorSequenceKeypoint.new(1,U.hex(s.skyC))});sun.BackgroundColor3=U.hex(s.skyC);sun.Position=UDim2.fromScale(.7,.66-.45*math.sin(s.time/240*math.pi));sun.BackgroundTransparency=.04+s.fog*.004 end);preset(ui,a,tab);ui:group(tab,{starfallA=true,starfallB=true});ui:title("STARFALL COLORS");ui:colorPicker("starfallA");ui:colorPicker("starfallB")
  elseif tab=="Indicators" then preview(ui,a);gallery(ui,a);ui:group(tab,{shape=true});ui:title("PER-PLAYER OVERRIDE");local id=ui:box("UserId or simulator ID","1");local label=ui:box("Label override","");local color=ui:box("Override hex",a.s.arrowA);ui:chips({"Assign current shape","Remove override"},function(k) local p=S.copy(a.s.players);if k=="Assign current shape" then p[id.Text]={label=label.Text,color=color.Text,shape=a.s.shape} else p[id.Text]=nil end;a:set("players",p);ui:message("Overrides updated") end,2)
