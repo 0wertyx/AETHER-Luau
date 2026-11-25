@@ -585,7 +585,7 @@ function E.render(a,tab,ui)
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
   if tab=="Character" then
-   ui:title("AETHER MOTION STUDIO V12.7")
+   ui:title("AETHER MOTION STUDIO V12.8")
    MotionStudio.mount(ui,a)
   else avatarPreview(ui,a) end
   if tab=="Halos" then
