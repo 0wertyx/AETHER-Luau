@@ -749,6 +749,35 @@ function E.render(a,tab,ui)
    ui.page:add(function() if a.peers.statusLabel==peerStatus then a.peers.statusLabel=nil end end)
   end
   ui:watch(function() peerStatus.Text=if a.peers then a.peers.status else "Peer relay unavailable" end)
+  if a.volleyball and a.volleyball:available() then
+   local vb=a.volleyball
+   local lp=game:GetService("Players").LocalPlayer
+   ui:title("VOLLEYBALL MODIFIERS / BETA")
+   ui:note("Session only. Values are written locally; server acceptance is not guaranteed.",44)
+   for _,name in {"BlockPower","BumpPower","DashPower","DiveSpeed","DrawPower","JumpPower","ServePower","SetPower"} do
+    local key="Multiplier_"..name
+    local field=ui:box(name,tostring(lp:GetAttribute(key) or ""),32,function(value)
+     vb:setMultiplier(name,assert(tonumber(value),"Enter a number"))
+    end)
+    ui:watch(function()
+     if not field:IsFocused() then field.Text=tostring(lp:GetAttribute(key) or "") end
+    end)
+   end
+   ui:chips({"Restore original values"},function() vb:reset();ui:sync() end,1)
+   ui:title("AUTO TILT / BETA")
+   ui:note("Calibrate the full court. Stand at corner A, then adjacent B across the width, then C across the net on A's sideline. Recalibrate after changing maps. Direction-to-flight conversion is experimental.",92)
+   ui:chips({"Corner A","Corner B","Corner C"},function(label)
+    vb:capture(if label=="Corner A" then 1 elseif label=="Corner B" then 2 else 3);ui:sync()
+   end,3)
+   local cal=ui:note("",36)
+   ui:watch(function() cal.Text=string.format("Calibration: A %s | B %s | C %s",if vb.corners[1] then "OK" else "-",if vb.corners[2] then "OK" else "-",if vb.corners[3] then "OK" else "-") end)
+   ui:chips({"Toggle Auto Tilt","Clear court"},function(label)
+    if label=="Clear court" then vb:clearCourt() else vb:toggleAuto() end
+    ui:sync()
+   end,2)
+   local status=ui:note("",64)
+   ui:watch(function() status.Text=(if vb.auto then "AUTO TILT ON | " else "AUTO TILT OFF | ")..vb.status end)
+  end
   ui:title("AIR REDIRECTION")
   ui:control("airControl");ui:control("airControlStrength");ui:control("airControlSpeed");ui:control("airTiltAngle");ui:control("bunnyHop")
   local hopStatus=ui:note("",40)

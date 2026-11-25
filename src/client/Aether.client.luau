@@ -114,6 +114,146 @@ function app:library(bank)
     self.s = self.bank.settings
     self:dirty()
 end
+-- Volleyball controls are session-local and never serialized into cosmetic presets.
+do
+    local ReplicatedStorage=game:GetService("ReplicatedStorage")
+    local vb={originals={},corners={},auto=false,status="Waiting for compatible game",target=nil}
+    app.volleyball=vb
+    local attrs={
+        BlockPower=true,BumpPower=true,DashPower=true,DiveSpeed=true,
+        DrawPower=true,JumpPower=true,ServePower=true,SetPower=true
+    }
+    local tiltKey="Gameplay_TiltDirection"
+    local function available()
+        return app.mode=="Game"
+            and type(ReplicatedStorage:GetAttribute("GamemodeId"))=="string"
+            and typeof(player:GetAttribute(tiltKey))=="Vector3"
+            and type(player:GetAttribute("Multiplier_BumpPower"))=="number"
+    end
+    function vb:available() return available() end
+    local function write(key,value)
+        local current=player:GetAttribute(key)
+        local entry=vb.originals[key]
+        if not entry or current~=entry.applied then
+            entry={base=current,applied=current}
+            vb.originals[key]=entry
+        end
+        if current~=value then player:SetAttribute(key,value) end
+        entry.applied=value
+    end
+    local function restore(key)
+        local entry=vb.originals[key]
+        if not entry then return end
+        if player:GetAttribute(key)==entry.applied then player:SetAttribute(key,entry.base) end
+        vb.originals[key]=nil
+    end
+    function vb:setMultiplier(name,value)
+        assert(available(),"Volleyball attributes not available")
+        assert(attrs[name],"Unknown multiplier")
+        assert(type(value)=="number" and value==value and value>=0 and value<math.huge,"Enter a finite nonnegative number")
+        local key="Multiplier_"..name
+        assert(type(player:GetAttribute(key))=="number","Multiplier unavailable")
+        write(key,value)
+        self.status=name.." set locally"
+    end
+    function vb:reset()
+        self.auto=false
+        for key in table.clone(self.originals) do restore(key) end
+        self.target=nil
+        self.status="Original values restored where unchanged"
+    end
+    local function flatten(p) return Vector3.new(p.X,0,p.Z) end
+    function vb:clearCourt()
+        self.auto=false;restore(tiltKey)
+        table.clear(self.corners);self.target=nil;self.side=nil;self.map=nil;self.status="Calibration cleared"
+    end
+    function vb:capture(index)
+        assert(available(),"Volleyball attributes not available")
+        local char=player.Character
+        local root=char and char:FindFirstChild("HumanoidRootPart")
+        assert(root and root:IsA("BasePart"),"Character unavailable")
+        local map=ReplicatedStorage:GetAttribute("Map")
+        if self.map~=map then self:clearCourt();self.map=map end
+        self.auto=false;restore(tiltKey);self.target=nil
+        self.corners[index]=flatten(root.Position)
+        self.status="Court corner "..index.." saved"
+    end
+    local function geometry()
+        local a,b,c=vb.corners[1],vb.corners[2],vb.corners[3]
+        if not a or not b or not c then return nil end
+        local ab=b-a
+        local width=ab.Magnitude
+        if width<4 then return nil end
+        local u=ab.Unit
+        local ac=c-a
+        local along=ac:Dot(u)
+        local cross=ac-u*along
+        local length=cross.Magnitude
+        if length<8 or math.abs(along)>width*.2 then return nil end
+        return a,u,cross.Unit,width,length
+    end
+    function vb:toggleAuto()
+        if self.auto then self.auto=false;restore(tiltKey);self.target=nil;self.status="Auto Tilt off";return end
+        assert(available(),"Volleyball attributes not available")
+        assert(geometry(),"Capture three corners: A, adjacent B across width, C across net at same sideline")
+        self.auto=true;self.status="Auto Tilt beta enabled"
+    end
+    local elapsed=0
+    scope:on(RunService.Heartbeat,function(dt)
+        elapsed+=dt
+        if elapsed<.1 then return end
+        elapsed=0
+        if app.stopping or not gui.Parent then return end
+        if not available() then
+            if next(vb.originals) or vb.auto then vb:reset() end
+            return
+        end
+        if not vb.auto then return end
+        local ok,err=pcall(function()
+            if ReplicatedStorage:GetAttribute("Map")~=vb.map then vb:clearCourt();return end
+            if player:GetAttribute("Gameplay_InGame")~=true then restore(tiltKey);vb.target=nil;vb.status="Waiting for match";return end
+            local a,u,v,width,length=geometry()
+            if not a then vb:clearCourt();return end
+            local char=player.Character
+            local root=char and char:FindFirstChild("HumanoidRootPart")
+            if not root or not root:IsA("BasePart") then restore(tiltKey);return end
+            local relative=flatten(root.Position)-a
+            local px,pz=relative:Dot(u),relative:Dot(v)
+            if px<-5 or px>width+5 or pz<-5 or pz>length+5 then
+                restore(tiltKey);vb.target=nil;vb.status="Outside calibrated court";return
+            end
+            local half=length*.5
+            -- Near the net, keep the last observed side instead of oscillating.
+            if math.abs(pz-half)>1 then vb.side=if pz<half then -1 else 1 end
+            local side=vb.side or (if pz<half then -1 else 1)
+            local depth=if side==-1 then length*.75 else length*.25
+            local look=flatten(root.CFrame.LookVector)
+            local lateral=width*.5
+            local dv=look:Dot(v)
+            if math.abs(dv)>.05 and (depth-pz)*dv>0 then
+                lateral=px+look:Dot(u)*(depth-pz)/dv
+            end
+            local margin=math.min(2,width*.2)
+            lateral=math.clamp(lateral,margin,width-margin)
+            local target=a+u*lateral+v*depth
+            local heading=target-flatten(root.Position)
+            if heading.Magnitude<.01 then return end
+            -- Experimental interpretation: world-space unit vector with positive Y.
+            -- Actual ball-flight mapping is not established by the replicated attribute.
+            local proposed=(heading.Unit+Vector3.yAxis).Unit
+            write(tiltKey,proposed)
+            vb.target=target
+            vb.status=string.format("Beta target X %.1f Z %.1f",target.X,target.Z)
+        end)
+        if not ok then
+            vb.auto=false
+            pcall(restore,tiltKey)
+            vb.status="Auto Tilt error: "..tostring(err)
+        end
+    end)
+    scope:add(function() vb:reset() end)
+end
+
 function app:modeSet(mode)
     assert(mode == "Game" or mode == "Simulator", "Invalid AETHER mode")
     self.mode = mode
