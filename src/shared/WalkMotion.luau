@@ -114,7 +114,12 @@ function W:step(character,s,dt,preview)
   self.wasAir=airborne
   -- Character tab repeats its preview jump; the simulator plays one turn.
   local airProgress=if airborne then (if virtual.loopAir then (self.airTime/.82)%1 else math.clamp(self.airTime/.82,0,1)) else 0
-  local signature=Signature.get(style,ph/(2*math.pi),moving,airborne,airProgress,jumping)
+  if style=="Godly Aura" then
+   self.godlyClock=(if self.lastStyle=="Godly Aura" then self.godlyClock or 0 else 0)+dt
+  end
+  self.lastStyle=style
+  local signaturePhase=if style=="Godly Aura" then (self.godlyClock or 0)/3.6 else ph/(2*math.pi)
+  local signature=Signature.get(style,signaturePhase,moving,airborne,airProgress,jumping)
   if signature then
    local strength=math.clamp((virtual.originStrength or 100)/100,0,1)
    local function apply(m,v)
@@ -153,7 +158,7 @@ function W:step(character,s,dt,preview)
     end
     local floor=math.min(bottom(r,legCF(r,neutral,false)),bottom(l,legCF(l,neutral,false)))
     local low=math.min(rlow,llow)
-    local hover=if style=="Godly Aura" then .16+.025*math.sin(ph*.7) elseif board then .40 else 0
+    local hover=if style=="Godly Aura" then .16+.045*math.sin(signaturePhase*2*math.pi) elseif board then .40 else 0
     local dy=0
     if not airborne then
      dy=floor-low+hover*weight
