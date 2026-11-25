@@ -641,25 +641,19 @@ end)
 -- Does not create forces, alter gravity, increase WalkSpeed or change vertical velocity.
 local function stepAirControl(dt)
     if app.mode ~= "Game" or workspace:GetAttribute("AETHERAllowAirControl") ~= true or not app.s.airControl then return end
-    if app.ui.opened or UserInputService:GetFocusedTextBox() then return end
-    if not character or not humanoid or humanoid.Health <= 0 or humanoid.Sit or humanoid.PlatformStand then return end
+    if app.ui.opened or app.editingHUD or UserInputService:GetFocusedTextBox() then return end
+    if not character or not humanoid or humanoid.Parent ~= character or humanoid.Health <= 0 or humanoid.Sit or humanoid.PlatformStand then return end
     local state = humanoid:GetState()
     if state ~= Enum.HumanoidStateType.Jumping and state ~= Enum.HumanoidStateType.Freefall then return end
     local root = character:FindFirstChild("HumanoidRootPart")
     if not root or not root:IsA("BasePart") or root.Anchored then return end
     local input = humanoid.MoveDirection
     local direction = Vector3.new(input.X,0,input.Z)
-    if direction.Magnitude < .01 then return end
-    if direction.Magnitude > 1 then direction = direction.Unit end
     local v = root.AssemblyLinearVelocity
     local horizontal = Vector3.new(v.X,0,v.Z)
     local cap = math.max(0,humanoid.WalkSpeed)
-    -- Leave stronger impulses/knockback untouched.
-    if cap <= 0 or horizontal.Magnitude > cap + .1 then return end
-    local alpha = 1-math.exp(-math.clamp(dt,0,.05)*24*app.s.airControlStrength/100)
-    if alpha <= 0 then return end
-    local nextVelocity = horizontal:Lerp(direction*cap,alpha)
-    if nextVelocity.Magnitude > cap then nextVelocity = nextVelocity.Unit*cap end
+    local nextVelocity = U.airRedirect(horizontal,direction,cap,app.s.airControlStrength,dt)
+    if (nextVelocity-horizontal).Magnitude < .0001 then return end
     root.AssemblyLinearVelocity = Vector3.new(nextVelocity.X,v.Y,nextVelocity.Z)
 end
 

@@ -53,6 +53,27 @@ function U.approach(current,target,dt,seconds)
  if math.abs(current-target)<.0001 then return target end
  return target+(current-target)*math.exp(-dt/math.max(.001,seconds))
 end
+-- Horizontal air steering: rotate momentum instead of lerping opposing vectors.
+-- No movement input or zero strength leaves the original velocity untouched.
+function U.airRedirect(horizontal,input,cap,strength,dt)
+ local magnitude=input.Magnitude
+ local speed=horizontal.Magnitude
+ local response=math.clamp(strength,0,100)/100
+ dt=math.clamp(dt,0,.05)
+ if magnitude<.01 or cap<=0 or response<=0 or dt<=0 or speed>cap+.1 then return horizontal end
+ local target=math.atan2(input.Z,input.X)
+ local angle=target
+ if speed>.05 then
+  local current=math.atan2(horizontal.Z,horizontal.X)
+  local delta=math.atan2(math.sin(target-current),math.cos(target-current))
+  local maxTurn=math.rad(900)*response*dt
+  angle=current+math.clamp(delta,-maxTurn,maxTurn)
+ end
+ local boundedSpeed=math.min(speed,cap)
+ local targetSpeed=math.max(boundedSpeed,cap*math.min(magnitude,1))
+ local nextSpeed=boundedSpeed+(targetSpeed-boundedSpeed)*(1-math.exp(-24*response*dt))
+ return Vector3.new(math.cos(angle)*nextSpeed,0,math.sin(angle)*nextSpeed)
+end
 function U.keys(t) local a={};for k in t do table.insert(a,k) end;table.sort(a);return a end
 function U.count(t) local n=0;for _ in t do n+=1 end;return n end
 return U

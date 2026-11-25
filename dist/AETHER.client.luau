@@ -4042,9 +4042,8 @@ local function avatarPreview(ui,a,worldMode)
     if dir.Magnitude>1 then dir=dir.Unit end
     if grounded then
      velocity=velocity:Lerp(dir*16,1-math.exp(-dt*14))
-    elseif settings.airControl and dir.Magnitude>.01 then
-     local response=1-math.exp(-dt*24*settings.airControlStrength/100)
-     velocity=velocity:Lerp(dir*16,response)
+    elseif settings.airControl then
+     velocity=U.airRedirect(velocity,dir,16,settings.airControlStrength,dt)
     end
     local pos=rootPart.Position
     local delta=velocity*dt
@@ -4569,10 +4568,10 @@ function E.render(a,tab,ui)
    ui.page:add(function() if a.peers.statusLabel==peerStatus then a.peers.statusLabel=nil end end)
   end
   ui:watch(function() peerStatus.Text=if a.peers then a.peers.status else "Peer relay unavailable" end)
-  ui:title("AIR CONTROL")
+  ui:title("AIR REDIRECTION")
   ui:control("airControl");ui:control("airControlStrength")
   local airStatus=ui:note("",44)
-  ui:watch(function() airStatus.Text=if workspace:GetAttribute("AETHERAllowAirControl")==true then "Enabled by the place owner. Steer horizontally in air using normal movement controls." else "Available in Simulator. Live movement requires explicit place-owner permission." end)
+  ui:watch(function() airStatus.Text=if a.mode=="Simulator" then "Simulator: steer with movement controls. Horizontal momentum is preserved." elseif workspace:GetAttribute("AETHERAllowAirControl")==true then "Live: steer in midair without losing momentum on turns. Jump height is unchanged." else "Available in Simulator. Live movement requires explicit place-owner permission." end)
   ui:title("CAMERA")
   preset(ui,a,"Camera");ui:group("Camera")
   ui:title("CUSTOM LOCK / KEYBIND")
@@ -5029,7 +5028,7 @@ toggle("Neon","neon","Character outline",true);range("Neon","neonFill","Body tin
 toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA","High sky","282057");color("Ambient","skyB","Horizon","8C70C2");color("Ambient","skyC","Ground light","EAB6CD");range("Ambient","fog","Fog density %",35,0,90);range("Ambient","bloom","Legacy bloom (inactive)",0,0,100);range("Ambient","time","Time (tenths of an hour)",166,0,239);range("Ambient","light","Brightness %",105,25,180);range("Ambient","saturation","Saturation %",9,-85,85);range("Ambient","blur","Depth blur",0,0,16);range("Ambient","fade","Atmosphere fade (ms)",700,0,3500);range("Ambient","worldContrast","Contrast %",0,-80,80);range("Ambient","worldExposure","Exposure %",0,-100,100);range("Ambient","worldGlare","Atmospheric glare %",0,0,100);range("Ambient","worldRays","Sun rays %",0,0,100);range("Ambient","worldFocus","Depth of field %",0,0,100);range("Ambient","worldFocusDistance","Focus distance (studs)",60,8,250);range("Ambient","worldBloomSize","Bloom radius",26,0,56);toggle("Ambient","starfall","Falling shapes",false);choice("Ambient","starfallShape","Falling shape","Rounded Star",{"Mixed","Rounded Star","Soft Star","Sparkle","Long Sparkle","Six Point Star","Eight Point Star","Circle","Rounded Square","Diamond","Rounded Triangle","Rounded Hexagon","Rounded Pentagon","Heart"});range("Ambient","starfallRotation","Star rotation (degrees/sec)",8,0,25);choice("Ambient","starfallMaterial","Star material","Neon",{"Neon","Glass","SmoothPlastic","Metal"});range("Ambient","starfallCount","Star count",8,1,16);range("Ambient","starfallSpeed","Fall speed (studs/sec)",35,10,90);range("Ambient","starfallSize","Star size (tenths of stud)",18,5,40);range("Ambient","starfallOpacity","Star opacity %",85,10,100);range("Ambient","starfallGlow","Star neon glow %",80,0,100);toggle("Ambient","starfallTail","Star streaks",true);toggle("Ambient","starfallRainbow","Rainbow stars",false);color("Ambient","starfallA","Star color start","E5D1FF");color("Ambient","starfallB","Star color end","83CFFF")
 toggle("Indicators","indicators","Directional indicators",true);choice("Indicators","shape","Indicator shape","Soft Triangle",S.shapes);range("Indicators","size","Size (px)",31,14,72);range("Indicators","corners","Corner softness %",30,0,100);range("Indicators","edge","Distance from edges %",11,4,30);range("Indicators","turn","Rotation smoothing (ms)",180,0,800);range("Indicators","ink","Neon intensity %",60,0,100);range("Indicators","spread","Neon spread (px)",6,0,18);range("Indicators","arrowAlpha","Opacity %",95,10,100);range("Indicators","arrowSpeed","Animation speed %",100,40,220);color("Indicators","arrowA","Gradient start","BFA2FF");color("Indicators","arrowB","Gradient end","FF9ECE");toggle("Indicators","arrowRainbow","Rainbow gradient",false);toggle("Indicators","pulse","Pulsation",true);choice("Indicators","labels","Arrow labels","Both",{"Off","Name","Distance","Both"});toggle("Indicators","nearby","Nearby nameplates",false);range("Indicators","reach","Tracking range (studs)",800,50,2500)
 toggle("Cursor","cursor","Custom game pointer",false);choice("Cursor","cursorShape","Pointer shape","Rounded Triangle",{"Rounded Triangle","Soft Arrow","Diamond","Orbit","Spark","Chevron","Neon Pointer","Arrowhead","Split Arrow","Needle","Crystal","Spear","Star Pointer","Compass","Crosshair","Heart","Image"});range("Cursor","cursorSize","Pointer size",30,12,72);range("Cursor","cursorGlow","Pointer glow %",55,0,100);choice("Cursor","cursorPalette","Desktop AETHER palette","Aurora",{"Aurora","Sunset","Ocean","Rainbow","Mono","Custom"});range("Cursor","hotX","Hotspot X %",19,0,100);range("Cursor","hotY","Hotspot Y %",8,0,100);color("Cursor","cursorA","Gradient start","BA99FF");color("Cursor","cursorB","Gradient end","69D9FA");toggle("Cursor","cursorRainbow","Rainbow pointer",true);range("Cursor","cursorSpeed","Gradient speed %",65,10,200);choice("Cursor","cursorAnimation","Cursor animation","Sway",{"Off","Breathe","Sway","Spin","Pulse"});range("Cursor","cursorMotionSpeed","Animation speed %",100,20,200);toggle("Cursor","cursorTrail","Cursor motion trail",false);choice("Cursor","cursorTrailStyle","Trail style","Triple",{"Triple","Single","Dots"});range("Cursor","cursorTrailLength","Trail lifetime (ms)",220,80,450);range("Cursor","cursorTrailWidth","Trail width (tenths of px)",12,5,35);range("Cursor","cursorTrailSpread","Trail spacing (px)",6,2,16);range("Cursor","cursorTrailGlow","Trail glow %",65,0,100);color("Cursor","cursorTrailA","Trail start","F5E5FF");color("Cursor","cursorTrailB","Trail end","9B6BFF");range("Cursor","cursorOffsetX","Pointer offset X (px)",0,-120,120);range("Cursor","cursorOffsetY","Pointer offset Y (px)",0,-120,120);toggle("Cursor","cursorDebug","Show hotspot marker",false);def("Cursor","image","Roblox image asset ID","asset","")
-toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Interaction","lock","Custom camera lock",false);toggle("Interaction","airControl","Air Control",true);range("Interaction","airControlStrength","Air steering response %",75,0,100);toggle("Interaction","peerVisuals","Share and see AETHER cosmetics",false);choice("Interaction","peerQuality","Peer rendering quality","Balanced",{"Low","Balanced","High"});toggle("Interaction","blockShift","Block both Shift keys",true);S.lockKeys={};for _,key in Enum.KeyCode:GetEnumItems() do if key~=Enum.KeyCode.Unknown then table.insert(S.lockKeys,key.Name) end end;choice("Interaction","lockKey","Lock keybind","LeftAlt",S.lockKeys);choice("Interaction","lockReticle","Shift-lock reticle","Orbit",{"None","Dot","Ring","Orbit","Cross","Split Cross","Diamond","Triangle","Hexagon","Star","Corners","Compass","Double Ring","Petal"});range("Interaction","reticleSize","Reticle size (px)",28,12,64);range("Interaction","reticleStroke","Reticle thickness (px)",2,1,5);color("Interaction","reticleColor","Reticle color","C8A6FF");toggle("Interaction","reticleRainbow","Rainbow reticle",false);toggle("Interaction","reticleMotion","Reticle animation",true);range("Interaction","reticleSpeed","Reticle animation %",70,0,200);toggle("Interaction","reticleNeon","Neon reticle glow",true);range("Interaction","reticleGlow","Reticle glow intensity %",65,0,100);range("Interaction","reticleGlowRadius","Reticle glow radius (px)",4,1,8);toggle("Interaction","reticleGlowPulse","Pulsating glow",true)
+toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Interaction","lock","Custom camera lock",false);toggle("Interaction","airControl","Air Redirection",true);range("Interaction","airControlStrength","Air steering strength %",75,0,100);toggle("Interaction","peerVisuals","Share and see AETHER cosmetics",false);choice("Interaction","peerQuality","Peer rendering quality","Balanced",{"Low","Balanced","High"});toggle("Interaction","blockShift","Block both Shift keys",true);S.lockKeys={};for _,key in Enum.KeyCode:GetEnumItems() do if key~=Enum.KeyCode.Unknown then table.insert(S.lockKeys,key.Name) end end;choice("Interaction","lockKey","Lock keybind","LeftAlt",S.lockKeys);choice("Interaction","lockReticle","Shift-lock reticle","Orbit",{"None","Dot","Ring","Orbit","Cross","Split Cross","Diamond","Triangle","Hexagon","Star","Corners","Compass","Double Ring","Petal"});range("Interaction","reticleSize","Reticle size (px)",28,12,64);range("Interaction","reticleStroke","Reticle thickness (px)",2,1,5);color("Interaction","reticleColor","Reticle color","C8A6FF");toggle("Interaction","reticleRainbow","Rainbow reticle",false);toggle("Interaction","reticleMotion","Reticle animation",true);range("Interaction","reticleSpeed","Reticle animation %",70,0,200);toggle("Interaction","reticleNeon","Neon reticle glow",true);range("Interaction","reticleGlow","Reticle glow intensity %",65,0,100);range("Interaction","reticleGlowRadius","Reticle glow radius (px)",4,1,8);toggle("Interaction","reticleGlowPulse","Pulsating glow",true)
 toggle("Interaction","inputOverlay","Show input overlay",false);toggle("Interaction","inputMouse","Show mouse buttons",true);range("Interaction","inputX","Input overlay X %",91,0,100);range("Interaction","inputY","Input overlay Y %",76,0,100);range("Interaction","inputScale","Input overlay size %",100,60,150);range("Interaction","inputOpacity","Input overlay opacity %",80,20,100);color("Interaction","inputColor","Pressed key color","BCA0FF");toggle("Interaction","wallhopHelper","Wallhop Helper",false);range("Interaction","wallhopX","Wallhop display X %",87,0,100);range("Interaction","wallhopY","Wallhop display Y %",42,0,100);range("Interaction","wallhopScale","Wallhop display size %",100,60,150);range("Interaction","wallhopOpacity","Wallhop display opacity %",90,20,100)
 choice("Fonts","font","Typeface","Gotham",S.fonts);choice("Fonts","weight","Weight","Bold",{"Regular","Medium","Bold","Heavy"});def("Fonts","fontAsset","Optional Roblox font family ID","asset","");text("Fonts","sample","Preview text","AETHER · Your interface",96);range("Fonts","fontSize","HUD type scale %",100,70,145);toggle("Fonts","fontGradient","Gradient lettering",true);range("Fonts","fontOutline","Text outline %",24,0,100);range("Fonts","fontGlow","Letter glow %",35,0,100);color("Fonts","fontA","Letter color","F1E6FF");color("Fonts","fontB","Letter gradient","CCA4FF")
 S.example='hud.widget("status", "Ready", 8, 38)\nfunction onHealthChanged(hp, maxHP)\n  hud.widget("status", hud.join("HP: ", hp), 8, 38)\n  if hp > 0 and hp <= maxHP * 0.3 then\n    hud.animate("status", "pulse")\n  else\n    hud.animate("status", "none")\n  end\nend'
@@ -5845,6 +5844,27 @@ end
 function U.approach(current,target,dt,seconds)
  if math.abs(current-target)<.0001 then return target end
  return target+(current-target)*math.exp(-dt/math.max(.001,seconds))
+end
+-- Horizontal air steering: rotate momentum instead of lerping opposing vectors.
+-- No movement input or zero strength leaves the original velocity untouched.
+function U.airRedirect(horizontal,input,cap,strength,dt)
+ local magnitude=input.Magnitude
+ local speed=horizontal.Magnitude
+ local response=math.clamp(strength,0,100)/100
+ dt=math.clamp(dt,0,.05)
+ if magnitude<.01 or cap<=0 or response<=0 or dt<=0 or speed>cap+.1 then return horizontal end
+ local target=math.atan2(input.Z,input.X)
+ local angle=target
+ if speed>.05 then
+  local current=math.atan2(horizontal.Z,horizontal.X)
+  local delta=math.atan2(math.sin(target-current),math.cos(target-current))
+  local maxTurn=math.rad(900)*response*dt
+  angle=current+math.clamp(delta,-maxTurn,maxTurn)
+ end
+ local boundedSpeed=math.min(speed,cap)
+ local targetSpeed=math.max(boundedSpeed,cap*math.min(magnitude,1))
+ local nextSpeed=boundedSpeed+(targetSpeed-boundedSpeed)*(1-math.exp(-24*response*dt))
+ return Vector3.new(math.cos(angle)*nextSpeed,0,math.sin(angle)*nextSpeed)
 end
 function U.keys(t) local a={};for k in t do table.insert(a,k) end;table.sort(a);return a end
 function U.count(t) local n=0;for _ in t do n+=1 end;return n end
@@ -7775,25 +7795,19 @@ end)
 -- Does not create forces, alter gravity, increase WalkSpeed or change vertical velocity.
 local function stepAirControl(dt)
     if app.mode ~= "Game" or workspace:GetAttribute("AETHERAllowAirControl") ~= true or not app.s.airControl then return end
-    if app.ui.opened or UserInputService:GetFocusedTextBox() then return end
-    if not character or not humanoid or humanoid.Health <= 0 or humanoid.Sit or humanoid.PlatformStand then return end
+    if app.ui.opened or app.editingHUD or UserInputService:GetFocusedTextBox() then return end
+    if not character or not humanoid or humanoid.Parent ~= character or humanoid.Health <= 0 or humanoid.Sit or humanoid.PlatformStand then return end
     local state = humanoid:GetState()
     if state ~= Enum.HumanoidStateType.Jumping and state ~= Enum.HumanoidStateType.Freefall then return end
     local root = character:FindFirstChild("HumanoidRootPart")
     if not root or not root:IsA("BasePart") or root.Anchored then return end
     local input = humanoid.MoveDirection
     local direction = Vector3.new(input.X,0,input.Z)
-    if direction.Magnitude < .01 then return end
-    if direction.Magnitude > 1 then direction = direction.Unit end
     local v = root.AssemblyLinearVelocity
     local horizontal = Vector3.new(v.X,0,v.Z)
     local cap = math.max(0,humanoid.WalkSpeed)
-    -- Leave stronger impulses/knockback untouched.
-    if cap <= 0 or horizontal.Magnitude > cap + .1 then return end
-    local alpha = 1-math.exp(-math.clamp(dt,0,.05)*24*app.s.airControlStrength/100)
-    if alpha <= 0 then return end
-    local nextVelocity = horizontal:Lerp(direction*cap,alpha)
-    if nextVelocity.Magnitude > cap then nextVelocity = nextVelocity.Unit*cap end
+    local nextVelocity = U.airRedirect(horizontal,direction,cap,app.s.airControlStrength,dt)
+    if (nextVelocity-horizontal).Magnitude < .0001 then return end
     root.AssemblyLinearVelocity = Vector3.new(nextVelocity.X,v.Y,nextVelocity.Z)
 end
 

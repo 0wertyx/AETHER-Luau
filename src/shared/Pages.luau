@@ -220,9 +220,8 @@ local function avatarPreview(ui,a,worldMode)
     if dir.Magnitude>1 then dir=dir.Unit end
     if grounded then
      velocity=velocity:Lerp(dir*16,1-math.exp(-dt*14))
-    elseif settings.airControl and dir.Magnitude>.01 then
-     local response=1-math.exp(-dt*24*settings.airControlStrength/100)
-     velocity=velocity:Lerp(dir*16,response)
+    elseif settings.airControl then
+     velocity=U.airRedirect(velocity,dir,16,settings.airControlStrength,dt)
     end
     local pos=rootPart.Position
     local delta=velocity*dt
@@ -747,10 +746,10 @@ function E.render(a,tab,ui)
    ui.page:add(function() if a.peers.statusLabel==peerStatus then a.peers.statusLabel=nil end end)
   end
   ui:watch(function() peerStatus.Text=if a.peers then a.peers.status else "Peer relay unavailable" end)
-  ui:title("AIR CONTROL")
+  ui:title("AIR REDIRECTION")
   ui:control("airControl");ui:control("airControlStrength")
   local airStatus=ui:note("",44)
-  ui:watch(function() airStatus.Text=if workspace:GetAttribute("AETHERAllowAirControl")==true then "Enabled by the place owner. Steer horizontally in air using normal movement controls." else "Available in Simulator. Live movement requires explicit place-owner permission." end)
+  ui:watch(function() airStatus.Text=if a.mode=="Simulator" then "Simulator: steer with movement controls. Horizontal momentum is preserved." elseif workspace:GetAttribute("AETHERAllowAirControl")==true then "Live: steer in midair without losing momentum on turns. Jump height is unchanged." else "Available in Simulator. Live movement requires explicit place-owner permission." end)
   ui:title("CAMERA")
   preset(ui,a,"Camera");ui:group("Camera")
   ui:title("CUSTOM LOCK / KEYBIND")
