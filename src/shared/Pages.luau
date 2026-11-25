@@ -779,6 +779,19 @@ function E.render(a,tab,ui)
     end)
    end
    ui:chips({"Restore original values"},function() vb:reset();ui:sync() end,1)
+   ui:title("TRAJECTORY ESP / BETA")
+   ui:note("Read-only position sampling. Green = predicted IN, red = OUT, amber = obstacle or unknown court. Prediction stops at first map contact; curve and latency may affect accuracy.",76)
+   ui:chips({"Toggle Trajectory ESP"},function() vb:toggleTrajectory();ui:sync() end,1,function() return if vb.trajectory.enabled then "Toggle Trajectory ESP" else "" end)
+   local trajectoryStatus=ui:note("",64)
+   local function refreshTrajectory()
+    trajectoryStatus.Text=(if vb.trajectory.enabled then "ON | " else "OFF | ")..vb.trajectory.status
+   end
+   ui:watch(refreshTrajectory)
+   local trajectoryElapsed=0
+   ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
+    trajectoryElapsed+=dt
+    if trajectoryElapsed>=.25 then trajectoryElapsed=0;if ui.opened then refreshTrajectory() end end
+   end)
    ui:title("AUTO TILT / BETA")
    ui:note("Auto Tilt prefers Map/Zones parts with Type= Court for teams 1 and 2; Serve and Total are excluded. If unavailable, use manual A/B/C. Flight mapping remains experimental.",92)
    ui:chips({"Auto detect court"},function() vb:detectCourt();ui:sync() end,1)

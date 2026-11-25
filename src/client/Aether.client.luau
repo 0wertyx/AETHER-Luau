@@ -429,6 +429,206 @@ do
     scope:add(function() vb:reset() end)
 end
 
+
+-- Read-only trajectory preview. Anchored client balls are sampled by position,
+-- not AssemblyLinearVelocity; no network events or ball state are modified.
+do
+    local rs=game:GetService("ReplicatedStorage")
+    local tags=game:GetService("CollectionService")
+    local vb=app.volleyball
+    local esp={enabled=false,status="Off",ball=nil,samples={},segments={},clock=0,searchAt=0,drawAt=0,map=nil}
+    vb.trajectory=esp
+    local folder,marker,billboard,caption
+    local function hide()
+        if folder then folder:Destroy();folder=nil end
+        table.clear(esp.segments);marker=nil;billboard=nil;caption=nil
+    end
+    local function clearSamples()
+        table.clear(esp.samples);esp.ball=nil;esp.searchAt=0
+    end
+    local function part(name)
+        local p=Instance.new("Part")
+        p.Name=name;p.Anchored=true;p.CanCollide=false;p.CanTouch=false;p.CanQuery=false
+        p.CastShadow=false;p.Material=Enum.Material.Neon;p.Transparency=.2
+        p.Parent=folder
+        return p
+    end
+    local function ensureVisual()
+        if folder and folder.Parent then return end
+        folder=Instance.new("Folder");folder.Name="AETHER_TrajectoryPreview";folder.Parent=workspace
+        table.clear(esp.segments)
+        for i=1,72 do
+            local p=part("Segment");p.Transparency=1;esp.segments[i]=p
+        end
+        marker=part("Landing");marker.Shape=Enum.PartType.Ball;marker.Size=Vector3.new(1.4,1.4,1.4)
+        billboard=Instance.new("BillboardGui");billboard.Size=UDim2.fromOffset(132,32)
+        billboard.StudsOffsetWorldSpace=Vector3.new(0,2,0);billboard.AlwaysOnTop=true;billboard.Parent=marker
+        caption=Instance.new("TextLabel");caption.Size=UDim2.fromScale(1,1);caption.BackgroundTransparency=1
+        caption.Font=Enum.Font.GothamBold;caption.TextSize=15;caption.TextStrokeTransparency=.2;caption.Parent=billboard
+    end
+    local function finite(v) return v==v and v.Magnitude<1e6 end
+    local function ballPosition(obj)
+        if not obj or not obj:IsDescendantOf(workspace) then return nil end
+        if obj:IsA("Model") then return obj:GetPivot().Position end
+        if obj:IsA("BasePart") then return obj.Position end
+    end
+    local function findBall()
+        local candidates,seen={},{}
+        local function add(obj)
+            if obj:IsA("BasePart") and obj.Parent and obj.Parent:IsA("Model") and obj.Parent.Name:match("^CLIENT_BALL_") then obj=obj.Parent end
+            if not seen[obj] and ballPosition(obj) then seen[obj]=true;table.insert(candidates,obj) end
+        end
+        for _,obj in tags:GetTagged("Ball") do add(obj) end
+        for _,obj in workspace:GetDescendants() do
+            if obj.Name:match("^CLIENT_BALL_") then add(obj) end
+        end
+        local active=rs:GetAttribute("ActiveBall")
+        if active~=nil then
+            for _,obj in candidates do
+                if obj.Name=="CLIENT_BALL_"..tostring(active) or obj:GetAttribute("ServerId")==active then return obj end
+            end
+        end
+        local client={}
+        for _,obj in candidates do if obj.Name:match("^CLIENT_BALL_") then table.insert(client,obj) end end
+        if #client==1 then return client[1] end
+        if #candidates==1 then return candidates[1] end
+        -- Do not silently predict a different ball in a multi-ball training session.
+        return nil
+    end
+    local function courtColor(p,radius)
+        for _,line in tags:GetTagged("Courtlines") do
+            if line:IsA("BasePart") and line:IsDescendantOf(workspace) then
+                local d=p-line.Position
+                local dx=math.max(0,math.abs(d.X)-line.Size.X*.5)
+                local dz=math.max(0,math.abs(d.Z)-line.Size.Z*.5)
+                local inside=math.abs(d.Y)<=10 and dx*dx+dz*dz<=radius*radius
+                return if inside then Color3.fromRGB(75,255,145) else Color3.fromRGB(255,80,100),if inside then "IN" else "OUT"
+            end
+        end
+        return Color3.fromRGB(255,205,100),"UNKNOWN COURT"
+    end
+    local function radiusOf(obj)
+        local p=if obj:IsA("Model") then obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart",true) else obj
+        if p and p:IsA("BasePart") then return math.clamp(math.min(p.Size.X,p.Size.Y,p.Size.Z)*.5,.25,12) end
+        return 1
+    end
+    local function estimate(samples)
+        -- Least squares quadratic fit, centered on the latest sample.
+        -- Scaling time avoids tiny determinants at high frame rates.
+        local last=samples[#samples];local span=last.t-samples[1].t
+        if #samples<5 or span<.12 then return nil end
+        local s1,s2,s3,s4=0,0,0,0
+        local y0,y1,y2=Vector3.zero,Vector3.zero,Vector3.zero
+        for _,s in samples do
+            local x=(s.t-last.t)/span;local x2=x*x
+            local y=s.p-last.p
+            s1+=x;s2+=x2;s3+=x2*x;s4+=x2*x2
+            y0+=y;y1+=y*x;y2+=y*x2
+        end
+        local n=#samples
+        local a=s2-s1*s1/n;local b=s3-s1*s2/n;local c=s4-s2*s2/n
+        local d=y1-y0*(s1/n);local e=y2-y0*(s2/n)
+        local det=a*c-b*b
+        if det<1e-8 then return nil end
+        local velocity=(d*c-e*b)/det/span
+        local acceleration=(e*a-d*b)/det*(2/(span*span))
+        if not finite(velocity) or not finite(acceleration) or velocity.Magnitude>1800 or acceleration.Magnitude>2500 then return nil end
+        return velocity,acceleration
+    end
+    local params=RaycastParams.new()
+    params.FilterType=Enum.RaycastFilterType.Include
+    local filterAt=0
+    local function refreshMap(map)
+        local valid={}
+        for _,p in map:GetDescendants() do
+            if not p:IsA("BasePart") or not p.CanQuery then continue end
+            local skip=false;local cur=p
+            while cur and cur~=map do
+                if cur:HasTag("BallNoCollide") then skip=true;break end
+                cur=cur.Parent
+            end
+            if not skip then table.insert(valid,p) end
+        end
+        params.FilterDescendantsInstances=valid
+        filterAt=esp.clock+.75
+    end
+    local function draw(pos,vel,acc,ball,map)
+        if esp.clock>=filterAt then refreshMap(map) end
+        local radius=radiusOf(ball)
+        local points={pos};local hit,hitTime
+        for i=1,72 do
+            local t=i*.05
+            local nextPos=pos+vel*t+acc*(.5*t*t)
+            local prev=points[#points];local step=nextPos-prev
+            if step.Magnitude<.001 then break end
+            local result=workspace:Spherecast(prev,radius,step,params)
+            if result then
+                table.insert(points,prev+step.Unit*result.Distance)
+                hit=result;hitTime=t-.05+.05*math.clamp(result.Distance/step.Magnitude,0,1);break
+            end
+            table.insert(points,nextPos)
+        end
+        if #points<2 then hide();esp.status="Waiting for movement";return end
+        local color,label=Color3.fromRGB(175,155,255),"NO CONTACT"
+        if hit then
+            if hit.Normal.Y>.5 and not hit.Instance:GetAttribute("IsNet") then
+                color,label=courtColor(hit.Position,radius)
+            else
+                color,label=Color3.fromRGB(255,205,100),"OBSTACLE"
+            end
+        end
+        ensureVisual()
+        for i,p in esp.segments do
+            local a,b=points[i],points[i+1]
+            if a and b and (b-a).Magnitude>.001 then
+                p.Size=Vector3.new(.14,.14,(b-a).Magnitude);p.CFrame=CFrame.lookAt((a+b)*.5,b)
+                p.Color=color;p.Transparency=.2
+            else p.Transparency=1 end
+        end
+        marker.Transparency=if hit then .12 else 1
+        billboard.Enabled=hit~=nil
+        if hit then marker.Position=hit.Position+hit.Normal*.25;marker.Color=color;caption.Text=string.format("%s ~%.1fs",label,hitTime);caption.TextColor3=color end
+        esp.status=string.format("%s | %s | %.1f studs/s",ball.Name,label,vel.Magnitude)
+    end
+    function vb:toggleTrajectory()
+        esp.enabled=not esp.enabled;clearSamples();hide()
+        esp.status=if esp.enabled then "Waiting for moving ball" else "Off"
+    end
+    local function tick(dt)
+        esp.clock+=dt
+        if not esp.enabled or app.stopping or not gui.Parent or app.mode~="Game" then
+            if folder then hide() end
+            if esp.ball then clearSamples() end
+            if esp.enabled then esp.status="Waiting for Game mode" end
+            return
+        end
+        local map=workspace:FindFirstChild("Map")
+        if map~=esp.map then esp.map=map;clearSamples();hide();filterAt=0 end
+        if not map then esp.status="Waiting for map";return end
+        if not ballPosition(esp.ball) and esp.clock>=esp.searchAt then
+            clearSamples();esp.ball=findBall();esp.searchAt=esp.clock+.6
+        end
+        local pos=ballPosition(esp.ball)
+        if not pos then hide();esp.status="Waiting for one identifiable client ball";return end
+        local samples=esp.samples;local last=samples[#samples]
+        if last and (esp.clock-last.t>.25 or (pos-last.p).Magnitude>80) then table.clear(samples);last=nil end
+        if not last or esp.clock-last.t>=.025 then
+            table.insert(samples,{t=esp.clock,p=pos})
+            while #samples>1 and esp.clock-samples[1].t>.24 do table.remove(samples,1) end
+        end
+        if esp.clock<esp.drawAt then return end
+        esp.drawAt=esp.clock+.05
+        local vel,acc=estimate(samples)
+        if not vel or vel.Magnitude<3 then hide();esp.status="Sampling moving ball";return end
+        draw(pos,vel,acc,esp.ball,map)
+    end
+    scope:on(RunService.Heartbeat,function(dt)
+        local ok,err=pcall(tick,dt)
+        if not ok then esp.enabled=false;hide();clearSamples();esp.status="Trajectory error: "..tostring(err) end
+    end)
+    scope:add(function() esp.enabled=false;hide();clearSamples() end)
+end
+
 function app:modeSet(mode)
     assert(mode == "Game" or mode == "Simulator", "Invalid AETHER mode")
     self.mode = mode
