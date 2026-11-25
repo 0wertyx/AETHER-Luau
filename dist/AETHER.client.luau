@@ -4630,7 +4630,7 @@ function E.render(a,tab,ui)
     if trajectoryElapsed>=.25 then trajectoryElapsed=0;if ui.opened then refreshTrajectory() end end
    end)
    ui:title("AUTO TILT / BETA")
-   ui:note("Jinko beta: adjusts the local jump tilt used by the hit handler. Correct edges preserves manual tilt when the straight heading is in bounds; Aim center estimates a lateral correction. Server acceptance and landing accuracy are unverified.",96)
+   ui:note("All-style beta: adjusts local jump tilt used by the hit handler. Correct edges preserves manual tilt when the straight heading is in bounds; Aim center estimates a lateral correction. Ball response depends on style and server logic.",96)
    ui:chips({"Auto detect court"},function() vb:detectCourt();ui:sync() end,1)
    ui:chips({"Corner A","Corner B","Corner C"},function(label)
     vb:capture(if label=="Corner A" then 1 elseif label=="Corner B" then 2 else 3);ui:sync()
@@ -7533,10 +7533,6 @@ do
         local handlers,physics=gameModules()
         return app.mode=="Game" and handlers~=nil and physics~=nil
     end
-    local function isJester()
-        local style=player:GetAttribute("Gameplay_Style")
-        return type(style)=="string" and (style=="Jester" or style:match("^Jester%d+$")~=nil or style=="Jinko")
-    end
     local handlers,physics,originalTilt,wrappedTilt,lastManual,lastApplied
     local function releaseLocalTilt()
         if handlers and handlers.Values and lastApplied~=nil and handlers.Values.TiltDirection==lastApplied then
@@ -7564,7 +7560,7 @@ do
             local result=table.pack(original(...))
             local manual=ht.Values.TiltDirection
             local desired=vb.requestedTilt
-            if vb.auto and app.mode=="Game" and not app.stopping and gui.Parent and player:GetAttribute("Gameplay_InGame")==true and isJester() and typeof(desired)=="Vector3" and vb.tiltFresh and os.clock()-vb.tiltFresh<.25 then
+            if vb.auto and app.mode=="Game" and not app.stopping and gui.Parent and player:GetAttribute("Gameplay_InGame")==true and typeof(desired)=="Vector3" and vb.tiltFresh and os.clock()-vb.tiltFresh<.25 then
                 lastManual=manual
                 if manual~=desired then
                     ht.Values.TiltDirection=desired
@@ -7787,7 +7783,7 @@ do
         local ok,err=pcall(attachTilt)
         if not ok then detachTilt();self.status="Tilt module unavailable: "..tostring(err);return end
         self.tiltWrites=0;self.tiltHooks=0;self.requestedTilt=nil
-        self.auto=true;self.status="Jinko curve correction enabled"
+        self.auto=true;self.status="All-style tilt correction enabled"
     end
     local elapsed=0
     scope:on(RunService.Heartbeat,function(dt)
@@ -7804,7 +7800,6 @@ do
             vb.auto=false;detachTilt();vb.status="Tilt module changed; re-enable";return
         end
         vb.requestedTilt=nil
-        if not isJester() then releaseLocalTilt();vb.target=nil;vb.status="Waiting for Jinko style";return end
         local ok,err=pcall(function()
             local map=ReplicatedStorage:GetAttribute("Map")
             if map~=nil and vb.map~=nil and map~=vb.map then vb:clearCourt();vb.status="Map changed; recalibrate";return end
@@ -7864,7 +7859,7 @@ do
             vb.requestedTilt=right*curve+Vector3.yAxis
             vb.tiltFresh=os.clock()
             vb.target=target
-            vb.status=string.format("Jinko correction %.2f | target X %.1f Z %.1f",curve,target.X,target.Z)
+            vb.status=string.format("Tilt correction %.2f | target X %.1f Z %.1f",curve,target.X,target.Z)
         end)
         if not ok then
             vb.auto=false

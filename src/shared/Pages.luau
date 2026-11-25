@@ -793,7 +793,7 @@ function E.render(a,tab,ui)
     if trajectoryElapsed>=.25 then trajectoryElapsed=0;if ui.opened then refreshTrajectory() end end
    end)
    ui:title("AUTO TILT / BETA")
-   ui:note("Jinko beta: adjusts the local jump tilt used by the hit handler. Correct edges preserves manual tilt when the straight heading is in bounds; Aim center estimates a lateral correction. Server acceptance and landing accuracy are unverified.",96)
+   ui:note("All-style beta: adjusts local jump tilt used by the hit handler. Correct edges preserves manual tilt when the straight heading is in bounds; Aim center estimates a lateral correction. Ball response depends on style and server logic.",96)
    ui:chips({"Auto detect court"},function() vb:detectCourt();ui:sync() end,1)
    ui:chips({"Corner A","Corner B","Corner C"},function(label)
     vb:capture(if label=="Corner A" then 1 elseif label=="Corner B" then 2 else 3);ui:sync()
