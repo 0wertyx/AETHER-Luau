@@ -1,6 +1,7 @@
 -- Decorative menu-only background. No external assets or services.
 local U=require(script.Parent.Util)
 local Input=game:GetService("UserInputService")
+local AssetService=game:GetService("AssetService")
 local Shapes=require(script.Parent.FxShapes)
 local FX={};FX.__index=FX
 local MAX_LINKS=100
@@ -26,7 +27,9 @@ function FX.new(parent)
  links.Active=false;links.Interactable=false
  local nodes=U.frame(parent,"Figures",nil,nil,nil,1)
  nodes.Active=false;nodes.Interactable=false
- return setmetatable({parent=parent,linkLayer=links,nodeLayer=nodes,nodes={},links={},w=0,h=0},FX)
+ local self=setmetatable({parent=parent,linkLayer=links,nodeLayer=nodes,nodes={},links={},textures={},w=0,h=0},FX)
+ parent.Destroying:Once(function() for _,img in self.textures do if img then img:Destroy() end end;table.clear(self.textures) end)
+ return self
 end
 function FX:addNode(w,h)
  local root=frame(self.nodeLayer,"Figure")
@@ -44,12 +47,46 @@ function FX:addLink()
  self.links[#self.links+1]=l
  return l
 end
-local function drawNode(n,kind,r,color,opacity)
+function FX:shapeTexture(kind)
+ if self.textures[kind]~=nil then return self.textures[kind] or nil end
+ local edit
+ local ok=pcall(function()
+  local n=64;local ss=4;local count=buffer.create(n*n)
+  local outline=Shapes.outline(kind)
+  for y=0,n*ss-1 do
+   local yy=1-2*(y+.5)/(n*ss);local hits={}
+   for j,a in outline do
+    local b=outline[j%#outline+1]
+    if (a.Y>yy)~=(b.Y>yy) then table.insert(hits,a.X+(yy-a.Y)*(b.X-a.X)/(b.Y-a.Y)) end
+   end
+   table.sort(hits)
+   for j=1,#hits-1,2 do
+    local first=math.clamp(math.ceil((hits[j]+1)*n*ss/2-.5),0,n*ss)
+    local last=math.clamp(math.ceil((hits[j+1]+1)*n*ss/2-.5)-1,-1,n*ss-1)
+    for x=first,last do
+     local at=math.floor(y/ss)*n+math.floor(x/ss)
+     buffer.writeu8(count,at,buffer.readu8(count,at)+1)
+    end
+   end
+  end
+  local data=buffer.create(n*n*4)
+  for k=0,n*n-1 do
+   buffer.writeu32(data,k*4,0x00FFFFFF)
+   buffer.writeu8(data,k*4+3,math.round(buffer.readu8(count,k)*255/(ss*ss)))
+  end
+  edit=AssetService:CreateEditableImage({Size=Vector2.new(n,n)})
+  assert(edit,"EditableImage unavailable")
+  edit:WritePixelsBuffer(Vector2.zero,Vector2.new(n,n),data)
+ end)
+ if not ok then if edit then edit:Destroy() end;self.textures[kind]=false;return nil end
+ self.textures[kind]=edit;return edit
+end
+local function drawNode(self,n,kind,r,color,opacity)
  local root=n.root
  local key=kind..":"..tostring(r)..":"..color:ToHex()..":"..tostring(opacity)
  if n.key==key then return end
  n.key=key
- root.Size=UDim2.fromOffset(r*2,r*2)
+ local pixels=math.max(2,math.round(r*2));root.Size=UDim2.fromOffset(pixels,pixels)
  root.Rotation=0
  root.BackgroundTransparency=1
  local rim=root:FindFirstChildOfClass("UIStroke")
@@ -59,12 +96,30 @@ local function drawNode(n,kind,r,color,opacity)
  local corner=root:FindFirstChildOfClass("UICorner")
  if not corner then corner=U.corner(root,0) end
  corner.CornerRadius=if ring then UDim.new(.5,0) else UDim.new(0,0)
- local spans=if ring then {} else Shapes.spans(aliases[kind] or kind)
+ local shape=aliases[kind] or kind
+ local texture=if ring then nil else self:shapeTexture(shape)
+ if texture then
+  if not n.image then
+   local ok,img=pcall(function()
+    return U.new("ImageLabel",{Name="AAFigure",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Active=false,Interactable=false,Selectable=false,ResampleMode=Enum.ResamplerMode.Default,ImageContent=Content.fromObject(texture)},root)
+   end)
+   if ok then n.image=img end
+  elseif n.imageKey~=shape then
+   n.image.ImageContent=Content.fromObject(texture)
+  end
+ end
+ local imageReady=texture~=nil and n.image~=nil
+ if n.image then
+  n.image.Visible=imageReady
+  if imageReady then n.imageKey=shape;n.image.ImageColor3=color;n.image.ImageTransparency=1-opacity end
+ end
+ local spans=if ring or imageReady then {} else Shapes.spans(shape)
  for j,p in spans do
   local e=n.edges[j]
   if not e then e=frame(root,"Fill");e.AnchorPoint=Vector2.zero;n.edges[j]=e end
-  e.Position=UDim2.fromScale(p.x,p.y)
-  e.Size=UDim2.fromScale(p.w,p.h)
+  local x,y=math.round(p.x*pixels),math.round(p.y*pixels)
+  local right,bottom=math.round((p.x+p.w)*pixels),math.round((p.y+p.h)*pixels)
+  e.Position=UDim2.fromOffset(x,y);e.Size=UDim2.fromOffset(math.max(0,right-x),math.max(0,bottom-y))
   e.BackgroundColor3=color;e.BackgroundTransparency=1-opacity;e.Visible=true
  end
  for j=#spans+1,#n.edges do n.edges[j].Visible=false end
@@ -95,8 +150,8 @@ function FX:step(dt,s)
   n.x+=n.vx*step*speed;n.y+=n.vy*step*speed
   if n.x<0 or n.x>w then n.x=math.clamp(n.x,0,w);n.vx=-n.vx end
   if n.y<0 or n.y>h then n.y=math.clamp(n.y,0,h);n.vy=-n.vy end
-  n.root.Position=UDim2.fromOffset(n.x,n.y)
-  drawNode(n,if s.menuShape=="Mixed" then n.kind else s.menuShape,s.constellationSize*n.scale,na:Lerp(nb,n.t),opacity)
+  n.root.Position=UDim2.fromOffset(math.round(n.x),math.round(n.y))
+  drawNode(self,n,if s.menuShape=="Mixed" then n.kind else s.menuShape,s.constellationSize*n.scale,na:Lerp(nb,n.t),opacity)
  end
  local pairs={}
  if cap>0 and opacity>0 then
@@ -114,8 +169,9 @@ function FX:step(dt,s)
   local pair=pairs[k];local a,b=self.nodes[pair.i],self.nodes[pair.j]
   local line=self.links[k] or self:addLink()
   local f=line.frame
-  segment(f,Vector2.new(a.x,a.y),Vector2.new(b.x,b.y),s.constellationThickness/10)
-  f.BackgroundTransparency=1-opacity*(1-math.sqrt(pair.d)/radius)
+  local width=s.constellationThickness/10
+  segment(f,Vector2.new(math.round(a.x),math.round(a.y)),Vector2.new(math.round(b.x),math.round(b.y)),math.max(1,width))
+  f.BackgroundTransparency=1-opacity*math.min(1,width)*(1-math.sqrt(pair.d)/radius)
   line.gradient.Color=ColorSequence.new(la:Lerp(lb,a.t),la:Lerp(lb,b.t))
   f.Visible=true
  end
