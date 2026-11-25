@@ -3003,7 +3003,7 @@ end
 -- Shared pose evaluator for the editor and authorized local avatar animation.
 function M.runtimeSettings(settings)
  local saved=readSaved(settings)
- return {style=saved.pack,speed=saved.speed,origin=saved.origin/100,intensity=math.clamp(saved.intensity/100,0,1)}
+ return {style=saved.pack,speed=saved.speed,origin=saved.origin/100,intensity=math.clamp(saved.intensity/100,0,1),props=saved.props}
 end
 function M.runtimePose(config,t,state,airTime)
  local name=config.style
@@ -3024,7 +3024,8 @@ function M.runtimePose(config,t,state,airTime)
   result.Root=angle(spin+tilt,0,0)*result.Root
  end
  local hover=if name=="Godly Aura" then .18+.045*math.sin(t*tau/3.6) else (profile(name).hover or 0)
- if name=="Harpy Glide" or name=="Skater" then hover=0 end
+ if name=="Harpy Glide" then hover=0 end
+ if name=="Skater" then hover=if config.props and not airborne then .40 else 0 end
  if not airborne and families[name]=="hop" and state~="Idle" then
   hover+=profile(name).bob*math.abs(math.sin(t*profile(name).cadence))
  end
@@ -3241,7 +3242,7 @@ function M.mount(ui,a)
     for _,b in {left,right} do b.CFrame+=V(0,l-bottom(b.CFrame,b.Size),0) end
    end
   end
-  if s.props and r.kind=="R6" then props:update(model,name,t*4,if state=="Fall" then Enum.HumanoidStateType.Freefall elseif state=="Jump" then Enum.HumanoidStateType.Jumping else Enum.HumanoidStateType.Running) else props:clear() end
+  if s.props then props:update(model,name,t*4,if state=="Fall" then Enum.HumanoidStateType.Freefall elseif state=="Jump" then Enum.HumanoidStateType.Jumping else Enum.HumanoidStateType.Running) else props:clear() end
   for i,v in r.followers do v.part.CFrame=v.owner.CFrame*follow[i] end
   local rotation=angle(s.pitch,s.yaw,s.roll)*angle(spin,0,0)
   if name=="Cartwheel Flow" and not air and state~="Idle" then rotation*=angle(0,0,lt*240) end
@@ -3949,7 +3950,7 @@ function E.render(a,tab,ui)
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
   if tab=="Character" then
-   ui:title("AETHER MOTION STUDIO V12.5")
+   ui:title("AETHER MOTION STUDIO V12.6")
    MotionStudio.mount(ui,a)
   else avatarPreview(ui,a) end
   if tab=="Halos" then
@@ -4101,7 +4102,7 @@ end
 
 -- BEGIN MODULE PreviewProps
 __aether_factories["PreviewProps"] = function()
--- Decorative GUI-only props. No tools, hitboxes, game-world parts or physics.
+-- Local decorative props for the viewport and the local avatar. No Tools, hitboxes or collision.
 local P={};P.__index=P
 local function part(parent,name,size,color,shape)
  local p=Instance.new("Part");p.Name=name;p.Size=size;p.Color=color;p.Anchored=true;p.CanCollide=false;p.CanTouch=false;p.CanQuery=false;p.CastShadow=false;p.Material=Enum.Material.SmoothPlastic
@@ -4111,11 +4112,11 @@ end
 local violet=Color3.fromRGB(149,107,230)
 local pale=Color3.fromRGB(218,191,255)
 local dark=Color3.fromRGB(40,33,55)
-function P.new(parent) return setmetatable({parent=parent},P) end
+function P.new(parent,live) return setmetatable({parent=parent,live=live==true},P) end
 function P:clear() if self.root then self.root:Destroy() end;self.root=nil;self.kind=nil;self.parts=nil end
 function P:build(kind)
  self:clear();self.kind=kind
- local root=Instance.new("Folder");root.Name="AetherPreviewProps";root.Parent=self.parent;self.root=root
+ local root=Instance.new("Folder");root.Name=if self.live then "AetherMotionProps" else "AetherPreviewProps";root.Parent=self.parent;self.root=root
  local items={};self.parts=items
  if kind=="Skater" then
   items.deck=part(root,"FantasyDeck",Vector3.new(1.45,.14,3.55),violet)
@@ -4142,17 +4143,22 @@ local function line(p,a,b)
  local d=b-a;p.Size=Vector3.new(.025,.025,math.max(.025,d.Magnitude));p.CFrame=CFrame.lookAt((a+b)/2,b)
 end
 function P:update(rig,kind,phase,state)
- local torso=rig and rig:FindFirstChild("Torso")
- local ra=rig and rig:FindFirstChild("Right Arm")
- local la=rig and rig:FindFirstChild("Left Arm")
- local rl=rig and rig:FindFirstChild("Right Leg")
- local ll=rig and rig:FindFirstChild("Left Leg")
+ local function limb(a,b)
+  return rig and (rig:FindFirstChild(a) or rig:FindFirstChild(b))
+ end
+ local torso=limb("Torso","UpperTorso")
+ local ra=limb("Right Arm","RightHand")
+ local la=limb("Left Arm","LeftHand")
+ local rl=limb("Right Leg","RightFoot")
+ local ll=limb("Left Leg","LeftFoot")
+ local r6=ra and ra.Name=="Right Arm"
  local head=rig and rig:FindFirstChild("Head")
  local root=rig and rig:FindFirstChild("HumanoidRootPart")
  if not torso or not ra or not la or not rl or not ll or not head or not root or (kind~="Skater" and kind~="Doll Walk" and kind~="Fighter") then self:clear();return end
- if self.kind~=kind then self:build(kind) end
+ if self.kind~=kind or not self.root or self.root.Parent~=self.parent then self:build(kind) end
  local q=self.parts
  local function grip(arm,side,target)
+  if self.live or not r6 then return end
   local shoulder=torso.CFrame:PointToWorldSpace(Vector3.new(side*(torso.Size.X/2+arm.Size.X*.35),torso.Size.Y*.25,0))
   local d=target-shoulder;if d.Magnitude<.001 then return end
   local y=-d.Unit;local x=y:Cross(torso.CFrame.LookVector)
@@ -4163,8 +4169,14 @@ function P:update(rig,kind,phase,state)
  end
  if kind=="Fighter" then
   local cf=torso.CFrame*CFrame.new(0,-.12,-1.26)*CFrame.Angles(math.rad(-22),0,math.rad(-13))
-  grip(ra,1,cf:PointToWorldSpace(Vector3.new(0,.23,0)))
-  grip(la,-1,cf:PointToWorldSpace(Vector3.new(0,-.23,0)))
+  if self.live or not r6 then
+   -- Follow the actual hand, not the other way around.
+   local hand=ra.CFrame*CFrame.new(0,-ra.Size.Y*(if r6 then .5 else .1),0)
+   cf=hand*CFrame.Angles(math.rad(-85),0,math.rad(-8))*CFrame.new(0,-.23,0)
+  else
+   grip(ra,1,cf:PointToWorldSpace(Vector3.new(0,.23,0)))
+   grip(la,-1,cf:PointToWorldSpace(Vector3.new(0,-.23,0)))
+  end
   q.handle.CFrame=cf;q.guard.CFrame=cf*CFrame.new(0,.48,0);q.blade.CFrame=cf*CFrame.new(0,1.56,0);q.tip.CFrame=cf*CFrame.new(0,2.58,0)
  elseif kind=="Doll Walk" then
   local bar=CFrame.new(head.Position+Vector3.new(.08*math.sin(phase),1.65,0))*root.CFrame.Rotation*CFrame.Angles(0,0,.12*math.sin(phase))
@@ -4176,8 +4188,13 @@ function P:update(rig,kind,phase,state)
   local cf
   if state==Enum.HumanoidStateType.Freefall then
    cf=torso.CFrame*CFrame.new(0,-.5,-1.35)*CFrame.Angles(math.rad(8),math.rad(90),math.rad(8))
-   grip(ra,1,cf:PointToWorldSpace(Vector3.new(0,.12,1.03)))
-   grip(la,-1,cf:PointToWorldSpace(Vector3.new(0,.12,-1.03)))
+   if self.live or not r6 then
+    local hand=ra.CFrame*CFrame.new(0,-ra.Size.Y*(if r6 then .5 else .1),0)
+    cf=hand*CFrame.Angles(0,math.pi/2,0)*CFrame.new(0,-.12,-1.03)
+   else
+    grip(ra,1,cf:PointToWorldSpace(Vector3.new(0,.12,1.03)))
+    grip(la,-1,cf:PointToWorldSpace(Vector3.new(0,.12,-1.03)))
+   end
   else
    local a=rl.CFrame:PointToWorldSpace(Vector3.new(0,-rl.Size.Y/2,0))
    local b=ll.CFrame:PointToWorldSpace(Vector3.new(0,-ll.Size.Y/2,0))
@@ -4187,7 +4204,8 @@ function P:update(rig,kind,phase,state)
    end
    local center=(a+b)/2
    local z=Vector3.new(a.X-b.X,0,a.Z-b.Z)
-   if z.Magnitude<.001 then z=root.CFrame.LookVector end
+   if z.Magnitude<.001 then local f=root.CFrame.LookVector;z=Vector3.new(f.X,0,f.Z) end
+   if z.Magnitude<.001 then z=Vector3.new(0,0,-1) end
    z=z.Unit;local y=Vector3.yAxis;local x=y:Cross(z).Unit
    cf=CFrame.fromMatrix(Vector3.new(center.X,math.min(bottom(rl),bottom(ll))-.095,center.Z),x,y,z)
   end
@@ -6241,6 +6259,7 @@ local S = module("Schema")
 local Hud = module("Hud")
 local Avatar = module("Avatar")
 local WalkMotion = module("WalkMotion")
+local PreviewProps = module("PreviewProps")
 local World = module("World")
 local View = module("View")
 local Controls = module("Controls")
@@ -6508,6 +6527,7 @@ end
 local hud = Hud.new(scope, overlay, false, function(tab) app.ui:open(tab) end,nil,function(key) app:set(key,false) end)
 local avatar = Avatar.new(workspace, false)
 local walkMotion = WalkMotion.new()
+local motionProps = PreviewProps.new(workspace, true)
 local world = World.new()
 local view = View.new(player, pointer)
 app.view = view
@@ -6696,6 +6716,7 @@ scope:on(player.CharacterAdded, bind)
 scope:on(player.CharacterRemoving, function(char)
     if character == char then character, humanoid = nil, nil end
     avatar:clear()
+    motionProps:clear()
 end)
 if player.Character then bind(player.Character) end
 
@@ -6833,6 +6854,23 @@ scope:on(RunService.PreSimulation, function(dt)
     elseif ok then app.walkError = false end
 end)
 
+-- Props follow the already evaluated local pose without modifying character parts.
+scope:on(RunService.RenderStepped, function()
+    if app.stopping or not gui.Parent then motionProps:clear();return end
+    local config = walkMotion.liveConfig
+    local active = app.mode == "Game" and character and humanoid and humanoid.Health > 0
+        and app.s.walkAnimation and not app.s.reduce and walkMotion.liveStyle == app.s.walkStyle
+        and config and config.props and walkMotion.liveSettings == app.s
+    local ok, err = pcall(function()
+        if active then motionProps:update(character, config.style, walkMotion.liveTime * 4, humanoid:GetState())
+        else motionProps:clear() end
+    end)
+    if not ok then
+        motionProps:clear()
+        if not app.motionPropError then app.motionPropError = true;warn("AETHER motion props:", err) end
+    else app.motionPropError = false end
+end)
+
 local elapsed = 0
 scope:on(RunService.RenderStepped, function(dt)
     if app.stopping then return end
@@ -6860,6 +6898,7 @@ end)
 scope:add(function() app:stopCue() end)
 scope:add(function() avatar:clear() end)
 scope:add(function() walkMotion:destroy() end)
+scope:add(function() motionProps:clear() end)
 scope:add(function() world:clear() end)
 scope:add(function() view:destroy() end)
 -- END CLIENT
