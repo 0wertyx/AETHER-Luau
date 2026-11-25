@@ -53,8 +53,9 @@ function P:update(rig,kind,phase,state)
  if not torso or not ra or not la or not rl or not ll or not head or not root or (kind~="Skater" and kind~="Doll Walk" and kind~="Fighter") then self:clear();return end
  if self.kind~=kind or not self.root or self.root.Parent~=self.parent then self:build(kind) end
  local q=self.parts
+ local suspended=state==Enum.HumanoidStateType.Climbing or state==Enum.HumanoidStateType.Swimming
  local function grip(arm,side,target)
-  if self.live or not r6 then return end
+  if self.live or not r6 or suspended then return end
   local shoulder=torso.CFrame:PointToWorldSpace(Vector3.new(side*(torso.Size.X/2+arm.Size.X*.35),torso.Size.Y*.25,0))
   local d=target-shoulder;if d.Magnitude<.001 then return end
   local y=-d.Unit;local x=y:Cross(torso.CFrame.LookVector)
@@ -63,9 +64,10 @@ function P:update(rig,kind,phase,state)
   x=x.Unit;local z=x:Cross(y).Unit
   arm.CFrame=CFrame.fromMatrix(target+y*(arm.Size.Y/2),x,y,z)
  end
+ if kind=="Skater" and suspended then self:clear();return end
  if kind=="Fighter" then
   local cf=torso.CFrame*CFrame.new(0,-.12,-1.26)*CFrame.Angles(math.rad(-22),0,math.rad(-13))
-  if self.live or not r6 then
+  if self.live or not r6 or suspended then
    -- Follow the actual hand, not the other way around.
    local hand=ra.CFrame*CFrame.new(0,-ra.Size.Y*(if r6 then .5 else .1),0)
    cf=hand*CFrame.Angles(math.rad(-85),0,math.rad(-8))*CFrame.new(0,-.23,0)
