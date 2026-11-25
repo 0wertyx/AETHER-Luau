@@ -4571,7 +4571,7 @@ function E.render(a,tab,ui)
   ui:title("AIR REDIRECTION")
   ui:control("airControl");ui:control("airControlStrength")
   local airStatus=ui:note("",44)
-  ui:watch(function() airStatus.Text=if a.mode=="Simulator" then "Simulator: steer with movement controls. Horizontal momentum is preserved." elseif workspace:GetAttribute("AETHERAllowAirControl")==true then "Live: steer in midair without losing momentum on turns. Jump height is unchanged." else "Available in Simulator. Live movement requires explicit place-owner permission." end)
+  ui:watch(function() airStatus.Text=if a.mode=="Simulator" then "Simulator: steer with movement controls. Horizontal momentum is preserved." else "Live: steer in midair. Jump height is unchanged; game physics may override local steering." end)
   ui:title("CAMERA")
   preset(ui,a,"Camera");ui:group("Camera")
   ui:title("CUSTOM LOCK / KEYBIND")
@@ -7791,10 +7791,10 @@ scope:add(function() RunService:UnbindFromRenderStep(pointerRenderBinding) end)
 scope:on(RunService.PreAnimation, function()
     if not app.stopping and gui.Parent then walkMotion:restoreLive();peers:restore() end
 end)
--- Optional movement mechanic for an experience whose owner explicitly enables it.
+-- Optional local air steering mechanic controlled by the Air Redirection toggle.
 -- Does not create forces, alter gravity, increase WalkSpeed or change vertical velocity.
 local function stepAirControl(dt)
-    if app.mode ~= "Game" or workspace:GetAttribute("AETHERAllowAirControl") ~= true or not app.s.airControl then return end
+    if app.mode ~= "Game" or not app.s.airControl then return end
     if app.ui.opened or app.editingHUD or UserInputService:GetFocusedTextBox() then return end
     if not character or not humanoid or humanoid.Parent ~= character or humanoid.Health <= 0 or humanoid.Sit or humanoid.PlatformStand then return end
     local state = humanoid:GetState()

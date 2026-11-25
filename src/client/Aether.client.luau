@@ -637,10 +637,10 @@ scope:add(function() RunService:UnbindFromRenderStep(pointerRenderBinding) end)
 scope:on(RunService.PreAnimation, function()
     if not app.stopping and gui.Parent then walkMotion:restoreLive();peers:restore() end
 end)
--- Optional movement mechanic for an experience whose owner explicitly enables it.
+-- Optional local air steering mechanic controlled by the Air Redirection toggle.
 -- Does not create forces, alter gravity, increase WalkSpeed or change vertical velocity.
 local function stepAirControl(dt)
-    if app.mode ~= "Game" or workspace:GetAttribute("AETHERAllowAirControl") ~= true or not app.s.airControl then return end
+    if app.mode ~= "Game" or not app.s.airControl then return end
     if app.ui.opened or app.editingHUD or UserInputService:GetFocusedTextBox() then return end
     if not character or not humanoid or humanoid.Parent ~= character or humanoid.Health <= 0 or humanoid.Sit or humanoid.PlatformStand then return end
     local state = humanoid:GetState()
