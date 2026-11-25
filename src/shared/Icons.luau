@@ -146,11 +146,9 @@ local function raster(name,glow)
     end
     local dist=math.sqrt(dist2)
     local coverage=if glow then math.exp(-((math.max(0,dist-radius)/1.05)^2))*.75 else math.clamp((radius-dist)/pixel+.5,0,1)
-    if coverage>0 then
-     local offset=(y*n+x)*4
-     buffer.writeu32(data,offset,0x00FFFFFF)
-     buffer.writeu8(data,offset+3,math.round(coverage*255))
-    end
+    local offset=(y*n+x)*4
+    buffer.writeu32(data,offset,0x00FFFFFF)
+    buffer.writeu8(data,offset+3,math.round(coverage*255))
    end
   end
   edit:WritePixelsBuffer(Vector2.zero,Vector2.new(n,n),data)
@@ -209,7 +207,7 @@ function I.new(button,tab)
   end)
   if ok then
    hd=result
-   halo=hd:Clone();halo.Name="IconGlow";halo.ZIndex=hd.ZIndex-1;halo.ImageTransparency=.55
+   halo=hd:Clone();halo.Name="IconGlow";halo.ZIndex=hd.ZIndex-1;halo.ImageTransparency=.76
    local glowTexture=raster(name,true)
    if glowTexture then halo.ImageContent=Content.fromObject(glowTexture);halo.Parent=button else halo:Destroy();halo=nil end
    U.new("UIGradient",{Color=ColorSequence.new(Color3.fromRGB(220,187,255),Color3.fromRGB(255,209,245)),Rotation=45},hd)
