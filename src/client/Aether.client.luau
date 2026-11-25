@@ -696,10 +696,17 @@ local function stepAirControl(dt)
     local input = humanoid.MoveDirection
     local direction = Vector3.new(input.X,0,input.Z)
     local horizontal = Vector3.new(v.X,0,v.Z)
-    local cap = math.max(0,humanoid.WalkSpeed)
+    local walkSpeed = math.max(0,humanoid.WalkSpeed)
+    local speed = horizontal.Magnitude
     if direction.Magnitude < .01 then app.airDiagnostic = "Skipped: MoveDirection is zero";return app.airDiagnostic end
-    if cap <= 0 or app.s.airControlStrength <= 0 or dt <= 0 then
-        app.airDiagnostic = "Skipped: WalkSpeed, strength or delta time is zero";return app.airDiagnostic
+    if app.s.airControlStrength <= 0 then app.airDiagnostic = "Skipped: strength is zero";return app.airDiagnostic end
+    if dt <= 0 then app.airDiagnostic = "Skipped: physics delta time is zero";return app.airDiagnostic end
+    -- With no nominal walking speed, redirect existing momentum only.
+    -- Never generate horizontal speed from rest when the controller has set WalkSpeed to zero.
+    local cap = if walkSpeed > 0 then walkSpeed else speed
+    if cap < .01 then
+        app.airDiagnostic = string.format("Skipped: no horizontal momentum | WalkSpeed %.2f | speed %.2f | dt %.4f",walkSpeed,speed,dt)
+        return app.airDiagnostic
     end
     local nextVelocity = U.airRedirect(horizontal,direction,cap,app.s.airControlStrength,dt)
     if (nextVelocity-horizontal).Magnitude < .0001 then
@@ -707,7 +714,7 @@ local function stepAirControl(dt)
         return app.airDiagnostic
     end
     root.AssemblyLinearVelocity = Vector3.new(nextVelocity.X,v.Y,nextVelocity.Z)
-    app.airProbe = {root=root,expected=nextVelocity,speed=horizontal.Magnitude,cap=cap}
+    app.airProbe = {root=root,expected=nextVelocity,speed=speed,cap=cap,walkSpeed=walkSpeed}
     app.airWrites = (app.airWrites or 0)+1
     app.airDiagnostic = string.format("Write issued | %s | speed %.1f",state.Name,horizontal.Magnitude)
     return app.airDiagnostic
@@ -749,7 +756,7 @@ scope:on(RunService.PostSimulation,function()
     if not probe or app.stopping or not gui.Parent or not probe.root.Parent then return end
     local v = probe.root.AssemblyLinearVelocity
     local difference = (Vector3.new(v.X,0,v.Z)-probe.expected).Magnitude
-    app.airDiagnostic = string.format("Applied | speed %.1f / WalkSpeed %.1f | physics delta %.1f",probe.speed,probe.cap,difference)
+    app.airDiagnostic = string.format("Applied | speed %.1f | WalkSpeed %.1f | cap %.1f | physics delta %.1f",probe.speed,probe.walkSpeed,probe.cap,difference)
 end)
 
 -- Motion Studio poses follow the real humanoid state, after Animator evaluates.
