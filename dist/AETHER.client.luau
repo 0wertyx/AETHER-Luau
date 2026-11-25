@@ -2491,6 +2491,7 @@ end
 __aether_factories["Pages"] = function()
 local U=__aether_require("Util");local S=__aether_require("Schema");local MotionPacks=__aether_require("MotionPacks");local Symbol=__aether_require("Symbol");local Hud=__aether_require("Hud");local Avatar=__aether_require("Avatar");local Cues=__aether_require("Cues");local Http=game:GetService("HttpService")
 local WalkMotion=__aether_require("WalkMotion")
+local PreviewProps=__aether_require("PreviewProps")
 local Input=game:GetService("UserInputService")
 local E={}
 local function names(t) local a=U.keys(t);return a end
@@ -2522,6 +2523,8 @@ local function avatarPreview(ui,a,worldMode)
  local generation=0
  local characterScope=nil
  local motion=WalkMotion.new()
+ local props=PreviewProps.new(w)
+ local showProps=true
  local rootPart=nil
  local joints={}
  local motors={}
@@ -2567,7 +2570,7 @@ local function avatarPreview(ui,a,worldMode)
   local aspect=math.max(.1,view.AbsoluteSize.X/math.max(1,view.AbsoluteSize.Y))
   local half=math.rad(cam.FieldOfView*.5)
   local angle=math.min(half,math.atan(math.tan(half)*aspect))
-  local distance=if worldMode and full then 12*zoom else radius/math.sin(angle)*(if worldMode then 1.12 else 1.26)*zoom
+  local distance=if worldMode and full then 12*zoom else radius/math.sin(angle)*(if worldMode then 1.12 else 1.48)*zoom
   local offset=Vector3.new(math.sin(yaw)*math.cos(pitch),math.sin(pitch),-math.cos(yaw)*math.cos(pitch))
   local pos=center+offset*distance
   if worldMode and full and stage then
@@ -2749,7 +2752,7 @@ local function avatarPreview(ui,a,worldMode)
      elseif demoState=="Climb" then Enum.HumanoidStateType.Climbing
      else Enum.HumanoidStateType.Running
     local airborne=demoState=="Jump" or demoState=="Fall"
-    virtual={movement=if demoState=="Idle" then 0 elseif demoState=="Walk" then .78 else 1,grounded=not airborne,jumping=demoState=="Jump",state=state,speed=if demoState=="Run" then 24 else 16,fullPose=true,originStrength=demoOrigin}
+    virtual={movement=if demoState=="Idle" then 0 elseif demoState=="Walk" then .78 else 1,grounded=not airborne,jumping=demoState=="Jump",state=state,speed=if demoState=="Run" then 24 else 16,fullPose=true,originStrength=demoOrigin,loopAir=true}
    end
    motion:step(rig,demo,dt,virtual)
   else
@@ -2762,6 +2765,7 @@ local function avatarPreview(ui,a,worldMode)
     if link.forward then e.p1.CFrame=e.p0.CFrame*offset else e.p0.CFrame=e.p1.CFrame*offset:Inverse() end
    end
   end
+  if showProps and not settings.reduce and motion.signatureActive then props:update(rig,settings.walkStyle,motion.phase,motion.airProgress) else props:clear() end
  end
  local function refresh(char)
   generation+=1
@@ -2799,7 +2803,7 @@ local function avatarPreview(ui,a,worldMode)
  local function bind(char)
   if characterScope then characterScope:clear() end
   characterScope=U.scope()
-  generation+=1;avatar:clear();motion:bind(nil);rootPart=nil;table.clear(joints);table.clear(motors)
+  generation+=1;avatar:clear();props:clear();motion:bind(nil);rootPart=nil;table.clear(joints);table.clear(motors)
   if previewState.rig then previewState.rig:Destroy();previewState.rig=nil end
   label.Text="Loading avatar...";label.Visible=true
   if not char then return end
@@ -2914,6 +2918,7 @@ local function avatarPreview(ui,a,worldMode)
   end,4,function() return demoState end)
   ui:chips({"0.5x","1x","1.5x","2x"},function(n) speed=tonumber(n:sub(1,-2)) or 1;ui:sync() end,4,function() return tostring(speed).."x" end)
   ui:chips({"50%","75%","100%"},function(n) demoStrength=tonumber(n:sub(1,-2)) or 100;ui:sync() end,3,function() return tostring(demoStrength).."%" end)
+  ui:chips({"Props on","Props off"},function(n) showProps=n=="Props on";if not showProps then props:clear() end;ui:sync() end,2,function() return if showProps then "Props on" else "Props off" end)
   ui:title("R6 · LIMB ORIGIN MOTION")
   ui:note("Animate shoulder and hip positions as well as rotation. Compare the original rotation-only preview with the stylized offsets.",42)
   ui:chips({"Origin off","Origin 50%","Origin 100%"},function(n)
@@ -2943,7 +2948,7 @@ local function avatarPreview(ui,a,worldMode)
   CAS:UnbindAction(actionName)
   hovered=false;endOrbit()
   if characterScope then characterScope:clear() end
-  motion:destroy();avatar:clear();sceneClear()
+  motion:destroy();props:clear();avatar:clear();sceneClear()
  end)
  bind(player.Character)
 end
@@ -3229,6 +3234,86 @@ end
 -- END MODULE Pages
 
 
+-- BEGIN MODULE PreviewProps
+__aether_factories["PreviewProps"] = function()
+-- Decorative GUI-only props. No tools, hitboxes, game-world parts or physics.
+local P={};P.__index=P
+local function part(parent,name,size,color,shape)
+ local p=Instance.new("Part");p.Name=name;p.Size=size;p.Color=color;p.Anchored=true;p.CanCollide=false;p.CanTouch=false;p.CanQuery=false;p.CastShadow=false;p.Material=Enum.Material.SmoothPlastic
+ if shape then p.Shape=shape end
+ p.Parent=parent;return p
+end
+local violet=Color3.fromRGB(149,107,230)
+local pale=Color3.fromRGB(218,191,255)
+local dark=Color3.fromRGB(40,33,55)
+function P.new(parent) return setmetatable({parent=parent},P) end
+function P:clear() if self.root then self.root:Destroy() end;self.root=nil;self.kind=nil;self.parts=nil end
+function P:build(kind)
+ self:clear();self.kind=kind
+ local root=Instance.new("Folder");root.Name="AetherPreviewProps";root.Parent=self.parent;self.root=root
+ local items={};self.parts=items
+ if kind=="Skater" then
+  items.deck=part(root,"FantasyDeck",Vector3.new(1.45,.14,3.55),violet)
+  items.grip=part(root,"DeckTop",Vector3.new(1.34,.025,3.42),dark)
+  items.ends={}
+  for i=1,2 do items.ends[i]=part(root,"RoundedDeckEnd",Vector3.new(.14,1.45,.48),violet,Enum.PartType.Cylinder) end
+  items.wheels={}
+  for i=1,4 do items.wheels[i]=part(root,"DecorativeWheel",Vector3.new(.27,.38,.38),pale,Enum.PartType.Cylinder) end
+ elseif kind=="Doll Walk" then
+  items.bar=part(root,"PuppetBar",Vector3.new(2.5,.10,.16),dark)
+  items.cross=part(root,"PuppetCross",Vector3.new(.16,.10,1.6),dark)
+  items.strings={}
+  for i=1,5 do items.strings[i]=part(root,"PuppetThread",Vector3.new(.025,.025,1),pale) end
+ elseif kind=="Fighter" then
+  items.handle=part(root,"FantasyPropGrip",Vector3.new(.19,.57,.19),dark)
+  items.guard=part(root,"FantasyPropOrnament",Vector3.new(.65,.12,.24),violet)
+  items.blade=part(root,"FantasyLightBlade",Vector3.new(.24,2.05,.10),pale)
+  items.blade.Material=Enum.Material.Neon
+  items.tip=part(root,"FantasyLightTip",Vector3.new(.18,.18,.18),pale,Enum.PartType.Ball)
+  items.tip.Material=Enum.Material.Neon
+ end
+end
+local function line(p,a,b)
+ local d=b-a;p.Size=Vector3.new(.025,.025,math.max(.025,d.Magnitude));p.CFrame=CFrame.lookAt((a+b)/2,b)
+end
+function P:update(rig,kind,phase,airProgress)
+ local torso=rig and rig:FindFirstChild("Torso")
+ local ra=rig and rig:FindFirstChild("Right Arm")
+ local la=rig and rig:FindFirstChild("Left Arm")
+ local rl=rig and rig:FindFirstChild("Right Leg")
+ local ll=rig and rig:FindFirstChild("Left Leg")
+ local head=rig and rig:FindFirstChild("Head")
+ local root=rig and rig:FindFirstChild("HumanoidRootPart")
+ if not torso or not ra or not la or not rl or not ll or not head or not root or (kind~="Skater" and kind~="Doll Walk" and kind~="Fighter") then self:clear();return end
+ if self.kind~=kind then self:build(kind) end
+ local q=self.parts
+ if kind=="Fighter" then
+  -- An oversized stylized light prop, permanently attached to the hand pose.
+  local cf=ra.CFrame*CFrame.new(0,-ra.Size.Y/2+.10,0)*CFrame.Angles(math.rad(75),0,math.rad(8))
+  q.handle.CFrame=cf;q.guard.CFrame=cf*CFrame.new(0,.34,0);q.blade.CFrame=cf*CFrame.new(0,1.38,0);q.tip.CFrame=cf*CFrame.new(0,2.40,0)
+ elseif kind=="Doll Walk" then
+  local bar=CFrame.new(head.Position+Vector3.new(.08*math.sin(phase),1.65,0))*root.CFrame.Rotation*CFrame.Angles(0,0,.12*math.sin(phase))
+  q.bar.CFrame=bar;q.cross.CFrame=bar
+  local targets={ra.CFrame:PointToWorldSpace(Vector3.new(0,-ra.Size.Y/2,0)),la.CFrame:PointToWorldSpace(Vector3.new(0,-la.Size.Y/2,0)),head.Position+Vector3.new(0,head.Size.Y/2,0),rl.Position,ll.Position}
+  local anchors={Vector3.new(1.2,0,0),Vector3.new(-1.2,0,0),Vector3.new(0,0,0),Vector3.new(.45,0,.7),Vector3.new(-.45,0,-.7)}
+  for i=1,5 do line(q.strings[i],bar:PointToWorldSpace(anchors[i]),targets[i]) end
+ else
+  local a=rl.CFrame:PointToWorldSpace(Vector3.new(0,-rl.Size.Y/2,0))
+  local b=ll.CFrame:PointToWorldSpace(Vector3.new(0,-ll.Size.Y/2,0))
+  local center=(a+b)/2
+  local rotation=root.CFrame.Rotation*CFrame.Angles(0,math.rad(52)+(airProgress or 0)*math.pi*2,0)
+  local cf=CFrame.new(center.X,math.min(a.Y,b.Y)-.10,center.Z)*rotation
+  q.deck.CFrame=cf;q.grip.CFrame=cf*CFrame.new(0,.08,0)
+  for i=1,2 do local side=if i==1 then -1 else 1;q.ends[i].CFrame=cf*CFrame.new(0,.01,side*1.65)*CFrame.Angles(0,0,math.pi/2) end
+  for i=1,4 do local x=if i%2==0 then .65 else -.65;local z=if i<3 then 1.02 else -1.02;q.wheels[i].CFrame=cf*CFrame.new(x,-.20,z)*CFrame.Angles(phase*2,0,0) end
+ end
+end
+return P
+
+end
+-- END MODULE PreviewProps
+
+
 -- BEGIN MODULE Schema
 __aether_factories["Schema"] = function()
 -- Shared, data-only contract. All settings/banks contain JSON primitives, not Instances.
@@ -3374,6 +3459,147 @@ for _,v in S.skies do S.presets.Ambient[v[1]]=S.sky(v) end
 return S
 end
 -- END MODULE Schema
+
+
+-- BEGIN MODULE SignatureR6
+__aether_factories["SignatureR6"] = function()
+-- Original hand-authored R6 preview clips. Each pose contains six joints;
+-- channels are pitch/yaw/roll in degrees, followed by parent-space XYZ studs.
+-- Forward is -Z. Root negative pitch leans forward; limb positive pitch reaches forward.
+local M={}
+local function J(a,b,c,x,y,z) return {a or 0,b or 0,c or 0,x or 0,y or 0,z or 0} end
+local function P(root,ra,la,rl,ll,head) return {Root=root,RightShoulder=ra,LeftShoulder=la,RightHip=rl,LeftHip=ll,Neck=head or J()} end
+local function mirrorJoint(a) return J(a[1],-a[2],-a[3],-a[4],a[5],a[6]) end
+local function mirror(p)
+ return P(mirrorJoint(p.Root),mirrorJoint(p.LeftShoulder),mirrorJoint(p.RightShoulder),mirrorJoint(p.LeftHip),mirrorJoint(p.RightHip),mirrorJoint(p.Neck))
+end
+local function cycle(a)
+ local out=table.clone(a)
+ for _,p in a do out[#out+1]=mirror(p) end
+ return out
+end
+local clips={}
+-- Contact, compression, passing, lift, opposite contact.
+clips.Heroic=cycle({
+ P(J(-17,-10,-3,.04,0,-.08),J(-42,-8,12,.02,0,.12),J(47,5,-10,-.02,.07,-.16),J(41,0,3,.03,.06,-.24),J(-35,0,-3,-.03,.04,.20),J(12,9,2)),
+ P(J(-24,-5,-4,.06,-.14,-.13),J(-27,-6,11,.04,.04,.16),J(30,8,-10,-.04,.05,-.15),J(15,0,4,.03,.04,-.12),J(-47,0,-4,-.02,.22,.26),J(19,5,3)),
+ P(J(-21,3,-2,.03,.04,-.11),J(4,-4,12,.02,0,.05),J(2,7,-12,-.02,.01,-.04),J(-15,0,3,.02,0,.03),J(20,0,-3,-.02,.32,-.13),J(15,-3)),
+ P(J(-16,9,2,-.02,.12,-.08),J(37,-8,13,.02,.06,-.15),J(-34,4,-13,-.02,0,.13),J(-39,0,4,.02,.12,.19),J(47,0,-4,-.03,.20,-.28),J(11,-8))
+})
+clips["Anime Hero"]=cycle({
+ P(J(-36,-4,-3,.03,.02,-.18),J(-59,-9,16,.07,.02,.29),J(-65,9,-17,-.07,.03,.32),J(57,1,4,.02,.12,-.29),J(-46,-3,-6,-.04,.11,.31),J(28,4,2)),
+ P(J(-41,-2,-4,.05,-.15,-.23),J(-66,-8,18,.06,.01,.31),J(-55,7,-15,-.05,.01,.29),J(21,0,3,.03,.03,-.12),J(-65,0,-6,-.03,.30,.39),J(32,2,3)),
+ P(J(-39,2,-1,.01,.02,-.2),J(-62,-10,15,.06,.03,.28),J(-57,8,-15,-.06,.03,.28),J(-21,0,3,.02,0,.12),J(36,0,-4,-.03,.39,-.22),J(30,-2)),
+ P(J(-34,4,2,-.03,.17,-.18),J(-52,-9,16,.06,.04,.25),J(-66,10,-18,-.06,.05,.33),J(-57,0,5,.04,.20,.35),J(62,0,-4,-.04,.24,-.37),J(26,-4))
+})
+clips.Zombie={
+ P(J(-23,18,9,.08,-.05,-.13),J(83,-15,20,.05,.15,-.18),J(48,25,-32,-.09,.13,-.22),J(48,7,12,.03,.09,-.2),J(-31,-5,-7,-.04,.02,.22),J(-12,-24,18)),
+ P(J(-37,-10,-13,-.08,-.20,-.23),J(105,18,31,.1,.18,-.22),J(18,-18,-45,-.12,.05,.04),J(10,-8,5,.02,.03,-.07),J(-57,-3,-14,-.06,.19,.31),J(17,29,-22)),
+ P(J(-20,22,16,.09,.1,-.18),J(37,-20,43,.11,.09,-.07),J(95,16,-24,-.04,.15,-.23),J(-25,5,16,.07,.18,.21),J(59,-8,-10,-.07,.29,-.29),J(-10,-31,26)),
+ P(J(-42,-17,-11,-.08,-.13,-.22),J(70,21,15,.03,.12,-.19),J(112,-7,-37,-.09,.19,-.25),J(-59,8,7,.03,.11,.27),J(19,-4,-6,-.06,.04,-.08),J(22,20,-25)),
+ P(J(-16,8,20,.09,.15,-.1),J(115,-18,42,.09,.19,-.26),J(28,12,-17,-.04,.02,.06),J(32,6,13,.04,.29,-.25),J(-27,-3,-16,-.06,.04,.15),J(-18,-13,30)),
+ P(J(-34,-21,-15,-.1,-.08,-.2),J(43,12,18,.06,.06,-.08),J(102,-19,-44,-.12,.17,-.22),J(-18,8,8,.04,.04,.14),J(35,-4,-7,-.03,.2,-.23),J(13,30,-18))
+}
+clips["Retro Zombie"]=clips.Zombie
+clips.Tsundere={
+ P(J(4,-14,7,.05,.015,-.02),J(60,-28,-14,-.11,.08,-.20),J(14,22,-10,.03,.02,.03),J(23,3,-4,-.02,.03,-.15),J(-17,-4,3,.02,0,.1),J(-8,27,-13)),
+ P(J(-4,-6,3,.03,-.06,-.02),J(66,-34,-21,-.15,.11,-.23),J(29,16,-17,-.01,.04,-.11),J(7,0,-3,-.01,0,-.06),J(-32,-4,4,.02,.12,.16),J(2,19,-10)),
+ P(J(3,10,-5,-.04,.06,0),J(49,-22,-13,-.10,.07,-.16),J(-18,19,-15,-.02,.02,.09),J(-22,3,-5,-.01,.03,.13),J(29,-3,4,.01,.16,-.16),J(-5,-22,12)),
+ P(J(7,14,-8,-.06,.025,.01),J(72,-32,-18,-.15,.09,-.22),J(3,25,-13,-.03,.03,.02),J(-28,3,-4,-.02,.05,.14),J(19,-3,3,.01,.04,-.12),J(-10,-29,16)),
+ P(J(-3,4,-3,-.02,-.04,-.01),J(58,-26,-18,-.11,.08,-.18),J(24,16,-20,-.04,.06,-.10),J(-32,3,-4,-.03,.12,.16),J(7,-2,4,.02,0,-.04),J(2,-13,8)),
+ P(J(6,-10,5,.04,.07,0),J(48,-24,-11,-.09,.06,-.15),J(-22,20,-12,-.01,.02,.10),J(27,3,-4,-.01,.15,-.17),J(-22,-3,4,.01,.02,.12),J(-9,21,-10))
+}
+clips["Little Duck"]=cycle({
+ P(J(-5,-10,17,.12,.04,-.02),J(3,-14,58,.07,.03,.02),J(-15,18,-26,-.03,.08,.08),J(23,15,10,.04,.12,-.09),J(-13,-17,-8,-.05,.01,.08),J(4,9,-14)),
+ P(J(1,-4,11,.08,-.07,0),J(-12,-10,30,.04,.01,.04),J(15,18,-67,-.07,.1,-.05),J(7,12,11,.04,.04,-.05),J(-22,-18,-10,-.05,.16,.11),J(-2,4,-10)),
+ P(J(-3,6,-5,-.03,.09,-.01),J(17,-17,73,.07,.12,-.05),J(-8,15,-44,-.04,.04,.02),J(-19,15,10,.05,.02,.08),J(31,-15,-9,-.06,.20,-.13),J(3,-6,7)),
+ P(J(-6,10,-16,-.1,.03,0),J(-9,-13,35,.04,.02,.02),J(7,18,-66,-.07,.09,-.04),J(-26,16,9,.06,.08,.12),J(28,-15,-10,-.06,.08,-.11),J(5,-9,14))
+})
+clips["Doll Walk"]=cycle({
+ P(J(6,-12,6,.045,.03,0),J(36,-10,16,.05,.13,-.10),J(-18,9,-24,-.05,.07,.06),J(27,0,3,.02,.09,-.12),J(-22,0,-3,-.02,.03,.09),J(-10,14,-9)),
+ P(J(-5,-5,-3,.02,-.06,-.03),J(9,-12,12,.04,.08,-.03),J(5,10,-19,-.04,.11,-.02),J(6,0,3,.02,0,-.03),J(-32,0,-4,-.02,.20,.15),J(12,8,6)),
+ P(J(9,9,9,-.03,.13,.01),J(-16,-15,22,.07,.09,.09),J(40,12,-18,-.07,.17,-.12),J(-19,0,3,.02,.03,.07),J(39,0,-4,-.03,.27,-.19),J(-14,-15,-10)),
+ P(J(2,13,-4,-.04,.02,0),J(-22,-10,17,.05,.08,.07),J(44,14,-15,-.05,.14,-.12),J(-27,0,3,.02,.08,.13),J(29,0,-4,-.02,.09,-.13),J(5,-17,7))
+})
+clips["Wavy Expressive"]=cycle({
+ P(J(-12,-20,10,.12,.02,-.22),J(56,-13,25,.09,.13,-.36),J(-23,19,-21,-.08,.04,.13),J(34,4,6,.05,.07,-.33),J(-27,-4,-6,-.04,.02,.14),J(6,17,-9)),
+ P(J(-21,-7,4,.06,-.12,-.31),J(36,-10,40,.13,.09,-.42),J(8,15,-28,-.09,.07,-.12),J(11,3,5,.04,.03,-.24),J(-38,-3,-5,-.04,.19,.13),J(13,5,-5)),
+ P(J(-8,9,-7,-.08,.10,-.21),J(-6,-8,47,.13,.08,-.21),J(43,15,-17,-.1,.15,-.38),J(-20,4,5,.03,.03,.09),J(41,-4,-7,-.05,.28,-.32),J(4,-12,9)),
+ P(J(-10,20,-10,-.12,.11,-.19),J(-32,-14,24,.09,.03,.15),J(62,18,-32,-.12,.13,-.41),J(-35,4,6,.04,.11,.12),J(47,-4,-6,-.04,.13,-.36),J(6,-17,10))
+})
+clips["Godly Aura"]={
+ P(J(-14,0,-2,0,.12,-.12),J(-43,-8,22,.05,.04,.19),J(-43,8,-22,-.05,.04,.19),J(8,0,4,.02,.07,-.06),J(-12,0,-4,-.02,.12,.08),J(11,0,1)),
+ P(J(-17,4,3,.04,.18,-.14),J(-51,-6,27,.07,.07,.25),J(-47,9,-24,-.05,.05,.23),J(-8,0,3,.03,.12,.05),J(15,0,-4,-.02,.1,-.12),J(13,-4,-2)),
+ P(J(-12,-3,-2,-.03,.10,-.1),J(-42,-9,21,.05,.03,.19),J(-48,7,-24,-.06,.04,.22),J(15,0,4,.02,.10,-.12),J(-8,0,-4,-.02,.07,.05),J(10,3,2)),
+ P(J(-15,0,0,0,.15,-.13),J(-49,-8,25,.06,.06,.23),J(-49,8,-25,-.06,.06,.23),J(-9,0,3,.02,.10,.05),J(8,0,-3,-.02,.07,-.06),J(12))
+}
+clips["Harpy Glide"]={
+ P(J(-24,0,0,0,-.03,-.1),J(-24,-14,63,.09,.04,.14),J(-24,14,-63,-.09,.04,.14),J(-9,0,4,.03,.09,.08),J(-14,0,-4,-.03,.09,.1),J(19)),
+ P(J(-27,5,4,.035,-.01,-.13),J(-29,-14,48,.08,.07,.15),J(-21,14,-69,-.09,.07,.1),J(-11,0,4,.03,.07,.09),J(-9,0,-4,-.03,.07,.08),J(22,-5,-3)),
+ P(J(-21,0,0,0,-.04,-.09),J(-19,-12,58,.08,.03,.12),J(-19,12,-58,-.08,.03,.12),J(-12,0,3,.03,.09,.09),J(-12,0,-3,-.03,.09,.09),J(17)),
+ P(J(-26,-5,-4,-.035,-.01,-.12),J(-21,-14,69,.09,.07,.1),J(-29,14,-48,-.08,.07,.15),J(-9,0,4,.03,.07,.08),J(-11,0,-4,-.03,.07,.09),J(21,5,3))
+}
+clips.Skater={
+ P(J(-8,52,-8,.05,-.18,0),J(15,-12,64,.05,.03,-.07),J(-22,13,-35,-.06,.03,.06),J(8,0,8,.12,.03,-.12),J(-6,0,-9,-.12,.03,.1),J(5,-45,5)),
+ P(J(-12,57,3,-.06,-.23,0),J(-11,-10,47,.06,.04,.05),J(22,12,-62,-.06,.05,-.09),J(11,0,7,.12,.07,-.1),J(-10,0,-8,-.12,.07,.1),J(8,-50,-2)),
+ P(J(-4,50,8,-.08,-.13,0),J(-16,-10,37,.05,.01,.07),J(12,12,-66,-.05,.06,-.06),J(5,0,8,.12,.02,-.12),J(-4,0,-8,-.12,.02,.12),J(2,-43,-5)),
+ P(J(-7,46,-2,.04,-.17,0),J(13,-10,63,.06,.04,-.05),J(-19,12,-43,-.05,.03,.06),J(8,0,8,.12,.03,-.12),J(-6,0,-9,-.12,.03,.12),J(4,-40,2))
+}
+clips.Fighter=cycle({
+ P(J(-13,-8,-3,.03,0,-.07),J(44,-5,9,.03,.08,-.12),J(21,18,-22,-.06,.07,-.09),J(37,0,4,.03,.06,-.22),J(-28,0,-3,-.03,.03,.19),J(9,7,2)),
+ P(J(-19,-3,-4,.04,-.10,-.13),J(49,-5,9,.03,.08,-.13),J(13,18,-22,-.05,.05,-.05),J(12,0,4,.02,0,-.08),J(-42,0,-4,-.02,.21,.26),J(15,3,3)),
+ P(J(-15,3,0,0,.04,-.1),J(45,-4,9,.03,.07,-.12),J(24,18,-22,-.06,.07,-.10),J(-18,0,3,.02,.02,.09),J(33,0,-4,-.03,.30,-.19),J(11,-3)),
+ P(J(-10,8,3,-.02,.08,-.06),J(42,-5,9,.03,.08,-.12),J(19,18,-22,-.05,.06,-.07),J(-35,0,4,.03,.14,.22),J(42,0,-4,-.03,.17,-.25),J(7,-8,-2))
+})
+-- Keep the decorative prop in the same right hand across the entire cycle.
+for _,p in clips.Fighter do p.RightShoulder=J(44,-5,9,.03,.08,-.12) end
+local idle={
+ Tsundere=P(J(5,-10,6,.03,0,0),J(66,-29,-17,-.12,.09,-.19),J(8,20,-11,-.02,.01,0),J(0,4,-3),J(0,-4,3),J(-8,25,-12)),
+ Zombie=P(J(-16,8,7,0,0,-.06),J(48,-10,17,.02,.05,-.06),J(27,10,-17,-.02,.03,-.02),J(4,0,3),J(-5,0,-4),J(-9,-10,12)),
+ ["Godly Aura"]=P(J(0,0,0,0,.14,0),J(-8,-10,33,.04,.02,.03),J(-8,10,-33,-.04,.02,.03),J(0,0,3),J(0,0,-3),J(-4)),
+ ["Harpy Glide"]=P(J(-4),J(-5,-12,40),J(-5,12,-40),J(),J(),J(4)),
+ Fighter=P(J(-3,-5,0),J(44,-5,9,.03,.08,-.12),J(14,18,-22,-.05,.05,-.05),J(4,0,3),J(-4,0,-3),J(3,4)),
+ Skater=clips.Skater[1],["Doll Walk"]=clips["Doll Walk"][1],["Little Duck"]=P(J(),J(0,0,25),J(0,0,-25),J(),J()),
+}
+idle["Retro Zombie"]=idle.Zombie
+local function interp(a,b,k)
+ local r={}
+ for name,v in a do
+  local q=b[name];local n={}
+  for i=1,6 do n[i]=v[i]+(q[i]-v[i])*k end
+  r[name]=n
+ end
+ return r
+end
+local function sample(clip,phase)
+ local u=(phase%1)*#clip;local i=math.floor(u);local k=u-i
+ k=k*k*(3-2*k)
+ return interp(clip[i+1],clip[(i+1)%#clip+1],k)
+end
+local function aerial(style,t)
+ local u=math.clamp(t,0,1)
+ local ease=u*u*(3-2*u)
+ if style=="Harpy Glide" then
+  return P(J(-360*ease,0,0,0,.25*math.sin(math.pi*u),0),J(28,-10,35,.06,.10,-.08),J(28,10,-35,-.06,.10,-.08),J(35,0,8,.04,.22,-.14),J(35,0,-8,-.04,.22,-.14),J(-5))
+ elseif style=="Skater" then
+  return P(J(-8,52+360*ease,9*math.sin(math.pi*u),0,.13,0),J(22,-12,62),J(-22,12,-62),J(18,0,8,.12,.12,-.10),J(15,0,-8,-.12,.12,.10),J(3,-45))
+ end
+ return nil
+end
+function M.get(style,phase,moving,air,airProgress)
+ local clip=clips[style];if not clip then return nil end
+ if air then return aerial(style,airProgress) end
+ if moving<.08 then
+  local a=idle[style] or P(J(),J(),J(),J(),J())
+  local b=interp(a,clip[1],.12+.06*math.sin(phase*2*math.pi))
+  return b
+ end
+ return interp(idle[style] or clip[1],sample(clip,phase),math.clamp(moving*1.4,0,1))
+end
+return M
+
+end
+-- END MODULE SignatureR6
 
 
 -- BEGIN MODULE Starfall
@@ -4340,6 +4566,7 @@ __aether_factories["WalkMotion"] = function()
 -- Poses are visual-only; HumanoidRootPart physics and game controls are unchanged.
 -- Evaluated at PreSimulation after Animator's own animation tracks.
 local MotionPacks=__aether_require("MotionPacks")
+local Signature=__aether_require("SignatureR6")
 local W={}
 W.__index=W
 local function motor(rig,...)
@@ -4354,7 +4581,7 @@ function W.new()
 end
 function W:bind(character)
  if self.character==character then return end
- self.character=character;self.phase=0;self.blend=0;self.hover=0
+ self.character=character;self.phase=0;self.blend=0;self.hover=0;self.airTime=0;self.wasAir=false;self.signatureActive=false;self.airProgress=0
  table.clear(self.motors)
  if not character then return end
  local j=self.motors
@@ -4444,6 +4671,47 @@ function W:step(character,s,dt,preview)
  local ph=self.phase;local wave=math.sin(ph);local cross=math.cos(ph)
  local weight=self.blend
  local j=self.motors
+ self.signatureActive=false;self.airProgress=0
+ if fullPreview and hum.RigType==Enum.HumanoidRigType.R6 and not swimming and not climbing then
+  if airborne then self.airTime=(if self.wasAir then self.airTime or 0 else 0)+dt else self.airTime=0 end
+  self.wasAir=airborne
+  -- Character tab repeats its preview jump; the simulator plays one turn.
+  local airProgress=if airborne then (if virtual.loopAir then (self.airTime/.82)%1 else math.clamp(self.airTime/.82,0,1)) else 0
+  local signature=Signature.get(style,ph/(2*math.pi),moving,airborne,airProgress)
+  if signature then
+   local strength=math.clamp((virtual.originStrength or 100)/100,0,1)
+   local function apply(m,v)
+    if not m or not m.Parent then return end
+    local scale=if m.Part0 then math.clamp(m.Part0.Size.Y/2,.65,1.6) else 1
+    local basis=m.C0.Rotation
+    local body=CFrame.new(Vector3.new(v[4],v[5],v[6])*weight*strength*scale)
+      *CFrame.Angles(math.rad(v[1])*weight,math.rad(v[2])*weight,math.rad(v[3])*weight)
+    m.Transform=basis:Inverse()*body*basis
+   end
+   for name,v in signature do apply(j[name],v) end
+   -- Plant the lowest foot at neutral floor height in grounded cycles.
+   -- Adjust only the visual root transform, never HumanoidRootPart.
+   if not airborne and j.Root and j.RightHip and j.LeftHip then
+    local function bottom(m,torso,animated)
+     local cf=torso*m.C0*(if animated then m.Transform else CFrame.identity)*m.C1:Inverse()
+     local sz=m.Part1.Size/2
+     return cf.Position.Y-math.abs(cf.RightVector.Y)*sz.X-math.abs(cf.UpVector.Y)*sz.Y-math.abs(cf.LookVector.Y)*sz.Z
+    end
+    local root=j.Root
+    local neutral=root.C0*root.C1:Inverse()
+    local posed=root.C0*root.Transform*root.C1:Inverse()
+    local floor=math.min(bottom(j.RightHip,neutral,false),bottom(j.LeftHip,neutral,false))
+    local low=math.min(bottom(j.RightHip,posed,true),bottom(j.LeftHip,posed,true))
+    local hover=if style=="Godly Aura" then .18 elseif style=="Harpy Glide" then .035 elseif style=="Skater" then .28 else 0
+    local dy=math.clamp(floor-low+hover*weight,-.85,.85)
+    root.Transform=root.C0.Rotation:Inverse()*CFrame.new(0,dy,0)*root.C0.Rotation*root.Transform
+   end
+   self.signatureActive=true;self.airProgress=airProgress
+   return
+  end
+ else
+  self.wasAir=false;self.airTime=0
+ end
  local r6Origin=fullPreview and hum.RigType==Enum.HumanoidRigType.R6
  local origin=MotionPacks.origin(style)
  local originAmount=math.clamp((virtual and virtual.originStrength or 100)/100,0,1)*weight
