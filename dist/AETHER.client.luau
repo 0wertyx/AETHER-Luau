@@ -957,7 +957,7 @@ function UI.new(app,gui,scope)
  self.geoLayer.ClipsDescendants=true;self.geoLayer.Active=false;self.geoLayer.ZIndex=1
  self.constellation=Constellation.new(self.geoLayer)
  self.header=U.frame(self.panel,"Titlebar",nil,UDim2.new(1,0,0,46),nil,1);self.header.Active=true;self.brand=U.label(self.header,"A E T H E R",18,UDim2.fromOffset(16,2),UDim2.fromOffset(135,40));self.tag=U.label(self.header,"",10,UDim2.fromOffset(147,3),UDim2.new(1,-190,0,40));self.tag.TextColor3=dim
- self.close=U.button(self.header,"×");self.close.Modal=true;self.close.Size=UDim2.fromOffset(33,29);self.close.Position=UDim2.new(1,-43,0,8);scope:on(self.close.Activated,function() self:show(false) end)
+ self.close=U.button(self.header,"×");self.close.Modal=false;self.close.Size=UDim2.fromOffset(33,29);self.close.Position=UDim2.new(1,-43,0,8);scope:on(self.close.Activated,function() self:show(false) end)
  self.dockPicker=U.button(self.header,"←");self.dockPicker.Size=UDim2.fromOffset(32,29);self.dockPicker.Position=UDim2.new(1,-79,0,8);self.dockPicker.TextSize=18
  local sides={"Left","Right","Top","Bottom","Floating"}
  scope:on(self.dockPicker.Activated,function()
@@ -6327,7 +6327,9 @@ function V:finishLockRelease()
   return
  end
  self.releaseWaitForButtons=nil
- if Input.MouseBehavior~=Enum.MouseBehavior.Default then Input.MouseBehavior=Enum.MouseBehavior.Default end
+ -- Only release a leftover centered capture. A current-position lock may
+ -- belong to the game's own input controller.
+ if Input.MouseBehavior==Enum.MouseBehavior.LockCenter then Input.MouseBehavior=Enum.MouseBehavior.Default end
  self.releaseFrames-=1
  if self.releaseFrames<=0 then self.releaseFrames=nil end
 end
@@ -6467,6 +6469,13 @@ function V:step(s,hum,menu,dt,t)
  local enabled=(s.camera or requested) and hrp and hum.Health>0 and camera and not nativeOwnsFollow
  self.lockOwner=if s.lock and nativeOwnsFollow then "Waiting for Roblox Shift Lock off" elseif nativeOwnsFollow then "Roblox" elseif requested then "AETHER" else "None"
  if self.cam and (not enabled or self.cam~=camera or self.hum~=hum) then self:releaseCamera(native) end
+ -- M2 belongs to the game. While it is held, do not force camera type,
+ -- camera subject, mouse behavior or character orientation. Keep an existing
+ -- lock's bookkeeping so the normal AETHER controller can resume on release.
+ if not menu and Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+  self.settings=s
+  return
+ end
  if enabled then
   if not self.cam then self.cam=camera;self.before={fov=camera.FieldOfView,mode=self.player.CameraMode,kind=camera.CameraType,subject=camera.CameraSubject,cf=camera.CFrame,focus=camera.Focus};self.hum=hum;self.offset=hum.CameraOffset end
   local thirdPerson=(camera.CFrame.Position-camera.Focus.Position).Magnitude>1.1
@@ -7877,8 +7886,8 @@ header.AnchorPoint=Vector2.new(.5,0);header.ZIndex=20
 U.new("UISizeConstraint",{MaxSize=Vector2.new(440,44)},header)
 U.corner(header,12);U.stroke(header,Color3.fromRGB(188,151,255),.3)
 local instruction=U.label(header,"HUD EDIT",11,UDim2.fromOffset(10,0),UDim2.new(.32,-10,1,0));instruction.ZIndex=21
-local panelToggle=U.button(header,"PANELS: LOCKED");panelToggle.Position=UDim2.new(.32,0,0,5);panelToggle.Size=UDim2.new(.43,-4,1,-10);panelToggle.ZIndex=22;panelToggle.Modal=true
-local done=U.button(header,"DONE");done.Position=UDim2.new(.75,0,0,5);done.Size=UDim2.new(.25,-5,1,-10);done.Modal=true;done.ZIndex=22
+local panelToggle=U.button(header,"PANELS: LOCKED");panelToggle.Position=UDim2.new(.32,0,0,5);panelToggle.Size=UDim2.new(.43,-4,1,-10);panelToggle.ZIndex=22;panelToggle.Modal=false
+local done=U.button(header,"DONE");done.Position=UDim2.new(.75,0,0,5);done.Size=UDim2.new(.25,-5,1,-10);done.Modal=false;done.ZIndex=22
 scope:on(panelToggle.Activated,function()
     if not app.editingHUD then return end
     ui.drag=nil
@@ -7918,7 +7927,7 @@ end
 scope:on(done.Activated,function() app:editHUD(false) end)
 for _,key in positions do
     local b=U.button(editor,key:upper())
-    b.Name="Move_"..key;b.TextSize=12;b.BackgroundTransparency=.84;b.TextColor3=Color3.fromRGB(255,242,255);b.ZIndex=9;b.Active=true;b.AutoButtonColor=false;b.Visible=false;b.Modal=true
+    b.Name="Move_"..key;b.TextSize=12;b.BackgroundTransparency=.84;b.TextColor3=Color3.fromRGB(255,242,255);b.ZIndex=9;b.Active=true;b.AutoButtonColor=false;b.Visible=false;b.Modal=false
     b.TextStrokeTransparency=.35
     U.stroke(b,Color3.fromRGB(224,183,255),0,2.5)
     handles[key]=b

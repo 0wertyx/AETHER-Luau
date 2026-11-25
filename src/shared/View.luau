@@ -76,7 +76,9 @@ function V:finishLockRelease()
   return
  end
  self.releaseWaitForButtons=nil
- if Input.MouseBehavior~=Enum.MouseBehavior.Default then Input.MouseBehavior=Enum.MouseBehavior.Default end
+ -- Only release a leftover centered capture. A current-position lock may
+ -- belong to the game's own input controller.
+ if Input.MouseBehavior==Enum.MouseBehavior.LockCenter then Input.MouseBehavior=Enum.MouseBehavior.Default end
  self.releaseFrames-=1
  if self.releaseFrames<=0 then self.releaseFrames=nil end
 end
@@ -216,6 +218,13 @@ function V:step(s,hum,menu,dt,t)
  local enabled=(s.camera or requested) and hrp and hum.Health>0 and camera and not nativeOwnsFollow
  self.lockOwner=if s.lock and nativeOwnsFollow then "Waiting for Roblox Shift Lock off" elseif nativeOwnsFollow then "Roblox" elseif requested then "AETHER" else "None"
  if self.cam and (not enabled or self.cam~=camera or self.hum~=hum) then self:releaseCamera(native) end
+ -- M2 belongs to the game. While it is held, do not force camera type,
+ -- camera subject, mouse behavior or character orientation. Keep an existing
+ -- lock's bookkeeping so the normal AETHER controller can resume on release.
+ if not menu and Input:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+  self.settings=s
+  return
+ end
  if enabled then
   if not self.cam then self.cam=camera;self.before={fov=camera.FieldOfView,mode=self.player.CameraMode,kind=camera.CameraType,subject=camera.CameraSubject,cf=camera.CFrame,focus=camera.Focus};self.hum=hum;self.offset=hum.CameraOffset end
   local thirdPerson=(camera.CFrame.Position-camera.Focus.Position).Magnitude>1.1

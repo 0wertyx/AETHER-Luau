@@ -535,8 +535,8 @@ header.AnchorPoint=Vector2.new(.5,0);header.ZIndex=20
 U.new("UISizeConstraint",{MaxSize=Vector2.new(440,44)},header)
 U.corner(header,12);U.stroke(header,Color3.fromRGB(188,151,255),.3)
 local instruction=U.label(header,"HUD EDIT",11,UDim2.fromOffset(10,0),UDim2.new(.32,-10,1,0));instruction.ZIndex=21
-local panelToggle=U.button(header,"PANELS: LOCKED");panelToggle.Position=UDim2.new(.32,0,0,5);panelToggle.Size=UDim2.new(.43,-4,1,-10);panelToggle.ZIndex=22;panelToggle.Modal=true
-local done=U.button(header,"DONE");done.Position=UDim2.new(.75,0,0,5);done.Size=UDim2.new(.25,-5,1,-10);done.Modal=true;done.ZIndex=22
+local panelToggle=U.button(header,"PANELS: LOCKED");panelToggle.Position=UDim2.new(.32,0,0,5);panelToggle.Size=UDim2.new(.43,-4,1,-10);panelToggle.ZIndex=22;panelToggle.Modal=false
+local done=U.button(header,"DONE");done.Position=UDim2.new(.75,0,0,5);done.Size=UDim2.new(.25,-5,1,-10);done.Modal=false;done.ZIndex=22
 scope:on(panelToggle.Activated,function()
     if not app.editingHUD then return end
     ui.drag=nil
@@ -576,7 +576,7 @@ end
 scope:on(done.Activated,function() app:editHUD(false) end)
 for _,key in positions do
     local b=U.button(editor,key:upper())
-    b.Name="Move_"..key;b.TextSize=12;b.BackgroundTransparency=.84;b.TextColor3=Color3.fromRGB(255,242,255);b.ZIndex=9;b.Active=true;b.AutoButtonColor=false;b.Visible=false;b.Modal=true
+    b.Name="Move_"..key;b.TextSize=12;b.BackgroundTransparency=.84;b.TextColor3=Color3.fromRGB(255,242,255);b.ZIndex=9;b.Active=true;b.AutoButtonColor=false;b.Visible=false;b.Modal=false
     b.TextStrokeTransparency=.35
     U.stroke(b,Color3.fromRGB(224,183,255),0,2.5)
     handles[key]=b
