@@ -900,9 +900,7 @@ function UI.new(app,gui,scope)
  self.updateChip.BackgroundTransparency=.15
  self.updateRim=U.stroke(self.updateChip,Color3.fromRGB(166,138,255),.45)
  scope:on(self.updateChip.Activated,function() self:open("Updates") end)
- for index,action in {"Scripts","Toggle","Workshop"} do
-  scope:on(self.topButtons[index].Activated,function() if action=="Toggle" then self:show(not self.opened) else self:open(action) end end)
- end
+ scope:on(self.topButtons[1].Activated,function() self:show(not self.opened) end)
  self.rail,self.railRim,self.railButtons,self.railCollapse=U.railPanel(self.stage)
  local coreOriginal,coreApplied={},{}
  local chatOriginal,chatApplied,chatConfig=nil,nil,nil
@@ -950,17 +948,10 @@ function UI.new(app,gui,scope)
  end)
  self.grip=U.button(self.panel,"◢");self.grip.Name="ResizeGrip";self.grip.Size=UDim2.fromOffset(26,26);self.grip.TextSize=18;self.grip.ZIndex=6;self.grip.BackgroundTransparency=.42
  self.tag.Size=UDim2.new(1,-231,0,40)
- self.quick=U.frame(self.panel,"QuickEffects",nil,nil,nil,1)
- self.quickButtons={}
- for index,item in {{"HALO","halo"},{"WINGS","wings"},{"PARTICLES","aura"}} do
-  local button=U.button(self.quick,item[1]);button.TextSize=11;button.Position=UDim2.new((index-1)/3,2,0,0);button.Size=UDim2.new(1/3,-4,1,0)
-  self.quickButtons[item[2]]={button=button,label=item[1]}
-  scope:on(button.Activated,function() self.app:set(item[2],not self.app.s[item[2]]) end)
- end
  self.place=U.label(self.panel,"PLACE  /  "..tostring(game.PlaceId),10,nil,nil);self.place.TextColor3=dim
  self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
  self.pageBox=U.new("Frame",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
- self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Interaction","Fonts","Simulator","Scripts","Workshop","Profiles","Updates","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
+ self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Interaction","Fonts","Simulator","Scripts","Profiles","Updates","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
  function self:layout()
   local sz=self.stage.AbsoluteSize
   if sz.X<2 or sz.Y<2 then return end
@@ -998,7 +989,7 @@ function UI.new(app,gui,scope)
   self.grip.Text=if side=="Right" then "◣" elseif side=="Bottom" then "◤" else "◢"
   self.brand.Position=UDim2.fromOffset(if side=="Bottom" and s.menuResize then 34 else 16,2)
   self.brand.Size=UDim2.fromOffset(if side=="Bottom" and s.menuResize then 111 else 135,40)
-  self.top.Size=UDim2.fromOffset(math.min(345,math.max(156,sz.X-(if narrow then 120 else 510))),38)
+  self.top.Size=UDim2.fromOffset(math.min(136,math.max(90,sz.X-24)),38)
   self.top.Position=UDim2.new(.5,0,0,if narrow then 48 else 12)
   self.rail.Position=UDim2.new(0,12,.46,0)
   self.rail.Size=UDim2.fromOffset(54,if self.railCollapsed then 44 else 176)
@@ -1014,13 +1005,12 @@ function UI.new(app,gui,scope)
   end
   self.railCollapse.Position=UDim2.fromOffset(5,if self.railCollapsed then 5 else 136)
   self.railCollapse.Text=if self.railCollapsed then "›" else "‹"
-  self.quick.Position=UDim2.fromOffset(10,47);self.quick.Size=UDim2.new(1,-20,0,34)
-  self.place.Position=UDim2.fromOffset(12,83);self.place.Size=UDim2.new(1,-24,0,17)
-  self.nav.Position=UDim2.fromOffset(10,104);self.nav.Size=UDim2.new(1,-20,0,37)
+  self.place.Position=UDim2.fromOffset(12,48);self.place.Size=UDim2.new(1,-24,0,17)
+  self.nav.Position=UDim2.fromOffset(10,69);self.nav.Size=UDim2.new(1,-20,0,37)
   self.navList.FillDirection=Enum.FillDirection.Horizontal
   self.nav.AutomaticCanvasSize=Enum.AutomaticSize.X;self.nav.ScrollingDirection=Enum.ScrollingDirection.X
   for _,b in self.buttons do b.Size=UDim2.fromOffset(106,32) end
-  self.pageBox.Position=UDim2.fromOffset(10,149);self.pageBox.Size=UDim2.new(1,-20,1,-180)
+  self.pageBox.Position=UDim2.fromOffset(10,114);self.pageBox.Size=UDim2.new(1,-20,1,-145)
   self.layoutKey=table.concat({s.menuDock,s.menuWidth,s.menuHeight,s.menuFloatX,s.menuFloatY,tostring(s.menuResize),tostring(s.robloxRail),tostring(s.topCustom),s.topX,s.topY,tostring(s.railCustom),s.railX,s.railY},":")
  end
  function self:finishMenuDrag(point,resize)
@@ -1131,7 +1121,7 @@ function UI:animateBackground(t)
   self.updateRim.Transparency=if unread then .15 else .55
  end
  self.topRim.Color=accent;self.railRim.Color=accent
- self.topButtons[2].BackgroundColor3=if self.opened then accent:Lerp(bg,.55) else soft
+ self.topButtons[1].BackgroundColor3=if self.opened then accent:Lerp(bg,.55) else soft
  local visible=s.screenParticles and q>.001
  self.screenFX.Visible=visible
  if visible then
@@ -1200,7 +1190,7 @@ function UI:show(on)
 end
 function UI:message(s) self.status.Text=s end
 function UI:open(tab)
- if not self.buttons[tab] then return end;self:show(true);self.drag=nil;if self.page then self.page:clear() end;self.app.preview=nil;self.page=U.scope();self.syncs={};self.seq=0;self.tab=tab
+ if not self.buttons[tab] then return end;self:show(true);self.drag=nil;if self.page then self.page:clear() end;self.app.preview=nil;self.page=U.scope();self.syncs={};self.controlKeys={};self.colorKeys={};self.seq=0;self.tab=tab
  self.pageProgress=if self.app.s.reduce or not self.app.s.tabTransition or self.app.s.menuTransition=="Off" then 1 else 0
  transition(self.pageBox,U.ease(self.pageProgress,self.app.s.ease))
  local sc=self.page:add(U.new("ScrollingFrame",{Name="Page_"..tab,Size=UDim2.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=4,ScrollBarImageColor3=dim,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y},self.pageBox));U.new("UIListLayout",{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder},sc);self.sc=sc
@@ -1224,7 +1214,6 @@ function UI:sync()
  self.tag.Text=self.app.mode.." / "..(self.app.liveUpdate and self.app.liveUpdate.version or "LIVE 1.0")
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
- for key,item in self.quickButtons do item.button.Text=item.label..(if st[key] then "  ON" else "  OFF");item.button.BackgroundColor3=if st[key] then U.hex(st.accent):Lerp(bg,.52) else soft end
  for _,asset in self.icons do asset:sync(st.iconAtlas,st.iconAtlasTile) end
  for _,f in self.syncs do f() end
  -- Only recolor editor controls, not HUD/3D previews or their own palette.
@@ -1263,6 +1252,9 @@ function UI:box(label,initial,h,commit)
  self:title(label);local r=self:row(h or 34,"Field");local t=U.new("TextBox",{Name=label,Size=UDim2.new(1,-12,1,-4),Position=UDim2.fromOffset(6,2),ClearTextOnFocus=false,MultiLine=(h or 0)>45,TextWrapped=(h or 0)>45,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=if (h or 0)>45 then Enum.TextYAlignment.Top else Enum.TextYAlignment.Center,BackgroundTransparency=1,Text=initial or "",PlaceholderText=label,Font=Enum.Font.Code,TextSize=13,TextColor3=Color3.fromRGB(232,222,255)},r);if commit then self.page:on(t.FocusLost,function() self:action(function() commit(t.Text) end) end) end;return t
 end
 function UI:control(k)
+ self.controlKeys=self.controlKeys or {}
+ if self.controlKeys[k] then return end
+ self.controlKeys[k]=true
  local d=S.defs[k];local app=self.app;local a=d.kind;if a=="players" then return end
  if a=="text" or a=="asset" then local box=self:box(d.label,tostring(app.s[k]),32,function(v) app:set(k,v) end);self:watch(function() if not box:IsFocused() then box.Text=tostring(app.s[k]) end end);return end
  local row=self:row(if a=="number" then 48 else 34,k);local label=U.label(row,d.label,12,UDim2.fromOffset(9,0),UDim2.new(.57,0,0,30));label.TextColor3=Color3.fromRGB(219,210,234)
@@ -1275,6 +1267,9 @@ function UI:control(k)
  self:watch(function() if not box:IsFocused() then box.Text=tostring(app.s[k]) end;fill.Size=UDim2.fromScale((app.s[k]-d.min)/(d.max-d.min),1);fill.BackgroundColor3=U.hex(app.s.accent) end)
 end
 function UI:colorPicker(k)
+ self.colorKeys=self.colorKeys or {}
+ if self.colorKeys[k] then return end
+ self.colorKeys[k]=true
  local app=self.app
  self:control(k)
  local row=self:row(188,"SquareColorPicker")
@@ -1646,7 +1641,7 @@ __aether_factories["Hud"] = function()
 local U=__aether_require("Util");local Symbol=__aether_require("Symbol");local Icons=__aether_require("Icons")
 local H={};H.__index=H
 local UIS=game:GetService("UserInputService")
-local sizes={hp=Vector2.new(264,94),clock=Vector2.new(116,58),profile=Vector2.new(124,58),dock=Vector2.new(285,49),cross=Vector2.new(18,18)}
+local sizes={hp=Vector2.new(264,94),clock=Vector2.new(116,58),profile=Vector2.new(124,58),dock=Vector2.new(239,49),cross=Vector2.new(18,18)}
 local heartPalettes={
  Aurora={"7DE3FF","B78AFF","FC82D6"},
  Amethyst={"7550E8","BB8CFF","F2B8FF"},
@@ -1768,7 +1763,7 @@ function H.new(scope,parent,preview,go,drag,close,showPanels)
    scope:on(button.Activated,function() close(key) end)
   end
  end
- for i,item in {{"HOME","Dashboard"},{"HUD","HUD"},{"FX","Character"},{"SKY","Ambient"},{"ASSETS","Workshop"},{"MORE","Profiles"}} do
+ for i,item in {{"HOME","Dashboard"},{"HUD","HUD"},{"FX","Character"},{"SKY","Ambient"},{"MORE","Profiles"}} do
   local b=U.button(dock,item[1])
   b.Name="Dock_"..item[2]
   b:SetAttribute("AETHERIconOnly",true)
@@ -1845,7 +1840,7 @@ function H:layoutPreview(s)
   local item=self.previewPanels[key]
   local panel=item.p
   local factor=math.clamp(math.min(vp.X/850,vp.Y/420),.35,.74)
-  local originalW=if key=="top" then 345 else 54
+  local originalW=if key=="top" then 136 else 54
   local originalH=if key=="top" then 38 else 176
   local w,height=originalW*factor,originalH*factor
   item.scale.Scale=factor
@@ -2229,7 +2224,7 @@ I.tabs={
  Dashboard="Dashboard",HUD="HUD",Character="Profile",Wings="Favorites",
  Halos="AI_Assistant",Neon="Themes",Ambient="World_FX",Indicators="Indicators",
  Cursor="Assets",Camera="Media",Interaction="Games",List="Update",Fonts="Fonts",Simulator="Simulator",
- Scripts="Console",Workshop="Workshop",Profiles="Cloud",Diagnostics="Debug"
+ Scripts="Console",Profiles="Cloud",Diagnostics="Debug"
 }
 -- Procedural silhouettes supply HD textures and offline line-art fallback.
 -- Coordinates are normalized to a 24 by 24 icon, independent of display size.
@@ -3296,7 +3291,8 @@ function M.mount(ui,a)
   sync();ui:message("All unconfirmed changes discarded")
  end
  local function actionRow()
-  local row=ui:row(44,"ConfirmAllMotionStudio")
+  ui.sc.Size=UDim2.new(1,0,1,-50)
+  local row=scope:add(U.frame(ui.pageBox,"ConfirmAllMotionStudio",UDim2.new(0,0,1,-44),UDim2.new(1,-8,0,44),Color3.fromRGB(34,27,53),.05));U.corner(row,8);row.ZIndex=5
   local confirm=U.button(row,"CONFIRM ALL")
   confirm.Position=UDim2.fromOffset(4,4);confirm.Size=UDim2.new(.65,-8,1,-8)
   local cancel=U.button(row,"CANCEL")
@@ -3401,7 +3397,6 @@ function M.mount(ui,a)
   s.t=0;s.seek=0;s.paused=false;sync()
  end,1)
  ui:note("Confirm All saves the pack, intensity, animation speed and origins. Camera, manual rotation and extra levitation remain preview-only.",64)
- actionRow()
  local function visible(b)
   local r=rigData
   if not r or b==r.root then return false end
@@ -4104,30 +4099,6 @@ local function configs(ui,a)
   end,2)
  end
 end
-local function library(ui,a,profiles)
- local list=if profiles then a.bank.profiles else a.bank.assets;local group=a.libraryKind or "Theme";local selected=a.selection or "";local built=not profiles and S.presets[group] or {}
- if not profiles then ui:chips(S.kinds,function(k) a.libraryKind=k;a.selection=nil;ui:open("Workshop") end,4,function() return group end) end
- local function selectItem(n) a.selection=n;ui:open(ui.tab) end
- if not profiles then ui:title("BUNDLED · DUPLICATE TO EDIT");ui:chips(names(built),function(n) selectItem("@"..n) end,3,function() return selected:sub(1,1)=="@" and selected:sub(2) or "" end) end
- local user={};for k,v in list do if profiles or v.kind==group then table.insert(user,k) end end;table.sort(user);ui:title(if profiles then "NAMED HUD / FX PROFILES" else "YOUR ASSETS");if #user>0 then ui:chips(user,selectItem,3,function() return selected end) else ui:note("No saved entries in this collection yet.",23) end
- local box=ui:box("Name",a.libraryName or "",32);ui.page:on(box:GetPropertyChangedSignal("Text"),function() a.libraryName=box.Text end)
- local function name() local n=box.Text:match("^%s*(.-)%s*$");assert(#n>0 and #n<=48 and not n:match("^@") and not n:find("%c"),"Enter a name (1–48 bytes; no @ prefix)");return n end
- local function item() if not profiles and selected:sub(1,1)=="@" then local k=selected:sub(2);assert(built[k],"Select an asset");return {version=1,kind=group,name=k,data=S.copy(built[k])} end;assert(list[selected],"Select an entry first");return S.copy(list[selected]) end
- local function put(n,v,remove,replace) assert(replace or not list[n],"Name already exists");local draft=S.copy(a.bank);local dest=if profiles then draft.profiles else draft.assets;if remove then dest[remove]=nil end;if not profiles then v.name=n end;dest[n]=v;a:library(draft);a.selection=n;ui:open(ui.tab);ui:message("Saved: "..n) end
- ui:chips({"Save current","Apply","Duplicate","Rename","Delete"},function(action)
-  if action=="Save current" then local n=name();put(n,if profiles then S.copy(a.s) else {version=1,kind=group,name=n,data=S.capture(a.s,group)},nil,true)
-  elseif action=="Apply" then local v=item();if profiles then a:replace(v) else a:patch(v.data) end;ui:message("Applied: "..selected)
-  elseif action=="Duplicate" then put(name(),item()) elseif action=="Rename" then assert(list[selected],"Bundled entry is read-only");put(name(),item(),selected)
-  else assert(list[selected],"Choose a user entry");local draft=S.copy(a.bank);(if profiles then draft.profiles else draft.assets)[selected]=nil;a:library(draft);a.selection=nil;ui:open(ui.tab) end
- end,3)
- ui:note("JSON transfer: select and copy the text, or paste JSON and import. Nothing is executed on import.",36)
- local transfer=ui:box("Transfer JSON",a.transfer or "",80);ui.page:on(transfer.FocusLost,function() a.transfer=transfer.Text end)
- ui:chips({"Export JSON","Import JSON"},function(action)
-  if action=="Export JSON" then a.transfer=Http:JSONEncode(if profiles then {format="aether.bank/1",data=a.bank} else {format="aether.asset/1",data=item()});transfer.Text=a.transfer;transfer:CaptureFocus();transfer.CursorPosition=#transfer.Text+1;transfer.SelectionStart=1
-  else assert(#transfer.Text<=110100,"Import too large");local v=Http:JSONDecode(transfer.Text);if profiles then assert(v.format=="aether.bank/1","Expected full bank JSON");a:restore(S.bank(v.data));a:dirty();ui:open("Profiles");ui:message("Bank imported") else assert(v.format=="aether.asset/1","Expected asset JSON");local it=S.asset(v.data);assert(it.kind==group,"Select collection: "..it.kind);put(if box.Text~="" then name() else it.name,it) end end
- end,2)
- if profiles then ui:note("Save now waits for the server acknowledgement. Reload replaces the current bank. Studio defaults to session storage.",40);ui:chips({"Save now","Reload saved"},function(k) if k=="Save now" then a.store:save() else a.store:read(true) end;ui:message(a.store.status) end,2) end
-end
 local function scripts(ui,a)
  local draft=a.scriptTab=="Luau draft";ui:chips({"AETHER Lua","Luau draft"},function(n) a:stopCue();a.scriptTab=n;ui:open("Scripts") end,2,function() return a.scriptTab or "AETHER Lua" end)
  ui:note(if draft then "Author Studio source here. Copy it to a ModuleScript in Studio for compilation. In-game checks are lexical only." else "Bounded HUD language: local values, arithmetic, if/elseif/else, hud calls, onHealthChanged(hp,maxHP) and onEvent(name,hp).",42)
@@ -4143,19 +4114,15 @@ local function scripts(ui,a)
  if not draft then ui:title("RUN PERMISSIONS · SESSION ONLY");ui:chips({"widgets","appearance","events"},function(p) a:stopCue();a.grants[p]=not a.grants[p];ui:sync() end,3);local report=ui:note("",26);ui:watch(function() local v={};for _,p in {"widgets","appearance","events"} do if a.grants[p] then table.insert(v,p) end end;report.Text="Granted: "..table.concat(v,", ").."   /   "..(if a.cue then "Running" else "Stopped") end)
   ui:chips({"Run HUD script","Stop"},function(op) if op=="Stop" then a:stopCue();ui:message("Stopped") else a:set(k,box.Text);a:runCue() end;ui:sync() end,2)
  end
- ui:chips({"Save / browse script assets"},function() a.libraryKind="Scripts";a.selection=nil;ui:open("Workshop") end,1)
 end
 function E.render(a,tab,ui)
- if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. F8 opens Studio. RightShift opens it only when native Shift-Lock is disabled. LeftAlt controls AETHER shoulder lock.",43);ui:chips({"Game","Simulator"},function(n) a:modeSet(n) end,2,function() return a.mode end);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme",{constellationBgA=true,constellationBgB=true,constellationLineA=true,constellationLineB=true,constellationNodeA=true,constellationNodeB=true});ui:title("CONSTELLATION COLORS");for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end;ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
- elseif tab=="HUD" then preview(ui,a,true);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);ui:chips({"Unlock widget preview","Move top / left panels"},function(n) if n=="Unlock widget preview" then a:set("locked",not a.s.locked) else a:set("movePanels",not a.s.movePanels) end end,2);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:control("compact");ui:title("TOP / LEFT PANELS");for _,v in {"topCapsule","robloxRail","movePanels"} do ui:control(v) end;ui:note("Enable moving panels to drag AI / AETHER / ARCHIVIUM and CHAT / BAG / LIST directly in the preview or live editor.",38);ui:chips({"Reset panel positions"},function() a:patch({topCustom=false,railCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartPalette","heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);ui:chips({"hp","clock","profile","dock","cross","input","wallhop","top","rail"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
-  if k=="top" or k=="rail" then for _,v in {if k=="top" then "topCapsule" else "robloxRail","movePanels",k.."Custom",k.."X",k.."Y"} do ui:control(v) end
-  elseif k=="input" then for _,v in {"inputOverlay","inputMouse","inputX","inputY","inputScale","inputOpacity","inputColor"} do ui:control(v) end
-  elseif k=="wallhop" then for _,v in {"wallhopHelper","wallhopX","wallhopY","wallhopScale","wallhopOpacity"} do ui:control(v) end
-  elseif k=="cross" then ui:note("Shift-Lock reticle stays at the center of the game view.",28);for _,v in {"cross","reticleSize","reticleColor","reticleNeon","reticleGlow"} do ui:control(v) end
+ if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. F8 opens Studio. RightShift opens it only when native Shift-Lock is disabled. LeftAlt controls AETHER shoulder lock.",43);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme",{topCapsule=true,robloxRail=true,constellationBgA=true,constellationBgB=true,constellationLineA=true,constellationLineB=true,constellationNodeA=true,constellationNodeB=true});ui:title("CONSTELLATION COLORS");for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end;ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
+ elseif tab=="HUD" then preview(ui,a,true);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:control("compact");ui:title("TOP / LEFT PANELS");for _,v in {"topCapsule","robloxRail","movePanels"} do ui:control(v) end;ui:note("Enable moving panels to drag the AETHER capsule and CHAT / BAG / LIST shortcuts.",38);ui:chips({"Reset panel positions"},function() a:patch({topCustom=false,railCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);local widgets={"hp","clock","profile","dock","top","rail"};if not table.find(widgets,a.hudTab) then a.hudTab="hp" end;ui:chips(widgets,function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
+  if k=="top" or k=="rail" then for _,v in {k.."Custom",k.."X",k.."Y"} do ui:control(v) end
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
   if tab=="Character" then
-   ui:title("AETHER MOTION STUDIO V12.8")
+   ui:title("AETHER MOTION STUDIO V12.9")
    MotionStudio.mount(ui,a)
   else avatarPreview(ui,a) end
   if tab=="Halos" then
@@ -4193,6 +4160,7 @@ function E.render(a,tab,ui)
   ui:title("GAME INTERACTION")
   ui:note("Shift-Lock is unchanged. Native Roblox Shift-Lock has priority in Follow mode; LeftAlt toggles AETHER lock when the native option is off. Camera orientation can affect gameplay in some experiences.",60)
   ui:title("SHIFT-LOCK / RETICLE")
+  for _,k in {"cross","crossScale","crossAlpha"} do ui:control(k) end
   local inputKeys={inputOverlay=true,inputMouse=true,inputX=true,inputY=true,inputScale=true,inputOpacity=true,inputColor=true,wallhopHelper=true,wallhopX=true,wallhopY=true,wallhopScale=true,wallhopOpacity=true}
   ui:group(tab,inputKeys)
   ui:title("LIVE INPUT DISPLAY")
@@ -4205,18 +4173,10 @@ function E.render(a,tab,ui)
  elseif tab=="Simulator" then preview(ui,a);ui:title("WORLD PREVIEW");avatarPreview(ui,a,true);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
  elseif tab=="Scripts" then scripts(ui,a)
  elseif tab=="Profiles" then configs(ui,a)
- elseif tab=="Workshop" then library(ui,a,false)
  elseif tab=="List" then
   ui:title("ROBLOX PLAYER LIST")
   ui:chips({"Toggle native player list"},function() ui:togglePlayerList() end,1)
   ui:note("Roblox updates its own player list automatically as players join or leave.",36)
-  ui:title("AETHER UPDATE LIST")
-  ui:note("PANELS — Movable top capsule and Roblox shortcut rail; release notes.",44)
-  ui:note("HUD EDIT — Live widget positioning and full session unload.",42)
-  ui:note("WALLHOP — Read-only practice display and camera angle measurement.",42)
-  ui:note("INTERACT — Separate Shift-Lock settings and input visualization.",42)
-  ui:note("WING6 — Six sketch-inspired wings and counter-rotating diamonds.",42)
-  ui:note("SKETCH — HD outline icons and ECG heart.",36)
  elseif tab=="Updates" then
   ui:title("LIVE UPDATE CENTER")
   local state=a.liveUpdate
@@ -4234,7 +4194,6 @@ function E.render(a,tab,ui)
    if n=="Test update" then a:testLiveUpdate() elseif n=="Check updates" then a:checkLiveUpdate() else a:rollbackLiveUpdate() end
   end,3)
   ui:note("RELAY OFFLINE: install the server relay in your own place. HTTP DISABLED: enable Allow HTTP Requests in experience settings. ONLINE: website releases apply automatically.",65)
-  ui:chips({"Browse new presets"},function() a.libraryKind="Theme";a.selection=nil;ui:open("Workshop") end,1)
   ui:title("UPDATE LIST")
   local changelog=ui:note("",280)
   ui:watch(function()
@@ -5214,13 +5173,13 @@ function U.button(p,text) local b=U.new("TextButton",{Text=text,Font=Enum.Font.G
 -- Shared original panel components. Runtime attaches actions; HUD preview attaches
 -- movement handles to the same components without executing game actions.
 function U.topPanel(parent)
- local panel=U.frame(parent,"TopCapsule",nil,UDim2.fromOffset(345,38),Color3.fromRGB(19,16,32),.12)
+ local panel=U.frame(parent,"TopCapsule",nil,UDim2.fromOffset(136,38),Color3.fromRGB(19,16,32),.12)
  panel.AnchorPoint=Vector2.new(.5,0);U.corner(panel,18)
  local rim=U.stroke(panel,Color3.fromRGB(166,138,255),.42)
  local buttons={}
- for index,label in {"AI · OFFLINE","AETHER","ARCHIVIUM"} do
+ for index,label in {"AETHER"} do
   local button=U.button(panel,label);button.BackgroundTransparency=.42;button.TextSize=11
-  button.Position=UDim2.new((index-1)/3,4,0,4);button.Size=UDim2.new(1/3,-8,1,-8)
+  button.Position=UDim2.fromOffset(4,4);button.Size=UDim2.new(1,-8,1,-8)
   buttons[index]=button
  end
  return panel,rim,buttons
@@ -6523,7 +6482,7 @@ studioLayer.ZIndex=2
 
 local app = {
     bank = S.blank(), mode = "Game", logs = {}, preview = nil,
-    hudTab = "hp", libraryKind = "Theme", scriptTab = "AETHER Lua",
+    hudTab = "hp", scriptTab = "AETHER Lua",
     grants = {widgets = false, appearance = false, events = false},
     sim = {hp = 100, max = 100, gen = 0, players = {}},
     frame = {hp = nil, max = nil, gen = 0, name = player.DisplayName, mode = "GAME", targets = {}, widgets = {}},
