@@ -2430,6 +2430,56 @@ P.profiles={
  ["Anime Hero"]={mode="anime",cadence=9.2,stride=.35,arms=.24,rest=-0.22,spread=.17,lean=.19,roll=.09,bob=.045,knee=.28,ankle=.14,twist=.105,snap=0},
  ["Headless Float"]={mode="ghost",cadence=3.7,stride=.035,arms=.06,rest=-0.33,spread=.24,lean=.015,roll=.15,bob=.022,hover=.29,knee=.23,ankle=.09,twist=.13,snap=0},
 }
+-- Original R6 translation choreography (studs at standard rig scale).
+-- shoulder reach/lift, hip reach/lift, shoulder width, torso sway,
+-- shoulder forward bias, hip forward bias, trajectory family.
+P.origins={
+ ["Natural"]={0.12,0.13,0.1,0.06,0.025,0.025,0,0,"step"},
+ ["Heroic"]={0.22,0.2,0.21,0.1,0.025,0.045,0.06,0,"stride"},
+ ["Bouncy"]={0.13,0.18,0.13,0.17,0.04,0.055,0,0,"hop"},
+ ["Floating"]={0.07,0.08,0.07,0.06,0.035,0.04,0,-0.02,"float"},
+ ["Glide"]={0.14,0.08,0.11,0.05,0.025,0.04,-0.09,-0.08,"float"},
+ ["Ethereal"]={0.1,0.13,0.08,0.1,0.06,0.07,0.02,-0.04,"float"},
+ ["Toy"]={0.13,0.07,0.13,0.09,0.015,0.012,0,0,"stiff"},
+ ["Robot"]={0.15,0.06,0.11,0.065,0.015,0.006,-0.04,0,"stiff"},
+ ["Ninja"]={0.15,0.1,0.22,0.2,0.025,0.03,-0.14,0.05,"stride"},
+ ["Bubbly"]={0.14,0.19,0.12,0.16,0.07,0.085,0.025,0,"hop"},
+ ["Stylish"]={0.16,0.09,0.15,0.11,0.055,0.12,0.04,0,"strut"},
+ ["Mage"]={0.07,0.11,0.06,0.08,0.06,0.04,-0.025,-0.03,"float"},
+ ["Levitation"]={0.06,0.13,0.06,0.09,0.045,0.03,-0.03,-0.035,"float"},
+ ["Oldschool"]={0.14,0.1,0.17,0.12,0,0.01,0,0,"step"},
+ ["Vampire"]={0.14,0.09,0.13,0.09,0.06,0.04,-0.08,0,"strut"},
+ ["Astronaut"]={0.1,0.1,0.15,0.15,0.035,0.055,0.02,0,"slow"},
+ ["Zombie"]={0.06,0.08,0.12,0.09,0.035,0.08,0.15,0.015,"drag"},
+ ["Cartoony"]={0.19,0.22,0.23,0.2,0.055,0.08,0.01,0,"hop"},
+ ["Angel Glide"]={0.09,0.14,0.06,0.1,0.08,0.055,-0.035,-0.045,"float"},
+ ["Bat Swoop"]={0.15,0.16,0.09,0.08,0.1,0.085,-0.12,0,"sweep"},
+ ["Mermaid Drift"]={0.08,0.1,0.18,0.12,-0.035,0.065,0.025,0.025,"paired"},
+ ["Serpent Slither"]={0.12,0.09,0.14,0.07,0.02,0.14,0.025,0,"sweep"},
+ ["Cartwheel Flow"]={0.18,0.19,0.17,0.16,0.09,0.07,0,0,"sweep"},
+ ["Rubberhose"]={0.23,0.24,0.22,0.22,0.05,0.09,0.025,0,"hop"},
+ ["Dream Sleep"]={0.06,0.09,0.04,0.07,-0.035,0.055,0.06,0,"paired"},
+ ["Plushie"]={0.08,0.15,0.09,0.12,0.03,0.05,0.11,0,"stiff"},
+ ["Cat Paws"]={0.09,0.16,0.15,0.14,-0.045,0.045,0.14,0.015,"prance"},
+ ["Shy Kawaii"]={0.07,0.1,0.09,0.08,-0.07,0.035,0.13,0.01,"strut"},
+ ["Gymnast"]={0.2,0.18,0.18,0.18,0.07,0.095,0.025,0,"sweep"},
+ ["Skip Hop"]={0.17,0.15,0.2,0.24,0.025,0.06,0,0,"skip"},
+ ["Reindeer Prance"]={0.16,0.14,0.2,0.24,0.035,0.06,0.02,0,"prance"},
+ ["Fighter"]={0.13,0.12,0.19,0.16,0.065,0.055,0.14,0.015,"stride"},
+ ["Harpy Glide"]={0.11,0.17,0.07,0.1,0.1,0.055,-0.08,-0.035,"sweep"},
+ ["Godly Aura"]={0.07,0.12,0.05,0.09,0.08,0.04,-0.025,-0.04,"float"},
+ ["Wavy Expressive"]={0.19,0.17,0.15,0.12,0.065,0.12,0.01,0,"sweep"},
+ ["Retro Zombie"]={0.07,0.06,0.14,0.085,0.04,0.1,0.16,0,"drag"},
+ ["Tsundere"]={0.075,0.11,0.11,0.085,-0.055,0.045,0.1,0.015,"strut"},
+ ["Doll Walk"]={0.1,0.11,0.12,0.12,0.015,0.055,0.055,0,"stiff"},
+ ["Skater"]={0.13,0.11,0.2,0.1,0.08,0.15,-0.055,0,"skate"},
+ ["Little Duck"]={0.1,0.13,0.105,0.13,0.075,0.13,0,0,"waddle"},
+ ["Floating Head"]={0.045,0.08,0.035,0.06,0.015,0.045,-0.025,-0.035,"float"},
+ ["Dark Aura"]={0.08,0.1,0.06,0.07,0.05,0.04,-0.12,-0.025,"float"},
+ ["Anime Hero"]={0.19,0.13,0.25,0.22,0.035,0.04,-0.16,0.07,"stride"},
+ ["Headless Float"]={0.05,0.1,0.045,0.07,0.03,0.09,-0.08,-0.035,"float"},
+}
+function P.origin(name) return P.origins[name] or P.origins.Natural end
 function P.get(name) return P.profiles[name] end
 return P
 
@@ -2489,6 +2539,7 @@ local function avatarPreview(ui,a,worldMode)
  local speed=1
  local demoState="Walk"
  local demoStrength=100
+ local demoOrigin=100
  local previewStatus=nil
  local stage=nil
  local floorOffset=2
@@ -2698,7 +2749,7 @@ local function avatarPreview(ui,a,worldMode)
      elseif demoState=="Climb" then Enum.HumanoidStateType.Climbing
      else Enum.HumanoidStateType.Running
     local airborne=demoState=="Jump" or demoState=="Fall"
-    virtual={movement=if demoState=="Idle" then 0 elseif demoState=="Walk" then .78 else 1,grounded=not airborne,jumping=demoState=="Jump",state=state,speed=if demoState=="Run" then 24 else 16,fullPose=true}
+    virtual={movement=if demoState=="Idle" then 0 elseif demoState=="Walk" then .78 else 1,grounded=not airborne,jumping=demoState=="Jump",state=state,speed=if demoState=="Run" then 24 else 16,fullPose=true,originStrength=demoOrigin}
    end
    motion:step(rig,demo,dt,virtual)
   else
@@ -2863,10 +2914,16 @@ local function avatarPreview(ui,a,worldMode)
   end,4,function() return demoState end)
   ui:chips({"0.5x","1x","1.5x","2x"},function(n) speed=tonumber(n:sub(1,-2)) or 1;ui:sync() end,4,function() return tostring(speed).."x" end)
   ui:chips({"50%","75%","100%"},function(n) demoStrength=tonumber(n:sub(1,-2)) or 100;ui:sync() end,3,function() return tostring(demoStrength).."%" end)
+  ui:title("R6 · LIMB ORIGIN MOTION")
+  ui:note("Animate shoulder and hip positions as well as rotation. Compare the original rotation-only preview with the stylized offsets.",42)
+  ui:chips({"Origin off","Origin 50%","Origin 100%"},function(n)
+   demoOrigin=if n=="Origin off" then 0 elseif n=="Origin 50%" then 50 else 100
+   ui:sync()
+  end,3,function() return if demoOrigin==0 then "Origin off" else "Origin "..tostring(demoOrigin).."%" end)
   ui:chips({"Pause","Play"},function(n) paused=n=="Pause";ui:sync() end,2,function() return if paused then "Pause" else "Play" end)
   previewStatus=ui:note("",28)
   ui:watch(function()
-   previewStatus.Text=(a.s.walkStyle or "Natural").." / "..demoState.." · "..tostring(demoStrength).."%"
+   previewStatus.Text=(a.s.walkStyle or "Natural").." / "..demoState.." · "..tostring(demoStrength).."% · Origin "..tostring(demoOrigin).."%"
   end)
  end
  if worldMode then
@@ -4318,6 +4375,32 @@ end
 local function add(j,cf)
  if j and j.Parent then j.Transform=j.Transform*cf end
 end
+-- Periodic interpolated contact / passing / lift / reach poses.
+-- Z represents forward displacement (Roblox forward is negative Z).
+local function curve(keys,t)
+ local u=(t%1)*#keys
+ local i=math.floor(u)
+ local k=u-i
+ k=k*k*(3-2*k)
+ local a,b=keys[i+1],keys[(i+1)%#keys+1]
+ return a+(b-a)*k
+end
+local tracks={
+ step={z={.85,.42,-.42,-.85,-.32,.38},y={0,0,0,.12,.94,.72}},
+ stride={z={1,.5,-.5,-1,-.28,.62},y={0,0,0,.14,1,.82}},
+ hop={z={.75,.32,-.55,-.72,-.24,.46},y={0,.08,.18,.48,1,.85}},
+ stiff={z={.8,.8,0,-.8,-.8,0},y={0,0,0,.2,.85,.85}},
+ strut={z={.9,.3,-.35,-.75,-.2,.63},y={0,0,.05,.2,.8,.65}},
+ slow={z={.78,.48,-.26,-.7,-.42,.25},y={.05,.04,.12,.36,.9,.72}},
+ drag={z={.5,.35,.1,-.78,-.68,-.05},y={0,0,0,.02,.2,.35}},
+ float={z={.18,.6,.4,-.18,-.6,-.4},y={.25,.45,.8,.9,.6,.35}},
+ paired={z={.22,.62,.48,-.18,-.55,-.36},y={.2,.45,.9,.8,.5,.24}},
+ sweep={z={.75,.4,-.15,-.65,-.35,.25},y={0,.1,.35,.75,.9,.48}},
+ skip={z={.9,.3,-.4,-.65,-.15,.58},y={.02,.12,.1,.55,1,.95}},
+ prance={z={.78,.4,-.42,-.64,.1,.8},y={0,0,.06,.4,1,.9}},
+ skate={z={.35,.15,-.25,-.72,-.48,.12},y={0,0,0,.12,.55,.4}},
+ waddle={z={.55,.3,-.3,-.55,-.3,.3},y={0,0,.12,.2,.7,.6}},
+}
 function W:step(character,s,dt,preview)
  self:bind(character)
  if not character then return end
@@ -4361,6 +4444,52 @@ function W:step(character,s,dt,preview)
  local ph=self.phase;local wave=math.sin(ph);local cross=math.cos(ph)
  local weight=self.blend
  local j=self.motors
+ local r6Origin=fullPreview and hum.RigType==Enum.HumanoidRigType.R6
+ local origin=MotionPacks.origin(style)
+ local originAmount=math.clamp((virtual and virtual.originStrength or 100)/100,0,1)*weight
+ local family=origin[9]
+ local trajectory=tracks[family] or tracks.step
+ local cycle=ph/(2*math.pi)
+ local function originOffset(m)
+  if not r6Origin or originAmount<=0 then return Vector3.zero end
+  local shoulder=m==j.RightShoulder or m==j.LeftShoulder
+  local hip=m==j.RightHip or m==j.LeftHip
+  local side=if m==j.RightShoulder or m==j.RightHip then 1 else -1
+  local paired=family=="paired"
+  local t=cycle+(if side<0 and not paired then .5 else 0)
+  local walk=if moving>.08 then .35+.65*moving else 0
+  local run=if virtual.speed and virtual.speed>19 then 1.18 else 1
+  local foot=curve(trajectory.z,t)
+  local lift=curve(trajectory.y,t)
+  local arm=curve(trajectory.z,t+.5)
+  local sx,sy,sz=0,0,0
+  if shoulder then
+   sx=side*origin[5]*(.65+.35*math.abs(wave))
+   sy=origin[2]*(.18+.82*lift)*walk
+   sz=-origin[7]-origin[1]*arm*walk*run
+   if family=="sweep" then sx+=side*.045*math.sin(ph*.5+side) end
+   if airborne then sy+=.10;sz-=if jumping then .12 else .04 end
+   if climbing or swimming then sy+=.12+.07*wave*side;sz-=.14 end
+  elseif hip then
+   local buoyant=family=="float" or paired
+   local motion=if buoyant then .5+.5*walk else walk
+   sx=side*(if family=="skate" then .045+.10*lift else .015+.025*lift)*motion
+   sy=origin[4]*lift*motion*run
+   sz=-origin[8]-origin[3]*foot*motion*run
+   if airborne then sy+=.12;sz-=if jumping then .10*side+.08 else .04 end
+   if climbing then sy+=.13+.09*wave*side end
+  elseif m==j.Root then
+   sx=origin[6]*math.sin(ph)*walk
+   sy=if family=="hop" or family=="skip" or family=="prance" then .075*math.abs(cross)*walk else 0
+   sz=if family=="stride" then -.055*walk else 0
+  elseif m==j.Neck then
+   sx=-origin[6]*.16*wave*walk
+   sz=origin[7]*.12
+  end
+  -- Scale with R6 body dimensions; never change the base C0 or Part sizes.
+  local rigScale=if m.Part0 then math.clamp(m.Part0.Size.Y/2,.65,1.6) else 1
+  return Vector3.new(sx,sy,sz)*originAmount*rigScale
+ end
  -- In the isolated viewport, author full poses in body-part axes. R6 uses
  -- rotated C0 joint frames, so transform the pose into each motor's basis.
  -- Keep the existing additive live-character behavior unchanged.
@@ -4379,7 +4508,7 @@ function W:step(character,s,dt,preview)
   local ry=math.clamp(y*gain,-1.2,1.2)
   local rz=math.clamp(z*gain,-1.5,1.5)
   local basis=m.C0.Rotation
-  local body=CFrame.new(cf.Position*(if m==j.Root then 2 else 1.4))*CFrame.fromOrientation(rx,ry,rz)
+  local body=CFrame.new(cf.Position*(if m==j.Root then 2 else 1.4)+originOffset(m))*CFrame.fromOrientation(rx,ry,rz)
   m.Transform=m.Transform*basis:Inverse()*body*basis
  end
  local add=pose
