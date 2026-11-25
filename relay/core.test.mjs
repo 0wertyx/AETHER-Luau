@@ -1,0 +1,23 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+import {createRelay} from "./core.mjs";
+const rules=JSON.parse(readFileSync(new URL("./cosmetics-schema.json",import.meta.url)));
+test("authenticated rooms, cosmetic validation, isolation, deltas and expiry",()=>{
+ let time=0,n=0;
+ const r=createRelay({rules,now:()=>time,random:()=>String(++n),authenticate:t=>t==="root"});
+ const post=(path,token,body={})=>r.handle({method:"POST",path,token,body});
+ assert.equal(post("/v1/rooms","wrong").status,401);
+ const a=post("/v1/rooms","root").body,b=post("/v1/rooms","root").body;
+ const x=post("/v1/peers",a.adminToken).body,y=post("/v1/peers",a.adminToken).body,z=post("/v1/peers",b.adminToken).body;
+ assert.equal(post("/v1/sync",x.peerToken,{cosmetics:{halo:true}}).status,200);
+ assert.deepEqual(post("/v1/sync",y.peerToken,{cosmetics:{wings:true}}).body.peers,[{slot:x.slot,cosmetics:{halo:true}}]);
+ assert.deepEqual(post("/v1/sync",z.peerToken,{}).body.peers,[]);
+ assert.equal(post("/v1/sync",x.peerToken).status,429);
+ time+=1000;assert.equal(post("/v1/sync",x.peerToken,{cosmetics:{userId:123}}).status,400);
+ time+=1000;const rev=post("/v1/sync",x.peerToken).body.revision;
+ time+=1000;assert.equal(post("/v1/sync",x.peerToken,{since:rev}).body.peers,undefined);
+ assert.equal(post("/v1/leave",y.peerToken).status,200);
+ time+=31000;assert.equal(post("/v1/sync",x.peerToken).status,401);
+ assert.equal(post("/v1/close",b.adminToken).status,200);
+});

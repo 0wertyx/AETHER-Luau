@@ -1,0 +1,760 @@
+{
+  "secondary": {
+    "type": "color",
+    "default": "FF89C7"
+  },
+  "reduce": {
+    "type": "bool",
+    "default": false
+  },
+  "walkAnimation": {
+    "type": "bool",
+    "default": false
+  },
+  "walkStyle": {
+    "type": "choice",
+    "values": [
+      "Natural",
+      "Heroic",
+      "Floating",
+      "Bouncy",
+      "Glide",
+      "Ethereal",
+      "Toy",
+      "Robot",
+      "Ninja",
+      "Bubbly",
+      "Stylish",
+      "Mage",
+      "Levitation",
+      "Oldschool",
+      "Vampire",
+      "Astronaut",
+      "Zombie",
+      "Cartoony",
+      "Angel Glide",
+      "Bat Swoop",
+      "Mermaid Drift",
+      "Serpent Slither",
+      "Cartwheel Flow",
+      "Rubberhose",
+      "Dream Sleep",
+      "Plushie",
+      "Cat Paws",
+      "Shy Kawaii",
+      "Gymnast",
+      "Skip Hop",
+      "Reindeer Prance",
+      "Fighter",
+      "Harpy Glide",
+      "Godly Aura",
+      "Wavy Expressive",
+      "Retro Zombie",
+      "Tsundere",
+      "Doll Walk",
+      "Skater",
+      "Little Duck",
+      "Floating Head",
+      "Dark Aura",
+      "Anime Hero",
+      "Headless Float"
+    ],
+    "default": "Natural"
+  },
+  "walkIntensity": {
+    "type": "int",
+    "min": 0,
+    "max": 100,
+    "default": 65
+  },
+  "aura": {
+    "type": "bool",
+    "default": false
+  },
+  "trail": {
+    "type": "bool",
+    "default": false
+  },
+  "auraRate": {
+    "type": "int",
+    "min": 1,
+    "max": 45,
+    "default": 12
+  },
+  "trailLife": {
+    "type": "int",
+    "min": 80,
+    "max": 1300,
+    "default": 400
+  },
+  "auraColor": {
+    "type": "color",
+    "default": "C4A3FF"
+  },
+  "wings": {
+    "type": "bool",
+    "default": false
+  },
+  "wingStyle": {
+    "type": "choice",
+    "values": [
+      "Seraph",
+      "Blade",
+      "Sylph",
+      "Phoenix",
+      "Frost",
+      "Butterfly",
+      "Raven",
+      "Celestial",
+      "Crystal",
+      "Dusk",
+      "Petal",
+      "Storm",
+      "Royal",
+      "Eclipse",
+      "Prism Wings",
+      "Triad Wings",
+      "Hex Wings",
+      "Star Wings",
+      "Orbital Wings",
+      "Diamond Wings",
+      "Geo Bloom",
+      "Kagune",
+      "Seraphim",
+      "Burnt Fallen",
+      "Knife Wing",
+      "Crystal Wing"
+    ],
+    "default": "Seraph"
+  },
+  "wingSpan": {
+    "type": "int",
+    "min": 50,
+    "max": 175,
+    "default": 100
+  },
+  "wingSweep": {
+    "type": "int",
+    "min": -25,
+    "max": 65,
+    "default": 24
+  },
+  "wingBeat": {
+    "type": "int",
+    "min": 0,
+    "max": 200,
+    "default": 90
+  },
+  "wingColor": {
+    "type": "color",
+    "default": "B49BFF"
+  },
+  "wingRainbow": {
+    "type": "bool",
+    "default": false
+  },
+  "wingDetail": {
+    "type": "choice",
+    "values": [
+      "Balanced",
+      "High",
+      "Ultra"
+    ],
+    "default": "High"
+  },
+  "wingWalk": {
+    "type": "bool",
+    "default": true
+  },
+  "sketchColors": {
+    "type": "bool",
+    "default": true
+  },
+  "sketchGlow": {
+    "type": "int",
+    "min": 0,
+    "max": 100,
+    "default": 80
+  },
+  "sketchMotion": {
+    "type": "int",
+    "min": 0,
+    "max": 150,
+    "default": 70
+  },
+  "redDiamond": {
+    "type": "bool",
+    "default": false
+  },
+  "blueDiamond": {
+    "type": "bool",
+    "default": false
+  },
+  "diamondSpeed": {
+    "type": "int",
+    "min": 0,
+    "max": 200,
+    "default": 100
+  },
+  "diamondSize": {
+    "type": "int",
+    "min": 50,
+    "max": 175,
+    "default": 100
+  },
+  "diamondEcho": {
+    "type": "bool",
+    "default": true
+  },
+  "halo": {
+    "type": "bool",
+    "default": false
+  },
+  "haloStyle": {
+    "type": "choice",
+    "values": [
+      "Ring",
+      "Binary",
+      "Crown",
+      "Double Ring",
+      "Spiral",
+      "Starfall",
+      "Solar",
+      "Lunar",
+      "Orbitals",
+      "Thorns",
+      "Prism",
+      "Eclipse",
+      "Comet",
+      "Lotus",
+      "Triangle",
+      "Square",
+      "Pentagon",
+      "Hexagon",
+      "Octagon",
+      "Star",
+      "Double Diamond",
+      "Infinity"
+    ],
+    "default": "Ring"
+  },
+  "haloRadius": {
+    "type": "int",
+    "min": 45,
+    "max": 175,
+    "default": 88
+  },
+  "haloHeight": {
+    "type": "int",
+    "min": 55,
+    "max": 220,
+    "default": 105
+  },
+  "haloSpin": {
+    "type": "int",
+    "min": 0,
+    "max": 200,
+    "default": 75
+  },
+  "haloColor": {
+    "type": "color",
+    "default": "FFB4D6"
+  },
+  "haloRainbow": {
+    "type": "bool",
+    "default": false
+  },
+  "haloDetail": {
+    "type": "choice",
+    "values": [
+      "Balanced",
+      "High",
+      "Ultra"
+    ],
+    "default": "High"
+  },
+  "haloWalk": {
+    "type": "bool",
+    "default": true
+  },
+  "haloGlow": {
+    "type": "int",
+    "min": 0,
+    "max": 100,
+    "default": 75
+  },
+  "neon": {
+    "type": "bool",
+    "default": true
+  },
+  "neonFill": {
+    "type": "int",
+    "min": 0,
+    "max": 65,
+    "default": 10
+  },
+  "neonLight": {
+    "type": "int",
+    "min": 0,
+    "max": 100,
+    "default": 40
+  },
+  "neonColor": {
+    "type": "color",
+    "default": "AB87FF"
+  },
+  "neonRainbow": {
+    "type": "bool",
+    "default": false
+  },
+  "neonMotion": {
+    "type": "choice",
+    "values": [
+      "Solid",
+      "Breathe",
+      "Aurora",
+      "Heartbeat",
+      "Flow",
+      "Reactive"
+    ],
+    "default": "Breathe"
+  },
+  "neonMotionSpeed": {
+    "type": "int",
+    "min": 0,
+    "max": 180,
+    "default": 90
+  },
+  "neonMotionStrength": {
+    "type": "int",
+    "min": 0,
+    "max": 100,
+    "default": 65
+  },
+  "neonRange": {
+    "type": "int",
+    "min": 2,
+    "max": 20,
+    "default": 9
+  },
+  "haloV21Radius": {
+    "type": "int",
+    "min": 40,
+    "max": 200,
+    "default": 100
+  },
+  "haloV21Height": {
+    "type": "int",
+    "min": 50,
+    "max": 250,
+    "default": 125
+  },
+  "haloV21Spin": {
+    "type": "int",
+    "min": 0,
+    "max": 200,
+    "default": 25
+  },
+  "haloV21Opacity": {
+    "type": "int",
+    "min": 0,
+    "max": 100,
+    "default": 100
+  },
+  "haloV21Glow": {
+    "type": "int",
+    "min": 0,
+    "max": 100,
+    "default": 75
+  },
+  "haloV21Thickness": {
+    "type": "int",
+    "min": 30,
+    "max": 250,
+    "default": 100
+  },
+  "haloV21Count": {
+    "type": "int",
+    "min": 3,
+    "max": 12,
+    "default": 8
+  },
+  "haloV21Tilt": {
+    "type": "int",
+    "min": -60,
+    "max": 60,
+    "default": 0
+  },
+  "haloV21Enabled": {
+    "type": "bool",
+    "default": false
+  },
+  "haloV21Color": {
+    "type": "color",
+    "default": "D6B7FF"
+  },
+  "haloV21Secondary": {
+    "type": "color",
+    "default": "F5E5FF"
+  },
+  "haloV22Radius": {
+    "type": "int",
+    "min": 40,
+    "max": 200,
+    "default": 100
+  },
+  "haloV22Height": {
+    "type": "int",
+    "min": 50,
+    "max": 250,
+    "default": 125
+  },
+  "haloV22Spin": {
+    "type": "int",
+    "min": 0,
+    "max": 200,
+    "default": 25
+  },
+  "haloV22Opacity": {
+    "type": "int",
+    "min": 0,
+    "max": 100,
+    "default": 100
+  },
+  "haloV22Glow": {
+    "type": "int",
+    "min": 0,
+    "max": 100,
+    "default": 75
+  },
+  "haloV22Thickness": {
+    "type": "int",
+    "min": 30,
+    "max": 250,
+    "default": 100
+  },
+  "haloV22Count": {
+    "type": "int",
+    "min": 3,
+    "max": 12,
+    "default": 8
+  },
+  "haloV22Tilt": {
+    "type": "int",
+    "min": -60,
+    "max": 60,
+    "default": 0
+  },
+  "haloV22Enabled": {
+    "type": "bool",
+    "default": false
+  },
+  "haloV22Color": {
+    "type": "color",
+    "default": "D6B7FF"
+  },
+  "haloV22Secondary": {
+    "type": "color",
+    "default": "F5E5FF"
+  },
+  "haloV23Radius": {
+    "type": "int",
+    "min": 40,
+    "max": 200,
+    "default": 100
+  },
+  "haloV23Height": {
+    "type": "int",
+    "min": 50,
+    "max": 250,
+    "default": 125
+  },
+  "haloV23Spin": {
+    "type": "int",
+    "min": 0,
+    "max": 200,
+    "default": 25
+  },
+  "haloV23Opacity": {
+    "type": "int",
+    "min": 0,
+    "max": 100,
+    "default": 100
+  },
+  "haloV23Glow": {
+    "type": "int",
+    "min": 0,
+    "max": 100,
+    "default": 75
+  },
+  "haloV23Thickness": {
+    "type": "int",
+    "min": 30,
+    "max": 250,
+    "default": 100
+  },
+  "haloV23Count": {
+    "type": "int",
+    "min": 3,
+    "max": 12,
+    "default": 8
+  },
+  "haloV23Tilt": {
+    "type": "int",
+    "min": -60,
+    "max": 60,
+    "default": 0
+  },
+  "haloV23Enabled": {
+    "type": "bool",
+    "default": false
+  },
+  "haloV23Color": {
+    "type": "color",
+    "default": "D6B7FF"
+  },
+  "haloV23Secondary": {
+    "type": "color",
+    "default": "F5E5FF"
+  },
+  "haloV24Radius": {
+    "type": "int",
+    "min": 40,
+    "max": 200,
+    "default": 100
+  },
+  "haloV24Height": {
+    "type": "int",
+    "min": 50,
+    "max": 250,
+    "default": 125
+  },
+  "haloV24Spin": {
+    "type": "int",
+    "min": 0,
+    "max": 200,
+    "default": 25
+  },
+  "haloV24Opacity": {
+    "type": "int",
+    "min": 0,
+    "max": 100,
+    "default": 100
+  },
+  "haloV24Glow": {
+    "type": "int",
+    "min": 0,
+    "max": 100,
+    "default": 75
+  },
+  "haloV24Thickness": {
+    "type": "int",
+    "min": 30,
+    "max": 250,
+    "default": 100
+  },
+  "haloV24Count": {
+    "type": "int",
+    "min": 3,
+    "max": 12,
+    "default": 8
+  },
+  "haloV24Tilt": {
+    "type": "int",
+    "min": -60,
+    "max": 60,
+    "default": 0
+  },
+  "haloV24Enabled": {
+    "type": "bool",
+    "default": false
+  },
+  "haloV24Color": {
+    "type": "color",
+    "default": "D6B7FF"
+  },
+  "haloV24Secondary": {
+    "type": "color",
+    "default": "F5E5FF"
+  },
+  "haloV25Radius": {
+    "type": "int",
+    "min": 40,
+    "max": 200,
+    "default": 100
+  },
+  "haloV25Height": {
+    "type": "int",
+    "min": 50,
+    "max": 250,
+    "default": 125
+  },
+  "haloV25Spin": {
+    "type": "int",
+    "min": 0,
+    "max": 200,
+    "default": 25
+  },
+  "haloV25Opacity": {
+    "type": "int",
+    "min": 0,
+    "max": 100,
+    "default": 100
+  },
+  "haloV25Glow": {
+    "type": "int",
+    "min": 0,
+    "max": 100,
+    "default": 75
+  },
+  "haloV25Thickness": {
+    "type": "int",
+    "min": 30,
+    "max": 250,
+    "default": 100
+  },
+  "haloV25Count": {
+    "type": "int",
+    "min": 3,
+    "max": 12,
+    "default": 7
+  },
+  "haloV25Tilt": {
+    "type": "int",
+    "min": -60,
+    "max": 60,
+    "default": 0
+  },
+  "haloV25Enabled": {
+    "type": "bool",
+    "default": false
+  },
+  "haloV25Color": {
+    "type": "color",
+    "default": "D6B7FF"
+  },
+  "haloV25Secondary": {
+    "type": "color",
+    "default": "F5E5FF"
+  },
+  "haloV26Radius": {
+    "type": "int",
+    "min": 40,
+    "max": 200,
+    "default": 100
+  },
+  "haloV26Height": {
+    "type": "int",
+    "min": 50,
+    "max": 250,
+    "default": 125
+  },
+  "haloV26Spin": {
+    "type": "int",
+    "min": 0,
+    "max": 200,
+    "default": 25
+  },
+  "haloV26Opacity": {
+    "type": "int",
+    "min": 0,
+    "max": 100,
+    "default": 100
+  },
+  "haloV26Glow": {
+    "type": "int",
+    "min": 0,
+    "max": 100,
+    "default": 75
+  },
+  "haloV26Thickness": {
+    "type": "int",
+    "min": 30,
+    "max": 250,
+    "default": 100
+  },
+  "haloV26Count": {
+    "type": "int",
+    "min": 3,
+    "max": 12,
+    "default": 8
+  },
+  "haloV26Tilt": {
+    "type": "int",
+    "min": -60,
+    "max": 60,
+    "default": 0
+  },
+  "haloV26Enabled": {
+    "type": "bool",
+    "default": false
+  },
+  "haloV26Color": {
+    "type": "color",
+    "default": "D6B7FF"
+  },
+  "haloV26Secondary": {
+    "type": "color",
+    "default": "F5E5FF"
+  },
+  "haloV27Radius": {
+    "type": "int",
+    "min": 40,
+    "max": 200,
+    "default": 100
+  },
+  "haloV27Height": {
+    "type": "int",
+    "min": 50,
+    "max": 250,
+    "default": 125
+  },
+  "haloV27Spin": {
+    "type": "int",
+    "min": 0,
+    "max": 200,
+    "default": 25
+  },
+  "haloV27Opacity": {
+    "type": "int",
+    "min": 0,
+    "max": 100,
+    "default": 100
+  },
+  "haloV27Glow": {
+    "type": "int",
+    "min": 0,
+    "max": 100,
+    "default": 75
+  },
+  "haloV27Thickness": {
+    "type": "int",
+    "min": 30,
+    "max": 250,
+    "default": 100
+  },
+  "haloV27Count": {
+    "type": "int",
+    "min": 3,
+    "max": 12,
+    "default": 8
+  },
+  "haloV27Tilt": {
+    "type": "int",
+    "min": -60,
+    "max": 60,
+    "default": 0
+  },
+  "haloV27Enabled": {
+    "type": "bool",
+    "default": false
+  },
+  "haloV27Color": {
+    "type": "color",
+    "default": "D6B7FF"
+  },
+  "haloV27Secondary": {
+    "type": "color",
+    "default": "F5E5FF"
+  }
+}
