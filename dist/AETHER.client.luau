@@ -4582,6 +4582,13 @@ function E.render(a,tab,ui)
   ui:watch(function() airObserved.Text="Last detection: "..(a.airLastDetection or "No jump detected") end)
   local airReason=ui:note("",64)
   ui:watch(function() airReason.Text="Last active check: "..(a.airLastActive or "No physics callback recorded") end)
+  local airTrack=ui:note("",60)
+  ui:watch(function() airTrack.Text=a.airTracking or "Waiting for live character" end)
+  local airPosition=ui:note("",64)
+  ui:watch(function()
+   local m=a.airMonitor
+   airPosition.Text=if m then string.format("Jump requests: %d | height range: %.2f | position travel: %.2f | peak Y velocity: %.2f",a.airJumpRequests or 0,m.maxY-m.minY,m.travel,m.peakY) else "No live position sample"
+  end)
   ui:title("CAMERA")
   preset(ui,a,"Camera");ui:group("Camera")
   ui:title("CUSTOM LOCK / KEYBIND")
@@ -7648,8 +7655,13 @@ app:log("Startup", "AETHER modules initialized")
 local humanoid, character, generation = nil, nil, 0
 local function bind(char)
     generation += 1
+    local bindGeneration = generation
     character = char
-    humanoid = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 10)
+    humanoid = nil
+    local found = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 10)
+    if generation == bindGeneration and character == char and player.Character == char then
+        humanoid = if found and found:IsA("Humanoid") then found else nil
+    end
 end
 scope:on(player.CharacterAdded, bind)
 scope:on(player.CharacterRemoving, function(char)
@@ -7807,11 +7819,13 @@ end)
 local function stepAirControl(dt)
     app.airProbe = nil
     if app.mode ~= "Game" then return "Simulator mode" end
-    if not character or not humanoid or humanoid.Parent ~= character then return "Character or humanoid missing" end
+    local character = player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not character or not humanoid then return "Character or humanoid missing" end
     if humanoid.Health <= 0 or humanoid.Sit or humanoid.PlatformStand then return "Dead, seated or PlatformStand" end
     local state = humanoid:GetState()
     local floor = humanoid.FloorMaterial
-    local root = character:FindFirstChild("HumanoidRootPart")
+    local root = humanoid.RootPart or character:FindFirstChild("HumanoidRootPart")
     if not root or not root:IsA("BasePart") or root.Anchored then
         app.airDiagnostic = "Skipped: root missing or anchored"
         return app.airDiagnostic
@@ -7870,6 +7884,35 @@ local function stepAirControl(dt)
     app.airDiagnostic = string.format("Write issued | %s | speed %.1f",state.Name,horizontal.Magnitude)
     return app.airDiagnostic
 end
+
+-- Independent, read-only monitoring of the actual current avatar.
+scope:on(UserInputService.JumpRequest,function()
+    if not app.stopping and app.mode == "Game" and not app.ui.opened then
+        app.airJumpRequests = (app.airJumpRequests or 0)+1
+    end
+end)
+scope:on(RunService.Heartbeat,function()
+    if app.stopping or not gui.Parent or app.mode ~= "Game" then return end
+    local current = player.Character
+    local h = current and current:FindFirstChildOfClass("Humanoid")
+    local r = h and (h.RootPart or current:FindFirstChild("HumanoidRootPart"))
+    if not r or not r:IsA("BasePart") then
+        app.airTracking = "Live character or root unavailable"
+        app.airMonitor = nil
+        return
+    end
+    local pos = r.Position
+    local m = app.airMonitor
+    if not m or m.root ~= r then
+        m = {root=r,origin=pos,minY=pos.Y,maxY=pos.Y,travel=0,peakY=0}
+        app.airMonitor = m
+    end
+    m.minY = math.min(m.minY,pos.Y)
+    m.maxY = math.max(m.maxY,pos.Y)
+    m.travel = math.max(m.travel,(pos-m.origin).Magnitude)
+    m.peakY = math.max(m.peakY,math.abs(r.AssemblyLinearVelocity.Y))
+    app.airTracking = string.format("Root: %s | cached match: %s | anchored: %s",r.Name,tostring(current==character and h==humanoid),tostring(r.Anchored))
+end)
 
 -- Observe the result without fighting the experience's physics controller.
 scope:on(RunService.PostSimulation,function()

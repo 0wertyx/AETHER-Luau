@@ -760,6 +760,13 @@ function E.render(a,tab,ui)
   ui:watch(function() airObserved.Text="Last detection: "..(a.airLastDetection or "No jump detected") end)
   local airReason=ui:note("",64)
   ui:watch(function() airReason.Text="Last active check: "..(a.airLastActive or "No physics callback recorded") end)
+  local airTrack=ui:note("",60)
+  ui:watch(function() airTrack.Text=a.airTracking or "Waiting for live character" end)
+  local airPosition=ui:note("",64)
+  ui:watch(function()
+   local m=a.airMonitor
+   airPosition.Text=if m then string.format("Jump requests: %d | height range: %.2f | position travel: %.2f | peak Y velocity: %.2f",a.airJumpRequests or 0,m.maxY-m.minY,m.travel,m.peakY) else "No live position sample"
+  end)
   ui:title("CAMERA")
   preset(ui,a,"Camera");ui:group("Camera")
   ui:title("CUSTOM LOCK / KEYBIND")
