@@ -5,7 +5,7 @@ local AssetService=game:GetService("AssetService")
 local U=require(script.Parent.Util)
 local Symbol=require(script.Parent.Symbol)
 local M={}
-local RES=128
+local RES=256
 local paths={
  ["Rounded Triangle"]="M 8 3 Q 6 2 6 6 L 6 29 Q 6 32 9 29 L 15 22 L 24 22 Q 28 22 25 19 Z",
  ["Soft Arrow"]="M 6 4 Q 5 2 9 4 L 27 17 Q 30 19 26 21 L 18 22 L 14 29 Q 12 32 10 28 Z",
@@ -64,8 +64,10 @@ local function contours(path)
  finish()
  return output
 end
+local maskOrder={}
 local function prepare(name)
  local mask=masks[name];if mask then return mask end
+ if #maskOrder>=4 then masks[table.remove(maskOrder,1)]=nil end
  local curves=contours(paths[name])
  local edges={}
  for _,poly in curves do
@@ -112,7 +114,7 @@ local function prepare(name)
    bloom[i]=(horizontal[math.max(0,y-2)*RES+x+1]+4*horizontal[math.max(0,y-1)*RES+x+1]+6*horizontal[i]+4*horizontal[math.min(RES-1,y+1)*RES+x+1]+horizontal[math.min(RES-1,y+2)*RES+x+1])/16
   end
  end
- mask={coverage=coverage,bloom=bloom};masks[name]=mask;return mask
+ mask={coverage=coverage,bloom=bloom};masks[name]=mask;table.insert(maskOrder,name);return mask
 end
 local function colors(s)
  local list=palettes[s.cursorPalette] or {s.cursorA or "B78AFF",s.cursorB or "FC82D6"}
@@ -132,11 +134,9 @@ local function render(img,mask,glowPercent)
   local fill=mask.coverage[i]
   local haze=mask.bloom[i]
   local alpha=math.clamp(fill+(1-fill)*haze*glow*.5,0,1)
-  if alpha>0 then
-   local offset=(i-1)*4
-   buffer.writeu32(data,offset,0x00FFFFFF)
-   buffer.writeu8(data,offset+3,math.round(alpha*255))
-  end
+  local offset=(i-1)*4
+  buffer.writeu32(data,offset,0x00FFFFFF)
+  buffer.writeu8(data,offset+3,math.round(alpha*255))
  end
  img:WritePixelsBuffer(Vector2.zero,Vector2.new(RES,RES),data)
 end
@@ -153,7 +153,7 @@ local function nativeImage(parent,source)
  return U.new("ImageLabel",{
   Name="OriginalSVGCursor",BackgroundTransparency=1,BorderSizePixel=0,
   Active=false,Selectable=false,Size=UDim2.fromScale(1,1),
-  ScaleType=Enum.ScaleType.Fit,ImageContent=Content.fromObject(source)
+  ScaleType=Enum.ScaleType.Fit,ResampleMode=Enum.ResamplerMode.Default,ImageContent=Content.fromObject(source)
  },parent)
 end
 function M.new(parent)
