@@ -155,11 +155,12 @@ end
 function A:clear()
  if self.scope then self.scope:clear();self.scope=nil end
  self.root=nil;self.highlight=nil;self.emitter=nil;self.trail=nil;self.light=nil;self.neonEnergy=0;self.neonHP=nil
- self.key="";self.char=nil;self.lastAt=nil;self.walk=0;self.phase=0
+ self.key="";self.char=nil;self.lastAt=nil;self.walk=0;self.phase=0;self.glowKey=nil
  table.clear(self.feathers);table.clear(self.trims);table.clear(self.beads)
  table.clear(self.ornaments);table.clear(self.parts);table.clear(self.frames);table.clear(self.geoWings);table.clear(self.geoHalos);table.clear(self.haloV2);table.clear(self.sketchEdges);table.clear(self.diamonds);table.clear(self.diamondTime)
 end
 function A:add(partInstance)
+ partInstance:SetAttribute("AetherEmissive",partInstance.Material==Enum.Material.Neon)
  table.insert(self.parts,partInstance)
  return partInstance
 end
@@ -316,6 +317,7 @@ function A:step(char,s,t)
  local body=char and (char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart"))
  local head=char and char:FindFirstChild("Head")
  self:bind(char,body,head,s);if not self.root then return end
+ self:syncVisualGlow(s)
  local dt=math.clamp(t-(self.lastAt or t),0,.08);self.lastAt=t
  local hum=char:FindFirstChildOfClass("Humanoid")
  local running=if hum then hum.MoveDirection.Magnitude else 0
@@ -623,6 +625,18 @@ function A:step(char,s,t)
    self.light.Range=s.neonRange
    self.light.Brightness=s.neonLight*.035*(1+energy*.45)
   end
+ end
+end
+function A:syncVisualGlow(s)
+ local key=tostring(s.sketchGlow)..":"..tostring(s.haloGlow)
+ if self.glowKey==key then return end
+ self.glowKey=key
+ for _,p in self.parts do
+  if not p:GetAttribute("AetherEmissive") or p.Name=="HaloV2Outline" then continue end
+  local intensity=nil
+  if p.Name:find("Wing") or p.Name:find("Feather") then intensity=s.sketchGlow
+  elseif p.Name:find("Halo") then intensity=s.haloGlow end
+  if intensity~=nil then p.Material=if intensity>0 then Enum.Material.Neon else Enum.Material.SmoothPlastic end
  end
 end
 function A.mannequin(world)
@@ -1382,6 +1396,93 @@ return Cursor
 
 end
 -- END MODULE Cursor
+
+
+-- BEGIN MODULE CursorTrail
+__aether_factories["CursorTrail"] = function()
+-- Local GUI-only cursor trail, independent of cursor hit testing.
+local U=__aether_require("Util")
+local T={};T.__index=T
+local SEGMENTS=12
+local MAX_RAILS=3
+local function newLine(parent,z)
+ local f=U.frame(parent,"TrailSegment",nil,UDim2.fromOffset(1,1),Color3.new(1,1,1),1)
+ f.AnchorPoint=Vector2.new(.5,.5);f.Active=false;f.Interactable=false;f.Visible=false;f.ZIndex=z
+ U.corner(f,99)
+ return f
+end
+local function draw(f,a,b,width,color,alpha,dot)
+ local d=b-a
+ f.Visible=alpha>.005 and d.Magnitude>.15
+ if not f.Visible then return end
+ local p=if dot then b else (a+b)*.5
+ f.Position=UDim2.fromOffset(p.X,p.Y)
+ f.Size=UDim2.fromOffset(if dot then width else d.Magnitude+width*.35,width)
+ f.Rotation=if dot then 0 else math.deg(math.atan2(d.Y,d.X))
+ f.BackgroundColor3=color;f.BackgroundTransparency=1-math.clamp(alpha,0,1)
+end
+function T.new(parent)
+ local folder=U.frame(parent,"CursorTrailLayer",nil,nil,nil,1)
+ folder.Active=false;folder.Interactable=false;folder.ZIndex=8
+ return setmetatable({root=folder,pool={},history={},points={},visible=false},T)
+end
+function T:hide()
+ if self.visible then
+  self.root.Visible=false;table.clear(self.history);self.visible=false
+ end
+end
+function T:destroy()
+ self:hide();self.root:Destroy()
+end
+function T:step(hit,s,now)
+ local h=self.history;local last=h[#h]
+ if not self.visible then self.root.Visible=true;self.visible=true end
+ if last and (now-last.t>.2 or (hit-last.p).Magnitude>300) then table.clear(h);last=nil end
+ -- Time-based history: frame rate changes do not stretch or shorten the trail.
+ h[#h+1]={p=hit,t=now}
+ local life=s.cursorTrailLength/1000
+ while #h>2 and (h[2].t<now-life or #h>256) do table.remove(h,1) end
+ local index=#h
+ local pts=self.points;pts[1]=hit
+ for j=1,SEGMENTS do
+  local target=now-life*j/SEGMENTS
+  while index>1 and h[index-1].t>target do index-=1 end
+  local hi=h[index];local lo=h[math.max(1,index-1)]
+  local t=if hi.t>lo.t then math.clamp((target-lo.t)/(hi.t-lo.t),0,1) else 0
+  pts[j+1]=lo.p:Lerp(hi.p,t)
+ end
+ local rails=if s.cursorTrailStyle=="Triple" then MAX_RAILS else 1
+ local dot=s.cursorTrailStyle=="Dots"
+ local width=s.cursorTrailWidth/10;local spread=s.cursorTrailSpread
+ local glow=s.cursorTrailGlow/100
+ local ca,cb=U.hex(s.cursorTrailA),U.hex(s.cursorTrailB)
+ local normal=Vector2.new(0,1)
+ local direction=pts[1]-pts[2]
+ if direction.Magnitude>.1 then normal=Vector2.new(-direction.Y,direction.X).Unit
+ elseif self.normal then normal=self.normal end
+ self.normal=normal
+ local used=0
+ for rail=1,rails do
+  local offset=if rails==3 then (rail-2)*spread else 0
+  for j=1,SEGMENTS do
+   used+=1
+   local item=self.pool[used]
+   if not item then item={halo=newLine(self.root,8),core=newLine(self.root,9)};self.pool[used]=item end
+   local u=(j-1)/SEGMENTS;local v=j/SEGMENTS
+   local a=pts[j]+normal*offset*(1-u*.65)
+   local b=pts[j+1]+normal*offset*(1-v*.65)
+   local c=ca:Lerp(cb,u);local alpha=(1-u)^1.65
+   if (pts[j]-pts[j+1]).Magnitude<.12 then alpha=0 end
+   draw(item.core,a,b,width*(1-u*.45)*(if dot then 2.2 else 1),c,alpha*.9,dot)
+   draw(item.halo,a,b,width+glow*7,c,alpha*glow*.23,dot)
+  end
+ end
+ for i=used+1,#self.pool do self.pool[i].core.Visible=false;self.pool[i].halo.Visible=false end
+end
+return T
+
+end
+-- END MODULE CursorTrail
 
 
 -- BEGIN MODULE Hud
@@ -2841,9 +2942,9 @@ function E.render(a,tab,ui)
    for i in S.haloV2Styles do for _,suffix in S.haloV2Fields do skip["haloV2"..i..suffix]=true end end
    ui:group(tab,skip)
   else preset(ui,a,tab);ui:group(tab) end
- elseif tab=="Ambient" then local sky=ui:row(106,"SkyPreview");local grad=U.gradient(sky,Color3.new(),Color3.new(),90);local sun=U.frame(sky,"Sun",nil,UDim2.fromOffset(30,30));U.corner(sun,30);ui:watch(function() local s=a.s;sky.BackgroundColor3=Color3.new(1,1,1);grad.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,U.hex(s.skyA)),ColorSequenceKeypoint.new(.64,U.hex(s.skyB)),ColorSequenceKeypoint.new(1,U.hex(s.skyC))});sun.BackgroundColor3=U.hex(s.skyC);sun.Position=UDim2.fromScale(.7,.66-.45*math.sin(s.time/240*math.pi));sun.BackgroundTransparency=.04+s.fog*.004 end);preset(ui,a,tab);ui:group(tab)
+ elseif tab=="Ambient" then local sky=ui:row(106,"SkyPreview");local grad=U.gradient(sky,Color3.new(),Color3.new(),90);local sun=U.frame(sky,"Sun",nil,UDim2.fromOffset(30,30));U.corner(sun,30);ui:watch(function() local s=a.s;sky.BackgroundColor3=Color3.new(1,1,1);grad.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,U.hex(s.skyA)),ColorSequenceKeypoint.new(.64,U.hex(s.skyB)),ColorSequenceKeypoint.new(1,U.hex(s.skyC))});sun.BackgroundColor3=U.hex(s.skyC);sun.Position=UDim2.fromScale(.7,.66-.45*math.sin(s.time/240*math.pi));sun.BackgroundTransparency=.04+s.fog*.004 end);preset(ui,a,tab);ui:group(tab,{starfallA=true,starfallB=true});ui:title("STARFALL COLORS");ui:colorPicker("starfallA");ui:colorPicker("starfallB")
  elseif tab=="Indicators" then preview(ui,a);gallery(ui,a);ui:group(tab,{shape=true});ui:title("PER-PLAYER OVERRIDE");local id=ui:box("UserId or simulator ID","1");local label=ui:box("Label override","");local color=ui:box("Override hex",a.s.arrowA);ui:chips({"Assign current shape","Remove override"},function(k) local p=S.copy(a.s.players);if k=="Assign current shape" then p[id.Text]={label=label.Text,color=color.Text,shape=a.s.shape} else p[id.Text]=nil end;a:set("players",p);ui:message("Overrides updated") end,2)
- elseif tab=="Cursor" then local f=ui:row(94,"CursorPreview");local host=U.frame(f,"OriginalCursorPreview",UDim2.fromScale(.5,.5),UDim2.fromOffset(60,60),nil,1);host.AnchorPoint=Vector2.new(.5,.5);a.preview={cursorHost=host};preset(ui,a,tab);ui:group(tab);ui:note("Cursor animation never moves its click hotspot. Enable Show hotspot marker to compare the real mouse position with the skin; use Pointer offset X/Y only for calibration. EditableImage renders desktop SVG; imports need an authorized asset ID.",57)
+ elseif tab=="Cursor" then local f=ui:row(94,"CursorPreview");local host=U.frame(f,"OriginalCursorPreview",UDim2.fromScale(.5,.5),UDim2.fromOffset(60,60),nil,1);host.AnchorPoint=Vector2.new(.5,.5);a.preview={cursorHost=host};preset(ui,a,tab);ui:group(tab,{cursorTrailA=true,cursorTrailB=true});ui:title("TRAIL COLORS");ui:colorPicker("cursorTrailA");ui:colorPicker("cursorTrailB");ui:note("Cursor animation never moves its click hotspot. Enable Show hotspot marker to compare the real mouse position with the skin; use Pointer offset X/Y only for calibration. EditableImage renders desktop SVG; imports need an authorized asset ID.",57)
  elseif tab=="Camera" then ui:note("Camera framing, field of view and orbit controls. Shift-Lock settings are now in Interaction.",40);preset(ui,a,tab);ui:group(tab)
  elseif tab=="Interaction" then
   ui:title("GAME INTERACTION")
@@ -3000,8 +3101,8 @@ for _,row in {{"hp","Health",3,9},{"clock","Clock",3,96},{"profile","Player card
 end
 toggle("Character","walkAnimation","Custom walking animation",false);choice("Character","walkStyle","Walking style","Natural",{"Natural","Heroic","Floating","Bouncy","Glide","Ethereal","Toy","Robot","Ninja","Bubbly","Stylish","Mage","Levitation","Oldschool","Vampire","Astronaut","Zombie","Cartoony",
  "Angel Glide","Bat Swoop","Mermaid Drift","Serpent Slither","Cartwheel Flow","Rubberhose","Dream Sleep","Plushie","Cat Paws","Shy Kawaii","Gymnast","Skip Hop","Reindeer Prance","Fighter","Harpy Glide","Godly Aura","Wavy Expressive","Retro Zombie","Tsundere","Doll Walk","Skater","Little Duck","Floating Head","Dark Aura","Anime Hero","Headless Float"});range("Character","walkIntensity","Walking intensity %",65,0,100);toggle("Character","aura","Aura particles",false);toggle("Character","trail","Motion trail",false);range("Character","auraRate","Emission / second",12,1,45);range("Character","trailLife","Trail lifetime (ms)",400,80,1300);color("Character","auraColor","Aura color","C4A3FF")
-toggle("Wings","wings","Show wings",false);choice("Wings","wingStyle","Silhouette","Seraph",{"Seraph","Blade","Sylph","Phoenix","Frost","Butterfly","Raven","Celestial","Crystal","Dusk","Petal","Storm","Royal","Eclipse","Prism Wings","Triad Wings","Hex Wings","Star Wings","Orbital Wings","Diamond Wings","Geo Bloom","Kagune","Seraphim","Burnt Fallen","Knife Wing","Crystal Wing"});range("Wings","wingSpan","Span %",100,50,175);range("Wings","wingSweep","Sweep (degrees)",24,-25,65);range("Wings","wingBeat","Flap speed %",90,0,200);color("Wings","wingColor","Feather color","B49BFF");toggle("Wings","wingRainbow","Prismatic feathers",false);choice("Wings","wingDetail","Feather detail","High",{"Balanced","High","Ultra"});toggle("Wings","wingWalk","Walking wing reaction",true);toggle("Wings","sketchColors","Original sketch palette",true);range("Wings","sketchGlow","Contour glow %",80,0,100);range("Wings","sketchMotion","Floating motion %",70,0,150);toggle("Wings","redDiamond","Red rotating diamond",false);toggle("Wings","blueDiamond","Blue rotating diamond",false);range("Wings","diamondSpeed","Diamond rotation %",100,0,200);range("Wings","diamondSize","Diamond size %",100,50,175);toggle("Wings","diamondEcho","Diamond rotation echoes",true)
-toggle("Halos","halo","Show halo",false);choice("Halos","haloStyle","Orbit form","Ring",{"Ring","Binary","Crown","Double Ring","Spiral","Starfall","Solar","Lunar","Orbitals","Thorns","Prism","Eclipse","Comet","Lotus","Triangle","Square","Pentagon","Hexagon","Octagon","Star","Double Diamond","Infinity"});range("Halos","haloRadius","Radius %",88,45,175);range("Halos","haloHeight","Height above head %",105,55,220);range("Halos","haloSpin","Orbit speed %",75,0,200);color("Halos","haloColor","Halo color","FFB4D6");toggle("Halos","haloRainbow","Prismatic halo",false);choice("Halos","haloDetail","Halo geometry detail","High",{"Balanced","High","Ultra"});toggle("Halos","haloWalk","Walking halo reaction",true)
+toggle("Wings","wings","Show wings",false);choice("Wings","wingStyle","Silhouette","Seraph",{"Seraph","Blade","Sylph","Phoenix","Frost","Butterfly","Raven","Celestial","Crystal","Dusk","Petal","Storm","Royal","Eclipse","Prism Wings","Triad Wings","Hex Wings","Star Wings","Orbital Wings","Diamond Wings","Geo Bloom","Kagune","Seraphim","Burnt Fallen","Knife Wing","Crystal Wing"});range("Wings","wingSpan","Span %",100,50,175);range("Wings","wingSweep","Sweep (degrees)",24,-25,65);range("Wings","wingBeat","Flap speed %",90,0,200);color("Wings","wingColor","Feather color","B49BFF");toggle("Wings","wingRainbow","Prismatic feathers",false);choice("Wings","wingDetail","Feather detail","High",{"Balanced","High","Ultra"});toggle("Wings","wingWalk","Walking wing reaction",true);toggle("Wings","sketchColors","Original sketch palette",true);range("Wings","sketchGlow","Wing neon glow %",80,0,100);range("Wings","sketchMotion","Floating motion %",70,0,150);toggle("Wings","redDiamond","Red rotating diamond",false);toggle("Wings","blueDiamond","Blue rotating diamond",false);range("Wings","diamondSpeed","Diamond rotation %",100,0,200);range("Wings","diamondSize","Diamond size %",100,50,175);toggle("Wings","diamondEcho","Diamond rotation echoes",true)
+toggle("Halos","halo","Show halo",false);choice("Halos","haloStyle","Orbit form","Ring",{"Ring","Binary","Crown","Double Ring","Spiral","Starfall","Solar","Lunar","Orbitals","Thorns","Prism","Eclipse","Comet","Lotus","Triangle","Square","Pentagon","Hexagon","Octagon","Star","Double Diamond","Infinity"});range("Halos","haloRadius","Radius %",88,45,175);range("Halos","haloHeight","Height above head %",105,55,220);range("Halos","haloSpin","Orbit speed %",75,0,200);color("Halos","haloColor","Halo color","FFB4D6");toggle("Halos","haloRainbow","Prismatic halo",false);choice("Halos","haloDetail","Halo geometry detail","High",{"Balanced","High","Ultra"});toggle("Halos","haloWalk","Walking halo reaction",true);range("Halos","haloGlow","Legacy halo glow %",75,0,100)
 S.haloV2Styles={"Prism Shards","Classic Ring","Twin Ring","Orbit Rings","Cluster Halo","Fallen Fragments","Aether Crown"}
 S.haloV2Fields={"Enabled","Color","Secondary","Radius","Height","Spin","Opacity","Glow","Thickness","Count","Tilt"}
 for index,style in S.haloV2Styles do
@@ -3018,10 +3119,10 @@ for index,style in S.haloV2Styles do
  range("Halos",k.."Count","Shape count",if index==5 then 7 else 8,3,12)
  range("Halos",k.."Tilt","Tilt degrees",0,-60,60)
 end
-toggle("Neon","neon","Character outline",true);range("Neon","neonFill","Body tint %",10,0,65);range("Neon","neonLight","Light intensity %",40,0,100);color("Neon","neonColor","Neon color","AB87FF");toggle("Neon","neonRainbow","Rainbow neon",false);choice("Neon","neonMotion","Neon animation","Breathe",{"Solid","Breathe","Aurora","Heartbeat","Flow","Reactive"});range("Neon","neonMotionSpeed","Neon animation speed %",90,0,180);range("Neon","neonMotionStrength","Neon animation intensity %",65,0,100);range("Neon","neonRange","Light radius (studs)",9,2,20)
-toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA","High sky","282057");color("Ambient","skyB","Horizon","8C70C2");color("Ambient","skyC","Ground light","EAB6CD");range("Ambient","fog","Fog density %",35,0,90);range("Ambient","bloom","Bloom %",40,0,100);range("Ambient","time","Time (tenths of an hour)",166,0,239);range("Ambient","light","Brightness %",105,25,180);range("Ambient","saturation","Saturation %",9,-85,85);range("Ambient","blur","Depth blur",0,0,16);range("Ambient","fade","Atmosphere fade (ms)",700,0,3500);range("Ambient","worldContrast","Contrast %",0,-80,80);range("Ambient","worldExposure","Exposure %",0,-100,100);range("Ambient","worldGlare","Atmospheric glare %",0,0,100);range("Ambient","worldRays","Sun rays %",0,0,100);range("Ambient","worldFocus","Depth of field %",0,0,100);range("Ambient","worldFocusDistance","Focus distance (studs)",60,8,250);range("Ambient","worldBloomSize","Bloom radius",26,0,56)
+toggle("Neon","neon","Character outline",true);range("Neon","neonFill","Body tint %",10,0,65);range("Neon","neonLight","Light intensity %",40,0,100);color("Neon","neonColor","Neon color","AB87FF");toggle("Neon","neonRainbow","Rainbow neon",false);choice("Neon","neonMotion","Neon animation","Breathe",{"Solid","Breathe","Aurora","Heartbeat","Flow","Reactive"});range("Neon","neonMotionSpeed","Neon animation speed %",90,0,180);range("Neon","neonMotionStrength","Neon animation intensity %",65,0,100);range("Neon","neonRange","Light radius (studs)",9,2,20);toggle("Neon","visualBloom","Real visual bloom",true);range("Neon","visualBloomStrength","Visual bloom strength %",70,0,100);range("Neon","visualBloomRadius","Visual bloom radius",28,8,56)
+toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA","High sky","282057");color("Ambient","skyB","Horizon","8C70C2");color("Ambient","skyC","Ground light","EAB6CD");range("Ambient","fog","Fog density %",35,0,90);range("Ambient","bloom","Bloom %",40,0,100);range("Ambient","time","Time (tenths of an hour)",166,0,239);range("Ambient","light","Brightness %",105,25,180);range("Ambient","saturation","Saturation %",9,-85,85);range("Ambient","blur","Depth blur",0,0,16);range("Ambient","fade","Atmosphere fade (ms)",700,0,3500);range("Ambient","worldContrast","Contrast %",0,-80,80);range("Ambient","worldExposure","Exposure %",0,-100,100);range("Ambient","worldGlare","Atmospheric glare %",0,0,100);range("Ambient","worldRays","Sun rays %",0,0,100);range("Ambient","worldFocus","Depth of field %",0,0,100);range("Ambient","worldFocusDistance","Focus distance (studs)",60,8,250);range("Ambient","worldBloomSize","Bloom radius",26,0,56);toggle("Ambient","starfall","Falling stars",false);choice("Ambient","starfallStyle","Starfall style","Stars",{"Stars","Sparks","Mixed"});choice("Ambient","starfallMaterial","Star material","Neon",{"Neon","Glass","SmoothPlastic","Metal"});range("Ambient","starfallCount","Star count",8,1,16);range("Ambient","starfallSpeed","Fall speed (studs/sec)",35,10,90);range("Ambient","starfallSize","Star size (tenths of stud)",18,5,40);range("Ambient","starfallOpacity","Star opacity %",85,10,100);range("Ambient","starfallGlow","Star neon glow %",80,0,100);toggle("Ambient","starfallTail","Star streaks",true);toggle("Ambient","starfallRainbow","Rainbow stars",false);color("Ambient","starfallA","Star color start","E5D1FF");color("Ambient","starfallB","Star color end","83CFFF")
 toggle("Indicators","indicators","Directional indicators",true);choice("Indicators","shape","Indicator shape","Soft Triangle",S.shapes);range("Indicators","size","Size (px)",31,14,72);range("Indicators","corners","Corner softness %",30,0,100);range("Indicators","edge","Distance from edges %",11,4,30);range("Indicators","turn","Rotation smoothing (ms)",180,0,800);range("Indicators","ink","Neon intensity %",60,0,100);range("Indicators","spread","Neon spread (px)",6,0,18);range("Indicators","arrowAlpha","Opacity %",95,10,100);range("Indicators","arrowSpeed","Animation speed %",100,40,220);color("Indicators","arrowA","Gradient start","BFA2FF");color("Indicators","arrowB","Gradient end","FF9ECE");toggle("Indicators","arrowRainbow","Rainbow gradient",false);toggle("Indicators","pulse","Pulsation",true);choice("Indicators","labels","Arrow labels","Both",{"Off","Name","Distance","Both"});toggle("Indicators","nearby","Nearby nameplates",false);range("Indicators","reach","Tracking range (studs)",800,50,2500)
-toggle("Cursor","cursor","Custom game pointer",false);choice("Cursor","cursorShape","Pointer shape","Rounded Triangle",{"Rounded Triangle","Soft Arrow","Diamond","Orbit","Spark","Chevron","Neon Pointer","Arrowhead","Split Arrow","Needle","Crystal","Spear","Star Pointer","Compass","Crosshair","Heart","Image"});range("Cursor","cursorSize","Pointer size",30,12,72);range("Cursor","cursorGlow","Pointer glow %",55,0,100);choice("Cursor","cursorPalette","Desktop AETHER palette","Aurora",{"Aurora","Sunset","Ocean","Rainbow","Mono","Custom"});range("Cursor","hotX","Hotspot X %",19,0,100);range("Cursor","hotY","Hotspot Y %",8,0,100);color("Cursor","cursorA","Gradient start","BA99FF");color("Cursor","cursorB","Gradient end","69D9FA");toggle("Cursor","cursorRainbow","Rainbow pointer",true);range("Cursor","cursorSpeed","Gradient speed %",65,10,200);choice("Cursor","cursorAnimation","Cursor animation","Sway",{"Off","Breathe","Sway","Spin","Pulse"});range("Cursor","cursorMotionSpeed","Animation speed %",100,20,200);toggle("Cursor","cursorTrail","Soft cursor trail",false);range("Cursor","cursorOffsetX","Pointer offset X (px)",0,-120,120);range("Cursor","cursorOffsetY","Pointer offset Y (px)",0,-120,120);toggle("Cursor","cursorDebug","Show hotspot marker",false);def("Cursor","image","Roblox image asset ID","asset","")
+toggle("Cursor","cursor","Custom game pointer",false);choice("Cursor","cursorShape","Pointer shape","Rounded Triangle",{"Rounded Triangle","Soft Arrow","Diamond","Orbit","Spark","Chevron","Neon Pointer","Arrowhead","Split Arrow","Needle","Crystal","Spear","Star Pointer","Compass","Crosshair","Heart","Image"});range("Cursor","cursorSize","Pointer size",30,12,72);range("Cursor","cursorGlow","Pointer glow %",55,0,100);choice("Cursor","cursorPalette","Desktop AETHER palette","Aurora",{"Aurora","Sunset","Ocean","Rainbow","Mono","Custom"});range("Cursor","hotX","Hotspot X %",19,0,100);range("Cursor","hotY","Hotspot Y %",8,0,100);color("Cursor","cursorA","Gradient start","BA99FF");color("Cursor","cursorB","Gradient end","69D9FA");toggle("Cursor","cursorRainbow","Rainbow pointer",true);range("Cursor","cursorSpeed","Gradient speed %",65,10,200);choice("Cursor","cursorAnimation","Cursor animation","Sway",{"Off","Breathe","Sway","Spin","Pulse"});range("Cursor","cursorMotionSpeed","Animation speed %",100,20,200);toggle("Cursor","cursorTrail","Cursor motion trail",false);choice("Cursor","cursorTrailStyle","Trail style","Triple",{"Triple","Single","Dots"});range("Cursor","cursorTrailLength","Trail lifetime (ms)",220,80,450);range("Cursor","cursorTrailWidth","Trail width (tenths of px)",12,5,35);range("Cursor","cursorTrailSpread","Trail spacing (px)",6,2,16);range("Cursor","cursorTrailGlow","Trail glow %",65,0,100);color("Cursor","cursorTrailA","Trail start","F5E5FF");color("Cursor","cursorTrailB","Trail end","9B6BFF");range("Cursor","cursorOffsetX","Pointer offset X (px)",0,-120,120);range("Cursor","cursorOffsetY","Pointer offset Y (px)",0,-120,120);toggle("Cursor","cursorDebug","Show hotspot marker",false);def("Cursor","image","Roblox image asset ID","asset","")
 toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Interaction","lock","Shift-lock · LeftAlt",false);choice("Interaction","lockReticle","Shift-lock reticle","Orbit",{"None","Dot","Ring","Orbit","Cross","Split Cross","Diamond","Triangle","Hexagon","Star","Corners","Compass","Double Ring","Petal"});range("Interaction","reticleSize","Reticle size (px)",28,12,64);range("Interaction","reticleStroke","Reticle thickness (px)",2,1,5);color("Interaction","reticleColor","Reticle color","C8A6FF");toggle("Interaction","reticleRainbow","Rainbow reticle",false);toggle("Interaction","reticleMotion","Reticle animation",true);range("Interaction","reticleSpeed","Reticle animation %",70,0,200);toggle("Interaction","reticleNeon","Neon reticle glow",true);range("Interaction","reticleGlow","Reticle glow intensity %",65,0,100);range("Interaction","reticleGlowRadius","Reticle glow radius (px)",4,1,8);toggle("Interaction","reticleGlowPulse","Pulsating glow",true)
 toggle("Interaction","inputOverlay","Show input overlay",false);toggle("Interaction","inputMouse","Show mouse buttons",true);range("Interaction","inputX","Input overlay X %",91,0,100);range("Interaction","inputY","Input overlay Y %",76,0,100);range("Interaction","inputScale","Input overlay size %",100,60,150);range("Interaction","inputOpacity","Input overlay opacity %",80,20,100);color("Interaction","inputColor","Pressed key color","BCA0FF");toggle("Interaction","wallhopHelper","Wallhop Helper",false);range("Interaction","wallhopX","Wallhop display X %",87,0,100);range("Interaction","wallhopY","Wallhop display Y %",42,0,100);range("Interaction","wallhopScale","Wallhop display size %",100,60,150);range("Interaction","wallhopOpacity","Wallhop display opacity %",90,20,100)
 choice("Fonts","font","Typeface","Gotham",S.fonts);choice("Fonts","weight","Weight","Bold",{"Regular","Medium","Bold","Heavy"});def("Fonts","fontAsset","Optional Roblox font family ID","asset","");text("Fonts","sample","Preview text","AETHER · Your interface",96);range("Fonts","fontSize","HUD type scale %",100,70,145);toggle("Fonts","fontGradient","Gradient lettering",true);range("Fonts","fontOutline","Text outline %",24,0,100);range("Fonts","fontGlow","Letter glow %",35,0,100);color("Fonts","fontA","Letter color","F1E6FF");color("Fonts","fontB","Letter gradient","CCA4FF")
@@ -3106,6 +3207,89 @@ for _,v in S.skies do S.presets.Ambient[v[1]]=S.sky(v) end
 return S
 end
 -- END MODULE Schema
+
+
+-- BEGIN MODULE Starfall
+__aether_factories["Starfall"] = function()
+-- Local cosmetic falling stars; pooled, anchored, non-colliding geometry.
+local U=__aether_require("Util")
+local Input=game:GetService("UserInputService")
+local F={};F.__index=F
+local RNG=Random.new()
+local MAX_STARS=16
+local function part(parent)
+ return U.new("Part",{Name="StarRay",Anchored=true,CanCollide=false,CanTouch=false,CanQuery=false,CastShadow=false,Transparency=1,Size=Vector3.new(.1,.1,.1),Material=Enum.Material.Neon},parent)
+end
+local function segment(p,a,b,width)
+ local d=b-a
+ if d.Magnitude<.001 then p.Transparency=1;return false end
+ p.Size=Vector3.new(width,width,d.Magnitude)
+ p.CFrame=CFrame.lookAt((a+b)*.5,b,if math.abs(d.Unit.Y)>.98 then Vector3.xAxis else Vector3.yAxis)
+ return true
+end
+function F.new() return setmetatable({pool={}},F) end
+function F:clear()
+ if self.root then self.root:Destroy();self.root=nil end
+ table.clear(self.pool);self.camera=nil;self.last=nil
+end
+function F:spawn(star,cam,initial)
+ local origin=cam.CFrame.Position
+ local forward=cam.CFrame.LookVector*Vector3.new(1,0,1)
+ if forward.Magnitude<.01 then forward=Vector3.new(0,0,-1) else forward=forward.Unit end
+ local right=Vector3.new(-forward.Z,0,forward.X)
+ star.pos=origin+forward*RNG:NextNumber(15,85)+right*RNG:NextNumber(-65,65)+Vector3.new(0,if initial then RNG:NextNumber(-10,70) else RNG:NextNumber(45,80),0)
+ star.age=0;star.scale=RNG:NextNumber(.65,1.3);star.speed=RNG:NextNumber(.7,1.35);star.phase=RNG:NextNumber(0,math.pi*2);star.tint=RNG:NextNumber();star.spark=RNG:NextNumber()<.5
+end
+function F:step(s,now)
+ local cam=workspace.CurrentCamera
+ if not s.starfall or s.reduce or not cam then if self.root then self:clear() end;return end
+ if cam~=self.camera then self:clear();self.camera=cam end
+ if not self.root then self.root=U.new("Folder",{Name="AetherStarfall"},cam) end
+ local dt=math.clamp(now-(self.last or now),0,.1);self.last=now
+ local count=math.clamp(math.floor(s.starfallCount),1,if Input.TouchEnabled and not Input.KeyboardEnabled then 8 else MAX_STARS)
+ local colorA,colorB=U.hex(s.starfallA),U.hex(s.starfallB)
+ local material=Enum.Material[s.starfallMaterial] or Enum.Material.Neon
+ if material==Enum.Material.Neon and s.starfallGlow==0 then material=Enum.Material.SmoothPlastic end
+ while #self.pool<count do
+  local star={rays={}}
+  for i=1,6 do star.rays[i]=part(self.root) end
+  self:spawn(star,cam,true);self.pool[#self.pool+1]=star
+ end
+ for i,star in self.pool do
+  if i>count then for _,p in star.rays do p.Transparency=1 end;continue end
+  star.age+=dt
+  star.pos+=Vector3.new(2*dt,-s.starfallSpeed*star.speed*dt,0)
+  if star.pos.Y<cam.CFrame.Position.Y-25 or (star.pos-cam.CFrame.Position).Magnitude>150 or star.age>12 then self:spawn(star,cam,false) end
+  local r=s.starfallSize/10*star.scale
+  local opacity=s.starfallOpacity/100
+  local tint=if s.starfallRainbow then Color3.fromHSV((now*.12+star.tint)%1,.55,1) else colorA:Lerp(colorB,star.tint)
+  local cf=CFrame.new(star.pos)*cam.CFrame.Rotation*CFrame.Angles(0,0,star.phase+star.age*.6)
+  local spark=s.starfallStyle=="Sparks" or (s.starfallStyle=="Mixed" and star.spark)
+  local function vertex(j)
+   local a=j*math.pi*2/5+math.pi/2
+   return cf:PointToWorldSpace(Vector3.new(math.cos(a)*r,math.sin(a)*r,0))
+  end
+  for j=1,5 do
+   local p=star.rays[j]
+   local a,b
+   if spark then
+    if j>2 then p.Transparency=1;continue end
+    local v=if j==1 then cf.UpVector*r else cf.RightVector*r
+    a,b=star.pos-v,star.pos+v
+   else a,b=vertex(j-1),vertex((j+1)%5) end
+   if segment(p,a,b,math.max(.045,r*.13)) then p.Color=tint;p.Material=material;p.Transparency=1-opacity end
+  end
+  local tail=star.rays[6]
+  if s.starfallTail then
+   local len=math.min(10,s.starfallSpeed*.12)
+   if segment(tail,star.pos+Vector3.new(0,r*.5,0),star.pos+Vector3.new(0,r+len,0),math.max(.04,r*.08)) then tail.Material=material;tail.Color=tint;tail.Transparency=1-opacity*.35 end
+  else tail.Transparency=1 end
+ end
+end
+return F
+
+end
+-- END MODULE Starfall
 
 
 -- BEGIN MODULE Storage
@@ -3747,6 +3931,7 @@ end
 -- BEGIN MODULE View
 __aether_factories["View"] = function()
 local Input=game:GetService("UserInputService");local Gui=game:GetService("GuiService");local U=__aether_require("Util");local VectorCursor=__aether_require("VectorCursor")
+local CursorTrail=__aether_require("CursorTrail")
 local V={};V.__index=V
 local preferences=UserSettings():GetService("UserGameSettings")
 -- Do not run a second shoulder controller while Roblox owns mouse lock.
@@ -3758,7 +3943,7 @@ function V:nativeLockAvailable()
  return not ok or available
 end
 function V.new(player,layer)
- local self=setmetatable({player=player,angle=0,clock=0,trails={},trailPoints={}},V)
+ local self=setmetatable({player=player,angle=0,clock=0},V)
  -- This anchor marks the exact click pixel. Animated skin always rotates AROUND it.
  self.pointer=U.frame(layer,"MouseHotspot",nil,UDim2.fromOffset(1,1),nil,1)
  self.pointer.Active=false;self.pointer.Interactable=false;self.pointer.Visible=false;self.pointer.ZIndex=10
@@ -3769,11 +3954,7 @@ function V.new(player,layer)
   Name="Asset",BackgroundTransparency=1,Active=false,Selectable=false,
   Size=UDim2.fromScale(1,1),ScaleType=Enum.ScaleType.Fit,ZIndex=12
  },self.skin)
- for i=1,6 do
-  local dot=U.frame(layer,"CursorTail"..i,nil,UDim2.fromOffset(4,4),Color3.fromRGB(185,145,255),.5)
-  dot.AnchorPoint=Vector2.new(.5,.5);dot.Active=false;dot.Visible=false;dot.ZIndex=9
-  U.corner(dot,99);self.trails[i]=dot
- end
+ self.motionTrail=CursorTrail.new(layer)
  self.hotspotDebug=U.frame(self.pointer,"HotspotDebug",UDim2.fromOffset(-3,-3),UDim2.fromOffset(7,7),Color3.fromRGB(255,80,85),0)
  self.hotspotDebug.ZIndex=20;self.hotspotDebug.Active=false;self.hotspotDebug.Visible=false
  U.corner(self.hotspotDebug,99)
@@ -3821,8 +4002,7 @@ function V:preview(host,s)
 end
 function V:restoreCursor()
  if self.pointer and self.pointer.Parent then self.pointer.Visible=false end
- for _,tail in self.trails do if tail.Parent then tail.Visible=false end end
- table.clear(self.trailPoints)
+ self.motionTrail:hide()
  if self.icon~=nil then Input.MouseIconEnabled=self.icon;self.icon=nil end
 end
 function V:destroy()
@@ -3830,7 +4010,7 @@ function V:destroy()
  self:restoreCursor()
  if self.previewImage then self.previewImage:Destroy();self.previewImage=nil end
  self.glyph:destroy()
- for _,tail in self.trails do tail:Destroy() end
+ self.motionTrail:destroy()
  self.pointer:Destroy()
 end
 -- Keep the real click hotspot and the visual pointer aligned.
@@ -3847,8 +4027,7 @@ function V:cursorStep(s)
  if locked then
   self.pointer.Visible=false
   self.hotspotDebug.Visible=false
-  for _,tail in self.trails do tail.Visible=false end
-  table.clear(self.trailPoints)
+  self.motionTrail:hide()
   if s.cross then
    if self.icon==nil then self.icon=Input.MouseIconEnabled end
    Input.MouseIconEnabled=false
@@ -3904,27 +4083,12 @@ function V:cursorStep(s)
  self.skin.Position=UDim2.fromOffset(-cx-size*.5,-cy-size*.5)
  self.pointer.Visible=true
  self.hotspotDebug.Visible=s.cursorDebug==true
- for _,tail in self.trails do tail.Visible=s.cursorTrail==true and not s.reduce end
  -- Only suppress the native cursor after the custom cursor is ready and placed.
  if self.icon==nil then self.icon=Input.MouseIconEnabled end
  Input.MouseIconEnabled=false
  if s.cursorTrail and not s.reduce then
-  local tint=U.hex(s.cursorA or "B78AFF")
-  local previous=hit
-  for i,tail in self.trails do
-   local sampled=self.trailPoints[i] or hit
-   local factor=if i==1 then .42 else .27
-   sampled=sampled:Lerp(previous,factor)
-   self.trailPoints[i]=sampled
-   previous=sampled
-   tail.Size=UDim2.fromOffset(math.max(1,5-i*.6),math.max(1,5-i*.6))
-   tail.Position=UDim2.fromOffset(sampled.X,sampled.Y)
-   tail.BackgroundColor3=tint
-   tail.BackgroundTransparency=.24+i*.095
-  end
- else
-  table.clear(self.trailPoints)
- end
+  self.motionTrail:step(hit,s,os.clock())
+ else self.motionTrail:hide() end
 end
 function V:step(s,hum,menu,dt,t)
  self.menuOpen=menu
@@ -4330,25 +4494,54 @@ end
 -- BEGIN MODULE World
 __aether_factories["World"] = function()
 local L=game:GetService("Lighting");local T=game:GetService("TweenService");local U=__aether_require("Util")
+local Stars=__aether_require("Starfall")
 local W={};W.__index=W
-function W.new() return setmetatable({saved={},owned={},tweens={}},W) end
+function W.new() return setmetatable({saved={},owned={},tweens={},stars=Stars.new()},W) end
 function W:stop()
  for _,tw in self.tweens do tw:Cancel();tw:Destroy() end;table.clear(self.tweens)
 end
-function W:clear()
+function W:clearAtmosphere()
  self:stop();for obj,props in self.saved do if obj==L or obj.Parent then for k,v in props do obj[k]=v end end end;table.clear(self.saved)
  for _,obj in self.owned do obj:Destroy() end;table.clear(self.owned);self.atmo=nil;self.key=nil
 end
+function W:clear()
+ self:clearAtmosphere();self.stars:clear()
+ if self.fxBloom then self.fxBloom:Destroy();self.fxBloom=nil end
+ self.fxBloomKey=nil
+end
+function W:visualBloom(s)
+ local visual=0
+ if s.visualBloom then
+  if s.wings then visual=math.max(visual,s.sketchGlow/100) end
+  if s.halo then visual=math.max(visual,s.haloGlow/100) end
+  for i=1,7 do local k="haloV2"..i;if s[k.."Enabled"] then visual=math.max(visual,s[k.."Glow"]/100) end end
+  if s.neon then visual=math.max(visual,s.neonLight/100) end
+  if s.starfall and s.starfallMaterial=="Neon" and not s.reduce then visual=math.max(visual,s.starfallGlow/100) end
+ end
+ visual=visual*s.visualBloomStrength/100
+ local ambient=if s.ambient then s.bloom/50 else 0
+ local intensity=math.max(ambient,visual*1.8)
+ local radius=if visual>0 then s.visualBloomRadius else s.worldBloomSize
+ local key=tostring(intensity)..":"..tostring(radius)..":"..tostring(visual>0)
+ if self.fxBloomKey==key then return end
+ self.fxBloomKey=key
+ if intensity<=0 then if self.fxBloom then self.fxBloom.Enabled=false end;return end
+ if not self.fxBloom then self.fxBloom=U.new("BloomEffect",{Name="AetherVisualBloom"},L) end
+ self.fxBloom.Enabled=true;self.fxBloom.Intensity=intensity;self.fxBloom.Size=radius
+ self.fxBloom.Threshold=if visual>0 then .85 else 1.2
+end
 function W:apply(s)
- if not s.ambient then if self.atmo then self:clear() end;return end
+ self.stars:step(s,os.clock())
+ self:visualBloom(s)
+ if not s.ambient then if self.atmo then self:clearAtmosphere() end;return end
  local key=table.concat({s.skyA,s.skyB,s.skyC,s.fog,s.bloom,s.time,s.light,s.saturation,s.blur,s.fade,s.worldContrast,s.worldExposure,s.worldGlare,s.worldRays,s.worldFocus,s.worldFocusDistance,s.worldBloomSize,tostring(s.reduce)},":");if self.key==key then return end;self.key=key;self:stop()
  local function own(class) local o=U.new(class,{Name="Aether"..class},L);table.insert(self.owned,o);return o end
- if not self.atmo then self.atmo=L:FindFirstChildOfClass("Atmosphere") or own("Atmosphere");self.bloom=own("BloomEffect");self.grade=own("ColorCorrectionEffect");self.blur=own("BlurEffect");self.rays=own("SunRaysEffect");self.focus=own("DepthOfFieldEffect") end
+ if not self.atmo then self.atmo=L:FindFirstChildOfClass("Atmosphere") or own("Atmosphere");self.grade=own("ColorCorrectionEffect");self.blur=own("BlurEffect");self.rays=own("SunRaysEffect");self.focus=own("DepthOfFieldEffect") end
  local function set(o,p)
   if not self.saved[o] then self.saved[o]={} end;for k in p do if self.saved[o][k]==nil then self.saved[o][k]=o[k] end end
   if s.reduce or s.fade==0 then for k,v in p do o[k]=v end else local tw=T:Create(o,TweenInfo.new(s.fade/1000,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),p);table.insert(self.tweens,tw);tw:Play() end
  end
- set(L,{Ambient=U.hex(s.skyA),OutdoorAmbient=U.hex(s.skyB),Brightness=s.light/40,ClockTime=s.time/10,ExposureCompensation=s.worldExposure/50});set(self.atmo,{Color=U.hex(s.skyC),Decay=U.hex(s.skyB),Density=s.fog/150,Haze=s.fog/30,Glare=s.worldGlare*.03});set(self.bloom,{Intensity=s.bloom/50,Size=s.worldBloomSize,Threshold=1.2});set(self.grade,{Saturation=s.saturation/100,Contrast=s.worldContrast/100,TintColor=Color3.new(1,1,1):Lerp(U.hex(s.skyC),.13)});set(self.blur,{Size=s.blur});set(self.rays,{Intensity=s.worldRays/100,Spread=.8});set(self.focus,{FarIntensity=s.worldFocus/100,NearIntensity=s.worldFocus*.003,FocusDistance=s.worldFocusDistance,InFocusRadius=25})
+ set(L,{Ambient=U.hex(s.skyA),OutdoorAmbient=U.hex(s.skyB),Brightness=s.light/40,ClockTime=s.time/10,ExposureCompensation=s.worldExposure/50});set(self.atmo,{Color=U.hex(s.skyC),Decay=U.hex(s.skyB),Density=s.fog/150,Haze=s.fog/30,Glare=s.worldGlare*.03});set(self.grade,{Saturation=s.saturation/100,Contrast=s.worldContrast/100,TintColor=Color3.new(1,1,1):Lerp(U.hex(s.skyC),.13)});set(self.blur,{Size=s.blur});set(self.rays,{Intensity=s.worldRays/100,Spread=.8});set(self.focus,{FarIntensity=s.worldFocus/100,NearIntensity=s.worldFocus*.003,FocusDistance=s.worldFocusDistance,InFocusRadius=25})
 end
 return W
 end
