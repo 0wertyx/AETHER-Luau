@@ -641,34 +641,42 @@ end)
 -- Does not create forces, alter gravity, increase WalkSpeed or change vertical velocity.
 local function stepAirControl(dt)
     app.airProbe = nil
-    if app.mode ~= "Game" or not app.s.airControl then return end
-    if app.ui.opened or app.editingHUD or UserInputService:GetFocusedTextBox() then return end
-    if not character or not humanoid or humanoid.Parent ~= character or humanoid.Health <= 0 or humanoid.Sit or humanoid.PlatformStand then return end
+    if app.mode ~= "Game" then return "Simulator mode" end
+    if not app.s.airControl then return "Disabled in settings" end
+    if app.ui.opened or app.editingHUD or UserInputService:GetFocusedTextBox() then return "Menu, HUD editor or text input open" end
+    if not character or not humanoid or humanoid.Parent ~= character then return "Character or humanoid missing" end
+    if humanoid.Health <= 0 or humanoid.Sit or humanoid.PlatformStand then return "Dead, seated or PlatformStand" end
     local state = humanoid:GetState()
     if state ~= Enum.HumanoidStateType.Jumping and state ~= Enum.HumanoidStateType.Freefall then
         if humanoid.FloorMaterial == Enum.Material.Air then
             app.airDiagnostic = "Skipped: humanoid state "..state.Name
         end
-        return
+        return "State: "..state.Name.." | floor: "..humanoid.FloorMaterial.Name
     end
     local root = character:FindFirstChild("HumanoidRootPart")
     if not root or not root:IsA("BasePart") or root.Anchored then
         app.airDiagnostic = "Skipped: root missing or anchored"
-        return
+        return app.airDiagnostic
     end
     local input = humanoid.MoveDirection
     local direction = Vector3.new(input.X,0,input.Z)
     local v = root.AssemblyLinearVelocity
     local horizontal = Vector3.new(v.X,0,v.Z)
     local cap = math.max(0,humanoid.WalkSpeed)
-    if direction.Magnitude < .01 then app.airDiagnostic = "Skipped: MoveDirection is zero";return end
+    if direction.Magnitude < .01 then app.airDiagnostic = "Skipped: MoveDirection is zero";return app.airDiagnostic end
     if cap <= 0 or app.s.airControlStrength <= 0 or dt <= 0 then
-        app.airDiagnostic = "Skipped: WalkSpeed, strength or delta time is zero";return
+        app.airDiagnostic = "Skipped: WalkSpeed, strength or delta time is zero";return app.airDiagnostic
     end
     local nextVelocity = U.airRedirect(horizontal,direction,cap,app.s.airControlStrength,dt)
-    if (nextVelocity-horizontal).Magnitude < .0001 then return end
+    if (nextVelocity-horizontal).Magnitude < .0001 then
+        app.airDiagnostic = string.format("Already aligned | %s | speed %.1f | input %.2f",state.Name,horizontal.Magnitude,direction.Magnitude)
+        return app.airDiagnostic
+    end
     root.AssemblyLinearVelocity = Vector3.new(nextVelocity.X,v.Y,nextVelocity.Z)
     app.airProbe = {root=root,expected=nextVelocity,speed=horizontal.Magnitude,cap=cap}
+    app.airWrites = (app.airWrites or 0)+1
+    app.airDiagnostic = string.format("Write issued | %s | speed %.1f",state.Name,horizontal.Magnitude)
+    return app.airDiagnostic
 end
 
 -- Observe the result without fighting the experience's physics controller.
@@ -684,7 +692,22 @@ end)
 -- Motion Studio poses follow the real humanoid state, after Animator evaluates.
 scope:on(RunService.PreSimulation, function(dt)
     if app.stopping or not gui.Parent then return end
-    stepAirControl(dt)
+    app.airTicks = (app.airTicks or 0)+1
+    local airOk, airResult = pcall(stepAirControl,dt)
+    if airOk then
+        app.airCurrent = airResult or "No result"
+        app.airError = nil
+    else
+        app.airCurrent = "Error: "..tostring(airResult)
+        app.airDiagnostic = app.airCurrent
+        if app.airError ~= airResult then
+            app.airError = airResult
+            app:log("Air Redirection",tostring(airResult))
+        end
+    end
+    if app.airCurrent ~= "Menu, HUD editor or text input open" then
+        app.airLastActive = app.airCurrent
+    end
     local characterToAnimate = if app.mode == "Game" then character else nil
     local ok, err = pcall(walkMotion.step, walkMotion, characterToAnimate, app.s, dt)
     if not ok and not app.walkError then
