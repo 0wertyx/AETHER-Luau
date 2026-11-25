@@ -38,13 +38,13 @@ if priorPointer then priorPointer:Destroy() end
 local scope = U.scope()
 local gui = scope:add(U.new("ScreenGui", {
     Name = "AETHER_Studio", ResetOnSpawn = false, IgnoreGuiInset = true,
-    ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 100000,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 2147483644,
 }, pg))
 local overlay = U.frame(gui, "HUDLayer", nil, nil, nil, 1)
 local pointerGui = scope:add(U.new("ScreenGui", {
     Name = "AETHER_Pointer", ResetOnSpawn = false,
     IgnoreGuiInset = true, ScreenInsets = Enum.ScreenInsets.None,
-    ClipToDeviceSafeArea = false, DisplayOrder = 100003,
+    ClipToDeviceSafeArea = false, DisplayOrder = 2147483647,
     ZIndexBehavior = Enum.ZIndexBehavior.Global,
 }, pg))
 local pointer = U.frame(pointerGui, "PointerLayer", nil, nil, nil, 1)
@@ -411,7 +411,6 @@ end
 function app:onMenu(open)
     if open and self.editingHUD then self.editingHUD=false;self.ui.drag=nil end
     if open and self.view then self.view:releaseLock(self.view:nativeLockAvailable()) end
-    if self.refreshGameInput then self:refreshGameInput() end
 end
 function app:drag(input, key, widget, frame, source)
     local panel=key=="top" or key=="rail"
@@ -471,46 +470,15 @@ local view = View.new(player, pointer)
 app.view = view
 local ui = Controls.new(app, studioLayer, scope)
 app.ui = ui
--- Decorative layers must not claim game input, even with a centered mouse.
--- When the Studio menu is closed, preserve the HUD artwork but temporarily
--- make its controls noninteractive. Restore their original flags on open.
+-- The high-order cursor is decorative. HUD and Studio buttons retain their
+-- normal input behavior, including when the main menu is closed.
 do
-    local saved = setmetatable({}, {__mode="k"})
-    local passing = false
-    local function disable(obj)
-        if not obj:IsA("GuiObject") then return end
-        if not saved[obj] then saved[obj]={active=obj.Active,interactable=obj.Interactable} end
-        obj.Active=false;obj.Interactable=false
-    end
     local function pointerOnly(obj)
         if obj:IsA("GuiObject") then obj.Active=false;obj.Interactable=false end
     end
     pointerOnly(pointer)
     for _,obj in pointer:GetDescendants() do pointerOnly(obj) end
     scope:on(pointer.DescendantAdded,pointerOnly)
-    for _,layer in {overlay,studioLayer} do
-        scope:on(layer.DescendantAdded,function(obj) if passing then disable(obj) end end)
-    end
-    function app:refreshGameInput()
-        local pass=self.s.gameInputPassthrough and self.mode=="Game" and not ui.opened and not self.editingHUD
-        if pass==passing then return end
-        passing=pass
-        if pass then
-            for _,layer in {overlay,studioLayer} do
-                disable(layer)
-                for _,obj in layer:GetDescendants() do disable(obj) end
-            end
-        else
-            for obj,flags in saved do
-                if obj.Parent then obj.Active=flags.active;obj.Interactable=flags.interactable end
-            end
-            table.clear(saved)
-            ui.panel.Interactable=ui.opened
-        end
-    end
-    scope:on(RunService.Heartbeat,function()
-        if not app.stopping and gui.Parent then app:refreshGameInput() end
-    end)
 end
 local store = Storage.new(app, scope)
 app.store = store
@@ -570,7 +538,7 @@ scope:on(RunService.Heartbeat,function()
 end)
 
 -- Non-persistent editing session. Handles exist only while arranging the live HUD.
-local editorGui=scope:add(U.new("ScreenGui",{Name="AETHER_HUD_Editor",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=100002,ZIndexBehavior=Enum.ZIndexBehavior.Global,Enabled=false},pg))
+local editorGui=scope:add(U.new("ScreenGui",{Name="AETHER_HUD_Editor",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=2147483646,ZIndexBehavior=Enum.ZIndexBehavior.Global,Enabled=false},pg))
 local editor=U.frame(editorGui,"Editor",nil,nil,nil,1)
 local header=U.frame(editor,"EditorBar",UDim2.new(.5,0,0,58),UDim2.new(.9,0,0,44),Color3.fromRGB(27,21,44),.04)
 header.AnchorPoint=Vector2.new(.5,0);header.ZIndex=20

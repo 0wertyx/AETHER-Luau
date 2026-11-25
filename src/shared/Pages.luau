@@ -355,7 +355,7 @@ local function avatarPreview(ui,a,worldMode)
  local function openFull()
   if full or page.dead then return end
   if not fullGui then
-   fullGui=page:add(U.new("ScreenGui",{Name="AETHER_WorldPreview",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=100002,ZIndexBehavior=Enum.ZIndexBehavior.Sibling,Enabled=false},player:WaitForChild("PlayerGui")))
+   fullGui=page:add(U.new("ScreenGui",{Name="AETHER_WorldPreview",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=2147483646,ZIndexBehavior=Enum.ZIndexBehavior.Sibling,Enabled=false},player:WaitForChild("PlayerGui")))
    local shell=U.frame(fullGui,"WorldPreview",nil,nil,Color3.fromRGB(17,14,28),0)
    shell.Active=true
    local bar=U.frame(shell,"Toolbar",UDim2.fromOffset(12,12),UDim2.new(1,-24,0,46),Color3.fromRGB(41,32,61),0);U.corner(bar,12)
@@ -836,11 +836,9 @@ function E.render(a,tab,ui)
   end)
   ui:title("SHIFT-LOCK / RETICLE")
   for _,k in {"cross","crossScale","crossAlpha"} do ui:control(k) end
-  local inputKeys={peerVisuals=true,peerQuality=true,lockKey=true,inputOverlay=true,inputMouse=true,inputX=true,inputY=true,inputScale=true,inputOpacity=true,inputColor=true,wallhopHelper=true,wallhopX=true,wallhopY=true,wallhopScale=true,wallhopOpacity=true}
+  local inputKeys={gameInputPassthrough=true,peerVisuals=true,peerQuality=true,lockKey=true,inputOverlay=true,inputMouse=true,inputX=true,inputY=true,inputScale=true,inputOpacity=true,inputColor=true,wallhopHelper=true,wallhopX=true,wallhopY=true,wallhopScale=true,wallhopOpacity=true}
   ui:group(tab,inputKeys)
   ui:title("LIVE INPUT DISPLAY")
-  ui:control("gameInputPassthrough")
-  ui:note("When the menu is closed, HUD buttons are visual only. Open Studio with its menu hotkey to interact.",44)
   local m2Status=ui:note("",76)
   ui:watch(function()
    m2Status.Text=string.format("%s | presses: %d\n%s | releases: %d",a.m2Last or "No M2 down",a.m2Presses or 0,a.m2LastRelease or "No M2 up",a.m2Releases or 0)
