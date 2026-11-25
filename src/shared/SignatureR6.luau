@@ -63,10 +63,10 @@ clips["Wavy Expressive"]=cycle({
  P(J(-10,20,-10,-.12,.11,-.19),J(-32,-14,24,.09,.03,.15),J(62,18,-32,-.12,.13,-.41),J(-35,4,6,.04,.11,.12),J(47,-4,-6,-.04,.13,-.36),J(6,-17,10))
 })
 -- Positive torso pitch leans back from the -Z facing direction.
+-- Relaxed levitation silhouette. Independent continuous channels below
+-- replace the previous rigid three-pose loop for grounded Godly Aura.
 clips["Godly Aura"]={
- P(J(30,0,-1,0,.02,.08),J(-62,-8,17,.035,.02,.15),J(-60,8,-17,-.035,.02,.15),J(-52,0,3,.015,.12,.27),J(-34,0,-2,-.015,.025,.13),J(-27)),
- P(J(33,2,1,.015,.03,.10),J(-65,-8,20,.035,.03,.17),J(-62,8,-18,-.035,.03,.16),J(-56,0,3,.015,.14,.30),J(-36,0,-2,-.015,.03,.15),J(-30,-2)),
- P(J(31,-2,0,-.015,.02,.09),J(-61,-8,18,.035,.02,.16),J(-64,8,-20,-.035,.02,.17),J(-53,0,3,.015,.13,.28),J(-34,0,-2,-.015,.025,.14),J(-28,2))
+ P(J(19),J(-37,-5,18),J(-34,5,-17),J(-35,0,3,.015,.05,.15),J(-21,0,-2,-.015,0,.04),J(-16))
 }
 clips["Harpy Glide"]={
  P(J(-23,0,0,0,0,-.1),J(-30,-10,56,.06,.03,.12),J(-30,10,-56,-.06,.03,.12),J(-5,0,2),J(-5,0,-2),J(21)),
@@ -119,7 +119,7 @@ local jump={
  ["Little Duck"]=P(J(-7,0,5),J(6,-12,105),J(6,12,-105),J(36,18,10,.04,.23,-.13),J(36,-18,-10,-.04,.23,-.13),J(7)),
  ["Doll Walk"]=P(J(10,18,8),J(58,-14,45,.06,.17,-.13),J(63,15,-48,-.06,.17,-.15),J(19,0,8,.05,.24,-.06),J(-27,0,-8),J(-16,-16,-10)),
  ["Wavy Expressive"]=P(J(-26,16,-10,.1,0,-.32),J(112,-8,35,.1,.2,-.4),J(33,13,-64,-.1,.1,-.24),J(57,5,5,.04,.34,-.35),J(-22,-5,-7),J(20,-18,9)),
- ["Godly Aura"]=P(J(34),J(-66,-8,25,.04,.03,.16),J(-64,8,-25,-.04,.03,.16),J(-59,0,4,.02,.17,.31),J(-37,0,-2,-.02,.04,.15),J(-30)),
+ ["Godly Aura"]=P(J(23),J(-46,-8,30),J(-44,8,-29),J(-40,0,4,.02,.10,.18),J(-25,0,-3,-.02,.025,.06),J(-19)),
  Fighter=P(J(-18,-6),J(45),J(45),J(57,0,4,.03,.29,-.24),J(-29,0,-4),J(13,4)),
  Skater=P(J(-30,58,0,0,-.15,0),J(36,-10,52),J(-12,10,-58),J(38,0,9,.12,.35,-.1),J(38,0,-9,-.12,.35,.1),J(26,-51)),
 }
@@ -132,7 +132,7 @@ local fall={
  ["Little Duck"]=P(J(7,0,-4),J(15,-10,65),J(15,10,-65),J(-8,20,13),J(-8,-20,-13),J(-6)),
  ["Doll Walk"]=P(J(19,-14,-11),J(136,-8,29,.04,.12,0),J(117,10,-33,-.04,.12,0),J(-12,0,10),J(24,0,-10),J(-22,12,14)),
  ["Wavy Expressive"]=P(J(12,-15,17,.12,0,-.14),J(30,-13,92,.08,.1,-.22),J(102,15,-30,-.1,.1,-.28),J(22,5,10),J(-19,-4,-6),J(-8,20,-15)),
- ["Godly Aura"]=P(J(26),J(-43,-10,43,.03,.02,.10),J(-43,10,-43,-.03,.02,.10),J(-47,0,3,.02,.10,.23),J(-29,0,-2,-.02,.02,.11),J(-22)),
+ ["Godly Aura"]=P(J(17),J(-30,-10,43),J(-29,10,-42),J(-31,0,3,.02,.06,.12),J(-19,0,-2,-.02,.015,.04),J(-14)),
  ["Harpy Glide"]=P(J(-13),J(-11,-12,78),J(-11,12,-78),J(-13,0,3),J(-13,0,-3),J(10)),
  Skater=P(J(5,10,-3),J(48),J(48),J(16,0,7),J(-10,0,-6),J(-4,-8)),
  Fighter=P(J(7,-6),J(40),J(40),J(23,0,6),J(16,0,-6),J(-5,5)),
@@ -157,7 +157,23 @@ local function aerial(style,t,jumping,phase)
  else p.Root[3]+=wave*2 end
  return p
 end
+-- Phase is a normalized 3.6-second cycle supplied by the viewport clock.
+local function godlyFloat(phase,moving)
+ local a=phase*2*math.pi
+ local pitch=17+3*moving+2*math.sin(a)
+ local r=math.sin(a-.65)
+ local l=math.sin(a-1.05)
+ return P(
+  J(pitch,1.5*math.sin(a),1.4*math.sin(a),.018*math.sin(a),0,.035),
+  J(-34-7*moving+4*r,-5,18+2*r,.025,.015,.09+.025*r),
+  J(-32-7*moving+4*l,5,-17-2*l,-.025,.015,.08+.025*l),
+  J(-pitch-14+3*math.sin(a-.8),0,3,.015,.065+.025*r,.16+.035*r),
+  J(-pitch-2+2*math.sin(a-1.2),0,-2,-.015,.015+.015*l,.045+.02*l),
+  J(-pitch+3+1.5*math.sin(a-.25),-math.sin(a),-math.sin(a))
+ )
+end
 function M.get(style,phase,moving,air,airProgress,jumping)
+ if style=="Godly Aura" and not air then return godlyFloat(phase,moving) end
  local clip=clips[style];if not clip then return nil end
  if air then return aerial(style,airProgress,jumping,phase) end
  if moving<.08 then
