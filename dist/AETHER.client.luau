@@ -2754,6 +2754,7 @@ local function avatarPreview(ui,a,worldMode)
     local airborne=demoState=="Jump" or demoState=="Fall"
     virtual={movement=if demoState=="Idle" then 0 elseif demoState=="Walk" then .78 else 1,grounded=not airborne,jumping=demoState=="Jump",state=state,speed=if demoState=="Run" then 24 else 16,fullPose=true,originStrength=demoOrigin,loopAir=true}
    end
+   virtual.props=showProps
    motion:step(rig,demo,dt,virtual)
   else
    motion:bind(nil)
@@ -2765,7 +2766,7 @@ local function avatarPreview(ui,a,worldMode)
     if link.forward then e.p1.CFrame=e.p0.CFrame*offset else e.p0.CFrame=e.p1.CFrame*offset:Inverse() end
    end
   end
-  if showProps and not settings.reduce and motion.signatureActive then props:update(rig,settings.walkStyle,motion.phase,motion.airProgress) else props:clear() end
+  if showProps and not settings.reduce and motion.signatureActive then props:update(rig,settings.walkStyle,motion.phase,motion.previewState) else props:clear() end
  end
  local function refresh(char)
   generation+=1
@@ -3265,7 +3266,7 @@ function P:build(kind)
   items.strings={}
   for i=1,5 do items.strings[i]=part(root,"PuppetThread",Vector3.new(.025,.025,1),pale) end
  elseif kind=="Fighter" then
-  items.handle=part(root,"FantasyPropGrip",Vector3.new(.19,.57,.19),dark)
+  items.handle=part(root,"FantasyPropGrip",Vector3.new(.21,.91,.21),dark)
   items.guard=part(root,"FantasyPropOrnament",Vector3.new(.65,.12,.24),violet)
   items.blade=part(root,"FantasyLightBlade",Vector3.new(.24,2.05,.10),pale)
   items.blade.Material=Enum.Material.Neon
@@ -3276,7 +3277,7 @@ end
 local function line(p,a,b)
  local d=b-a;p.Size=Vector3.new(.025,.025,math.max(.025,d.Magnitude));p.CFrame=CFrame.lookAt((a+b)/2,b)
 end
-function P:update(rig,kind,phase,airProgress)
+function P:update(rig,kind,phase,state)
  local torso=rig and rig:FindFirstChild("Torso")
  local ra=rig and rig:FindFirstChild("Right Arm")
  local la=rig and rig:FindFirstChild("Left Arm")
@@ -3287,10 +3288,20 @@ function P:update(rig,kind,phase,airProgress)
  if not torso or not ra or not la or not rl or not ll or not head or not root or (kind~="Skater" and kind~="Doll Walk" and kind~="Fighter") then self:clear();return end
  if self.kind~=kind then self:build(kind) end
  local q=self.parts
+ local function grip(arm,side,target)
+  local shoulder=torso.CFrame:PointToWorldSpace(Vector3.new(side*(torso.Size.X/2+arm.Size.X*.35),torso.Size.Y*.25,0))
+  local d=target-shoulder;if d.Magnitude<.001 then return end
+  local y=-d.Unit;local x=y:Cross(torso.CFrame.LookVector)
+  if x.Magnitude<.001 then x=y:Cross(torso.CFrame.UpVector) end
+  if x.Magnitude<.001 then return end
+  x=x.Unit;local z=x:Cross(y).Unit
+  arm.CFrame=CFrame.fromMatrix(target+y*(arm.Size.Y/2),x,y,z)
+ end
  if kind=="Fighter" then
-  -- An oversized stylized light prop, permanently attached to the hand pose.
-  local cf=ra.CFrame*CFrame.new(0,-ra.Size.Y/2+.10,0)*CFrame.Angles(math.rad(75),0,math.rad(8))
-  q.handle.CFrame=cf;q.guard.CFrame=cf*CFrame.new(0,.34,0);q.blade.CFrame=cf*CFrame.new(0,1.38,0);q.tip.CFrame=cf*CFrame.new(0,2.40,0)
+  local cf=torso.CFrame*CFrame.new(0,-.12,-1.26)*CFrame.Angles(math.rad(-22),0,math.rad(-13))
+  grip(ra,1,cf:PointToWorldSpace(Vector3.new(0,.23,0)))
+  grip(la,-1,cf:PointToWorldSpace(Vector3.new(0,-.23,0)))
+  q.handle.CFrame=cf;q.guard.CFrame=cf*CFrame.new(0,.48,0);q.blade.CFrame=cf*CFrame.new(0,1.56,0);q.tip.CFrame=cf*CFrame.new(0,2.58,0)
  elseif kind=="Doll Walk" then
   local bar=CFrame.new(head.Position+Vector3.new(.08*math.sin(phase),1.65,0))*root.CFrame.Rotation*CFrame.Angles(0,0,.12*math.sin(phase))
   q.bar.CFrame=bar;q.cross.CFrame=bar
@@ -3298,11 +3309,24 @@ function P:update(rig,kind,phase,airProgress)
   local anchors={Vector3.new(1.2,0,0),Vector3.new(-1.2,0,0),Vector3.new(0,0,0),Vector3.new(.45,0,.7),Vector3.new(-.45,0,-.7)}
   for i=1,5 do line(q.strings[i],bar:PointToWorldSpace(anchors[i]),targets[i]) end
  else
-  local a=rl.CFrame:PointToWorldSpace(Vector3.new(0,-rl.Size.Y/2,0))
-  local b=ll.CFrame:PointToWorldSpace(Vector3.new(0,-ll.Size.Y/2,0))
-  local center=(a+b)/2
-  local rotation=root.CFrame.Rotation*CFrame.Angles(0,math.rad(52)+(airProgress or 0)*math.pi*2,0)
-  local cf=CFrame.new(center.X,math.min(a.Y,b.Y)-.10,center.Z)*rotation
+  local cf
+  if state==Enum.HumanoidStateType.Freefall then
+   cf=torso.CFrame*CFrame.new(0,-.5,-1.35)*CFrame.Angles(math.rad(8),math.rad(90),math.rad(8))
+   grip(ra,1,cf:PointToWorldSpace(Vector3.new(0,.12,1.03)))
+   grip(la,-1,cf:PointToWorldSpace(Vector3.new(0,.12,-1.03)))
+  else
+   local a=rl.CFrame:PointToWorldSpace(Vector3.new(0,-rl.Size.Y/2,0))
+   local b=ll.CFrame:PointToWorldSpace(Vector3.new(0,-ll.Size.Y/2,0))
+   local function bottom(p)
+    local sz=p.Size/2;local r=p.CFrame
+    return p.Position.Y-math.abs(r.RightVector.Y)*sz.X-math.abs(r.UpVector.Y)*sz.Y-math.abs(r.LookVector.Y)*sz.Z
+   end
+   local center=(a+b)/2
+   local z=Vector3.new(a.X-b.X,0,a.Z-b.Z)
+   if z.Magnitude<.001 then z=root.CFrame.LookVector end
+   z=z.Unit;local y=Vector3.yAxis;local x=y:Cross(z).Unit
+   cf=CFrame.fromMatrix(Vector3.new(center.X,math.min(bottom(rl),bottom(ll))-.095,center.Z),x,y,z)
+  end
   q.deck.CFrame=cf;q.grip.CFrame=cf*CFrame.new(0,.08,0)
   for i=1,2 do local side=if i==1 then -1 else 1;q.ends[i].CFrame=cf*CFrame.new(0,.01,side*1.65)*CFrame.Angles(0,0,math.pi/2) end
   for i=1,4 do local x=if i%2==0 then .65 else -.65;local z=if i<3 then 1.02 else -1.02;q.wheels[i].CFrame=cf*CFrame.new(x,-.20,z)*CFrame.Angles(phase*2,0,0) end
@@ -3527,17 +3551,16 @@ clips["Wavy Expressive"]=cycle({
  P(J(-8,9,-7,-.08,.10,-.21),J(-6,-8,47,.13,.08,-.21),J(43,15,-17,-.1,.15,-.38),J(-20,4,5,.03,.03,.09),J(41,-4,-7,-.05,.28,-.32),J(4,-12,9)),
  P(J(-10,20,-10,-.12,.11,-.19),J(-32,-14,24,.09,.03,.15),J(62,18,-32,-.12,.13,-.41),J(-35,4,6,.04,.11,.12),J(47,-4,-6,-.04,.13,-.36),J(6,-17,10))
 })
+-- Positive torso pitch leans back from the -Z facing direction.
 clips["Godly Aura"]={
- P(J(-14,0,-2,0,.12,-.12),J(-43,-8,22,.05,.04,.19),J(-43,8,-22,-.05,.04,.19),J(8,0,4,.02,.07,-.06),J(-12,0,-4,-.02,.12,.08),J(11,0,1)),
- P(J(-17,4,3,.04,.18,-.14),J(-51,-6,27,.07,.07,.25),J(-47,9,-24,-.05,.05,.23),J(-8,0,3,.03,.12,.05),J(15,0,-4,-.02,.1,-.12),J(13,-4,-2)),
- P(J(-12,-3,-2,-.03,.10,-.1),J(-42,-9,21,.05,.03,.19),J(-48,7,-24,-.06,.04,.22),J(15,0,4,.02,.10,-.12),J(-8,0,-4,-.02,.07,.05),J(10,3,2)),
- P(J(-15,0,0,0,.15,-.13),J(-49,-8,25,.06,.06,.23),J(-49,8,-25,-.06,.06,.23),J(-9,0,3,.02,.10,.05),J(8,0,-3,-.02,.07,-.06),J(12))
+ P(J(14,0,-1,0,.02,.04),J(-48,-8,20,.04,.02,.12),J(-48,8,-20,-.04,.02,.12),J(-8,0,2),J(-10,0,-2),J(-12)),
+ P(J(17,2,1,.015,.03,.05),J(-51,-8,23,.04,.03,.14),J(-49,8,-21,-.04,.03,.14),J(-11,0,2),J(-7,0,-2),J(-15,-2)),
+ P(J(15,-2,0,-.015,.02,.04),J(-49,-8,21,.04,.02,.13),J(-51,8,-23,-.04,.02,.13),J(-7,0,2),J(-11,0,-2),J(-13,2))
 }
 clips["Harpy Glide"]={
- P(J(-24,0,0,0,-.03,-.1),J(-24,-14,63,.09,.04,.14),J(-24,14,-63,-.09,.04,.14),J(-9,0,4,.03,.09,.08),J(-14,0,-4,-.03,.09,.1),J(19)),
- P(J(-27,5,4,.035,-.01,-.13),J(-29,-14,48,.08,.07,.15),J(-21,14,-69,-.09,.07,.1),J(-11,0,4,.03,.07,.09),J(-9,0,-4,-.03,.07,.08),J(22,-5,-3)),
- P(J(-21,0,0,0,-.04,-.09),J(-19,-12,58,.08,.03,.12),J(-19,12,-58,-.08,.03,.12),J(-12,0,3,.03,.09,.09),J(-12,0,-3,-.03,.09,.09),J(17)),
- P(J(-26,-5,-4,-.035,-.01,-.12),J(-21,-14,69,.09,.07,.1),J(-29,14,-48,-.08,.07,.15),J(-9,0,4,.03,.07,.08),J(-11,0,-4,-.03,.07,.09),J(21,5,3))
+ P(J(-23,0,0,0,0,-.1),J(-30,-10,56,.06,.03,.12),J(-30,10,-56,-.06,.03,.12),J(-5,0,2),J(-5,0,-2),J(21)),
+ P(J(-25,3,2,0,0,-.1),J(-36,-10,48),J(-28,10,-62),J(-5,0,2),J(-5,0,-2),J(23,-3,-2)),
+ P(J(-22,-3,-2,0,0,-.1),J(-28,-10,62),J(-36,10,-48),J(-5,0,2),J(-5,0,-2),J(19,3,2))
 }
 clips.Skater={
  P(J(-8,52,-8,.05,-.18,0),J(15,-12,64,.05,.03,-.07),J(-22,13,-35,-.06,.03,.06),J(8,0,8,.12,.03,-.12),J(-6,0,-9,-.12,.03,.1),J(5,-45,5)),
@@ -3556,7 +3579,7 @@ for _,p in clips.Fighter do p.RightShoulder=J(44,-5,9,.03,.08,-.12) end
 local idle={
  Tsundere=P(J(5,-10,6,.03,0,0),J(66,-29,-17,-.12,.09,-.19),J(8,20,-11,-.02,.01,0),J(0,4,-3),J(0,-4,3),J(-8,25,-12)),
  Zombie=P(J(-16,8,7,0,0,-.06),J(48,-10,17,.02,.05,-.06),J(27,10,-17,-.02,.03,-.02),J(4,0,3),J(-5,0,-4),J(-9,-10,12)),
- ["Godly Aura"]=P(J(0,0,0,0,.14,0),J(-8,-10,33,.04,.02,.03),J(-8,10,-33,-.04,.02,.03),J(0,0,3),J(0,0,-3),J(-4)),
+ ["Godly Aura"]=P(J(16,0,0,0,0,.03),J(-28,-10,33,.04,.02,.10),J(-28,10,-33,-.04,.02,.10),J(-9,0,2),J(-9,0,-2),J(-14)),
  ["Harpy Glide"]=P(J(-4),J(-5,-12,40),J(-5,12,-40),J(),J(),J(4)),
  Fighter=P(J(-3,-5,0),J(44,-5,9,.03,.08,-.12),J(14,18,-22,-.05,.05,-.05),J(4,0,3),J(-4,0,-3),J(3,4)),
  Skater=clips.Skater[1],["Doll Walk"]=clips["Doll Walk"][1],["Little Duck"]=P(J(),J(0,0,25),J(0,0,-25),J(),J()),
@@ -3576,19 +3599,56 @@ local function sample(clip,phase)
  k=k*k*(3-2*k)
  return interp(clip[i+1],clip[(i+1)%#clip+1],k)
 end
-local function aerial(style,t)
+local jump={
+ Heroic=P(J(-18,-12,3),J(112,-8,23),J(-24,12,-18),J(62,0,4,.03,.3,-.25),J(-36,0,-4),J(13)),
+ ["Anime Hero"]=P(J(-38),J(-68,-8,15),J(-68,8,-15),J(55,0,4,.03,.32,-.22),J(-48,0,-4),J(31)),
+ Zombie=P(J(-28,20,-17),J(137,-22,46),J(68,17,-64),J(61,8,18,.04,.3,-.25),J(-38,-13,-21),J(-20,28,24)),
+ ["Retro Zombie"]=P(J(-12,14,12),J(94,-10,21),J(73,10,-24),J(28,8,12),J(-19,-7,-13),J(-15,-16,15)),
+ Tsundere=P(J(8,-18,9),J(74,-34,-18,-.13,.12,-.24),J(40,14,-26),J(38,5,-5,.02,.23,-.19),J(20,-4,4,-.03,.2,-.09),J(-10,26,-15)),
+ ["Little Duck"]=P(J(-7,0,5),J(6,-12,105),J(6,12,-105),J(36,18,10,.04,.23,-.13),J(36,-18,-10,-.04,.23,-.13),J(7)),
+ ["Doll Walk"]=P(J(10,18,8),J(58,-14,45,.06,.17,-.13),J(63,15,-48,-.06,.17,-.15),J(19,0,8,.05,.24,-.06),J(-27,0,-8),J(-16,-16,-10)),
+ ["Wavy Expressive"]=P(J(-26,16,-10,.1,0,-.32),J(112,-8,35,.1,.2,-.4),J(33,13,-64,-.1,.1,-.24),J(57,5,5,.04,.34,-.35),J(-22,-5,-7),J(20,-18,9)),
+ ["Godly Aura"]=P(J(18),J(-52,-8,33),J(-52,8,-33),J(-5,0,4,.02,.08,-.08),J(-5,0,-4,-.02,.08,-.08),J(-15)),
+ Fighter=P(J(-18,-6),J(45),J(45),J(57,0,4,.03,.29,-.24),J(-29,0,-4),J(13,4)),
+ Skater=P(J(-30,58,0,0,-.15,0),J(36,-10,52),J(-12,10,-58),J(38,0,9,.12,.35,-.1),J(38,0,-9,-.12,.35,.1),J(26,-51)),
+}
+local fall={
+ Heroic=P(J(9,3,-3),J(21,-10,62),J(35,12,-56),J(18,0,5),J(-12,0,-5),J(-9)),
+ ["Anime Hero"]=P(J(-14),J(-44,-10,27),J(-44,10,-27),J(23,0,4,.02,.13,-.08),J(18,0,-4,-.02,.13,-.08),J(11)),
+ Zombie=P(J(14,-22,24),J(158,25,52),J(-24,-17,-82),J(-39,17,24),J(53,-14,-19,.02,.15,-.16),J(-22,32,-29)),
+ ["Retro Zombie"]=P(J(13,12,-16),J(78,-14,58),J(97,18,-42),J(-12,14,15),J(20,-9,-12),J(12,-17,20)),
+ Tsundere=P(J(12,12,-7),J(82,-28,-13,-.13,.09,-.23),J(82,22,-37),J(12,2,-4),J(8,-2,4),J(-16,-24,13)),
+ ["Little Duck"]=P(J(7,0,-4),J(15,-10,65),J(15,10,-65),J(-8,20,13),J(-8,-20,-13),J(-6)),
+ ["Doll Walk"]=P(J(19,-14,-11),J(136,-8,29,.04,.12,0),J(117,10,-33,-.04,.12,0),J(-12,0,10),J(24,0,-10),J(-22,12,14)),
+ ["Wavy Expressive"]=P(J(12,-15,17,.12,0,-.14),J(30,-13,92,.08,.1,-.22),J(102,15,-30,-.1,.1,-.28),J(22,5,10),J(-19,-4,-6),J(-8,20,-15)),
+ ["Godly Aura"]=P(J(10),J(-18,-10,54),J(-18,10,-54),J(-5,0,3),J(-5,0,-3),J(-8)),
+ ["Harpy Glide"]=P(J(-13),J(-11,-12,78),J(-11,12,-78),J(-13,0,3),J(-13,0,-3),J(10)),
+ Skater=P(J(5,10,-3),J(48),J(48),J(16,0,7),J(-10,0,-6),J(-4,-8)),
+ Fighter=P(J(7,-6),J(40),J(40),J(23,0,6),J(16,0,-6),J(-5,5)),
+}
+local function aerial(style,t,jumping,phase)
  local u=math.clamp(t,0,1)
- local ease=u*u*(3-2*u)
- if style=="Harpy Glide" then
-  return P(J(-360*ease,0,0,0,.25*math.sin(math.pi*u),0),J(28,-10,35,.06,.10,-.08),J(28,10,-35,-.06,.10,-.08),J(35,0,8,.04,.22,-.14),J(35,0,-8,-.04,.22,-.14),J(-5))
- elseif style=="Skater" then
-  return P(J(-8,52+360*ease,9*math.sin(math.pi*u),0,.13,0),J(22,-12,62),J(-22,12,-62),J(18,0,8,.12,.12,-.10),J(15,0,-8,-.12,.12,.10),J(3,-45))
+ if jumping and style=="Harpy Glide" then
+  local ease=u*u*(3-2*u);local tuck=math.sin(math.pi*u)
+  return P(J(-360*ease),J(28*tuck,-10,40),J(28*tuck,10,-40),J(35*tuck,0,5,0,.18*tuck,-.1*tuck),J(35*tuck,0,-5,0,.18*tuck,-.1*tuck),J())
+ elseif jumping and style=="Skater" then
+  return interp(clips.Skater[1],jump.Skater,.35+.65*math.sin(math.pi*u))
  end
- return nil
+ local target=(if jumping then jump else fall)[style]
+ if not target then return nil end
+ local p=interp(target,target,0)
+ local wave=math.sin(phase*2*math.pi*(if style=="Zombie" then 2 else 1))
+ if style=="Zombie" or style=="Retro Zombie" then
+  p.Root[3]+=wave*12;p.RightShoulder[1]+=wave*23;p.LeftShoulder[1]-=wave*26;p.Neck[3]+=wave*9
+ elseif style=="Little Duck" then p.RightShoulder[3]+=wave*25;p.LeftShoulder[3]-=wave*25
+ elseif style=="Doll Walk" then p.RightShoulder[1]+=wave*14;p.LeftShoulder[1]-=wave*14
+ elseif style=="Godly Aura" or style=="Harpy Glide" then p.RightShoulder[3]+=wave*6;p.LeftShoulder[3]-=wave*6
+ else p.Root[3]+=wave*2 end
+ return p
 end
-function M.get(style,phase,moving,air,airProgress)
+function M.get(style,phase,moving,air,airProgress,jumping)
  local clip=clips[style];if not clip then return nil end
- if air then return aerial(style,airProgress) end
+ if air then return aerial(style,airProgress,jumping,phase) end
  if moving<.08 then
   local a=idle[style] or P(J(),J(),J(),J(),J())
   local b=interp(a,clip[1],.12+.06*math.sin(phase*2*math.pi))
@@ -4671,13 +4731,14 @@ function W:step(character,s,dt,preview)
  local ph=self.phase;local wave=math.sin(ph);local cross=math.cos(ph)
  local weight=self.blend
  local j=self.motors
- self.signatureActive=false;self.airProgress=0
+ self.signatureActive=false;self.airProgress=0;self.previewState=state
  if fullPreview and hum.RigType==Enum.HumanoidRigType.R6 and not swimming and not climbing then
-  if airborne then self.airTime=(if self.wasAir then self.airTime or 0 else 0)+dt else self.airTime=0 end
+  if airborne then self.airTime=(if self.wasAir and self.lastAirState==state then self.airTime or 0 else 0)+dt else self.airTime=0 end
+  self.lastAirState=state
   self.wasAir=airborne
   -- Character tab repeats its preview jump; the simulator plays one turn.
   local airProgress=if airborne then (if virtual.loopAir then (self.airTime/.82)%1 else math.clamp(self.airTime/.82,0,1)) else 0
-  local signature=Signature.get(style,ph/(2*math.pi),moving,airborne,airProgress)
+  local signature=Signature.get(style,ph/(2*math.pi),moving,airborne,airProgress,jumping)
   if signature then
    local strength=math.clamp((virtual.originStrength or 100)/100,0,1)
    local function apply(m,v)
@@ -4689,21 +4750,44 @@ function W:step(character,s,dt,preview)
     m.Transform=basis:Inverse()*body*basis
    end
    for name,v in signature do apply(j[name],v) end
-   -- Plant the lowest foot at neutral floor height in grounded cycles.
-   -- Adjust only the visual root transform, never HumanoidRootPart.
-   if not airborne and j.Root and j.RightHip and j.LeftHip then
-    local function bottom(m,torso,animated)
-     local cf=torso*m.C0*(if animated then m.Transform else CFrame.identity)*m.C1:Inverse()
+   -- Root-local foot contact for the anchored viewport rig.
+   local root=j.Root
+   if root and j.RightHip and j.LeftHip and root.Part1 then
+    local function legCF(m,torso,animated)
+     return torso*m.C0*(if animated then m.Transform else CFrame.identity)*m.C1:Inverse()
+    end
+    local function bottom(m,cf)
      local sz=m.Part1.Size/2
      return cf.Position.Y-math.abs(cf.RightVector.Y)*sz.X-math.abs(cf.UpVector.Y)*sz.Y-math.abs(cf.LookVector.Y)*sz.Z
     end
-    local root=j.Root
     local neutral=root.C0*root.C1:Inverse()
     local posed=root.C0*root.Transform*root.C1:Inverse()
-    local floor=math.min(bottom(j.RightHip,neutral,false),bottom(j.LeftHip,neutral,false))
-    local low=math.min(bottom(j.RightHip,posed,true),bottom(j.LeftHip,posed,true))
-    local hover=if style=="Godly Aura" then .18 elseif style=="Harpy Glide" then .035 elseif style=="Skater" then .28 else 0
-    local dy=math.clamp(floor-low+hover*weight,-.85,.85)
+    local r,l=j.RightHip,j.LeftHip
+    local board=style=="Skater" and not falling and virtual.props~=false
+    local rlow=bottom(r,legCF(r,posed,true))
+    local llow=bottom(l,legCF(l,posed,true))
+    if board or style=="Harpy Glide" and not airborne then
+     local low=math.min(rlow,llow)
+     for _,m in {r,l} do
+      local d=low-bottom(m,legCF(m,posed,true))
+      local localDelta=posed:VectorToObjectSpace(Vector3.new(0,d,0))
+      m.Transform=m.C0.Rotation:Inverse()*CFrame.new(localDelta)*m.C0.Rotation*m.Transform
+     end
+     rlow=bottom(r,legCF(r,posed,true));llow=bottom(l,legCF(l,posed,true))
+    end
+    local floor=math.min(bottom(r,legCF(r,neutral,false)),bottom(l,legCF(l,neutral,false)))
+    local low=math.min(rlow,llow)
+    local hover=if style=="Godly Aura" then .16+.025*math.sin(ph*.7) elseif board then .40 else 0
+    local dy=0
+    if not airborne then
+     dy=floor-low+hover*weight
+    elseif virtual.loopAir then
+     local h=if jumping then 1.7*math.sin(math.pi*airProgress) else 1.7*(1-airProgress*airProgress)
+     dy=floor-low+h+hover*weight
+     if style=="Harpy Glide" and jumping then dy=1.8*math.sin(math.pi*airProgress)+.85 end
+    else
+     dy=hover*weight
+    end
     root.Transform=root.C0.Rotation:Inverse()*CFrame.new(0,dy,0)*root.C0.Rotation*root.Transform
    end
    self.signatureActive=true;self.airProgress=airProgress
@@ -4784,6 +4868,7 @@ function W:step(character,s,dt,preview)
   -- Full-body state-specific choreography; these are original preview poses.
   local st=pack or {}
   local flair=math.clamp((st.spread or .12)*.32,0,.2)
+  local airRest=st.rest or 0;local airLean=st.lean or 0;local airStride=st.stride or .20;local airRoll=st.roll or .04
   local function ang(m,x,y,z) add(m,CFrame.Angles(x*weight,y*weight,z*weight)) end
   if swimming then
    local stroke=math.sin(ph*.8)
@@ -4805,10 +4890,10 @@ function W:step(character,s,dt,preview)
    ang(j.Neck,-.12,0,0)
   else
    local float=st.hover or 0
-   local tuck=if jumping then .29 else .10
-   add(j.Root,CFrame.new(0,(if jumping then .25 else .12)*weight+float*.5*weight,0)*CFrame.Angles((if jumping then -.12 else .10)*weight,0,.035*wave*weight))
-   ang(j.RightShoulder,if jumping then .48 else .16,0,-.29-flair)
-   ang(j.LeftShoulder,if jumping then .38 else .16,0,.29+flair)
+   local tuck=(if jumping then .18 else .06)+airStride*.45
+   add(j.Root,CFrame.new(0,(if jumping then .25 else .12)*weight+float*.5*weight,0)*CFrame.Angles(((if jumping then -.12 else .10)+airLean)*weight,0,(.035+airRoll*.4)*wave*weight))
+   ang(j.RightShoulder,(if jumping then .48 else .16)+airRest,0,-.29-flair)
+   ang(j.LeftShoulder,(if jumping then .38 else .16)+airRest,0,.29+flair)
    ang(j.RightElbow,-.24,0,0);ang(j.LeftElbow,-.24,0,0)
    ang(j.RightHip,tuck+.10,0,0);ang(j.LeftHip,tuck-.08,0,0)
    ang(j.RightKnee,-tuck-.12,0,0);ang(j.LeftKnee,-tuck,0,0)
