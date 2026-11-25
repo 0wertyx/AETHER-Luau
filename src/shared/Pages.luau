@@ -739,14 +739,14 @@ function E.render(a,tab,ui)
   keyButton.Size=UDim2.new(1,-8,1,-8);keyButton.Position=UDim2.fromOffset(4,4)
   ui.page:on(keyButton.Activated,function() a.bindingLockKey=not a.bindingLockKey;ui:sync() end)
   ui:watch(function() keyButton.Text=if a.bindingLockKey then "PRESS ANY KEY · click to cancel" else "CHANGE KEY · "..a.s.lockKey end)
-  ui:note("All keyboard codes, including LeftShift and RightShift. Roblox-reserved keys may be consumed by the game or system. Click the capture button again to cancel.",50)
+  ui:note("All keyboard codes can be selected. Block both Shift keys suppresses Shift actions such as sprint; AETHER can still observe its selected key. Click again to cancel.",50)
   ui.page:add(function() a.bindingLockKey=false end)
   local lockStatus=ui:note("",45)
   ui:watch(function()
-   lockStatus.Text=if a.view:nativeLockAvailable() then "Native Shift Lock is controlled by the place. In Roblox Settings turn Shift Lock Switch off. Both Shift keys remain free."
+   lockStatus.Text=if a.view:nativeLockAvailable() then "Native Shift Lock is controlled by the place. In Roblox Settings turn Shift Lock Switch off. Use Block both Shift keys to suppress their standard input actions."
     elseif not a.s.lock then "CUSTOM LOCK OFF · "..a.s.lockKey.." toggles; "..S.menuKey(a.s).." opens Studio."
     elseif a.s.cameraMode~="Follow" then "CUSTOM LOCK WAITING · Select Follow camera."
-    else "CUSTOM LOCK READY · "..a.s.lockKey.." toggles AETHER only. Both Shift keys pass through."
+    else "CUSTOM LOCK READY · "..a.s.lockKey.." toggles AETHER only. Shift input blocking follows the Block both Shift keys setting."
   end)
   ui:title("SHIFT-LOCK / RETICLE")
   for _,k in {"cross","crossScale","crossAlpha"} do ui:control(k) end

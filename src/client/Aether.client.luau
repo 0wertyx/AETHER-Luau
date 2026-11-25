@@ -4,6 +4,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
@@ -59,6 +60,16 @@ local app = {
     cues = nil, lastVitals = nil, altLock = false,
 }
 app.s = app.bank.settings
+-- Use an ordinary input action, scoped to this AETHER instance.
+local shiftBlockAction = "AETHER_BlockShift_"..game:GetService("HttpService"):GenerateGUID(false)
+local function blockShift(_, _, input)
+    if app.stopping or not gui.Parent or not app.s.blockShift or UserInputService:GetFocusedTextBox() or game:GetService("GuiService").MenuIsOpen then
+        return Enum.ContextActionResult.Pass
+    end
+    return Enum.ContextActionResult.Sink
+end
+ContextActionService:BindActionAtPriority(shiftBlockAction, blockShift, false, Enum.ContextActionPriority.High.Value+200, Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift)
+scope:add(function() ContextActionService:UnbindAction(shiftBlockAction) end)
 
 function app:log(topic, message)
     local stamp = os.date("%H:%M:%S")
