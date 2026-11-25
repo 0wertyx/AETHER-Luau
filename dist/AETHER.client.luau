@@ -4836,6 +4836,7 @@ return P
 end
 -- END MODULE PeerVisuals
 
+
 -- BEGIN MODULE PreviewProps
 __aether_factories["PreviewProps"] = function()
 -- Local decorative props for the viewport and the local avatar. No Tools, hitboxes or collision.
