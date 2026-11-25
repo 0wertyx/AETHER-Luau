@@ -1,4 +1,5 @@
 local Input=game:GetService("UserInputService");local Gui=game:GetService("GuiService");local U=require(script.Parent.Util);local VectorCursor=require(script.Parent.VectorCursor)
+local CursorTrail=require(script.Parent.CursorTrail)
 local V={};V.__index=V
 local preferences=UserSettings():GetService("UserGameSettings")
 -- Do not run a second shoulder controller while Roblox owns mouse lock.
@@ -10,7 +11,7 @@ function V:nativeLockAvailable()
  return not ok or available
 end
 function V.new(player,layer)
- local self=setmetatable({player=player,angle=0,clock=0,trails={},trailPoints={}},V)
+ local self=setmetatable({player=player,angle=0,clock=0},V)
  -- This anchor marks the exact click pixel. Animated skin always rotates AROUND it.
  self.pointer=U.frame(layer,"MouseHotspot",nil,UDim2.fromOffset(1,1),nil,1)
  self.pointer.Active=false;self.pointer.Interactable=false;self.pointer.Visible=false;self.pointer.ZIndex=10
@@ -21,11 +22,7 @@ function V.new(player,layer)
   Name="Asset",BackgroundTransparency=1,Active=false,Selectable=false,
   Size=UDim2.fromScale(1,1),ScaleType=Enum.ScaleType.Fit,ZIndex=12
  },self.skin)
- for i=1,6 do
-  local dot=U.frame(layer,"CursorTail"..i,nil,UDim2.fromOffset(4,4),Color3.fromRGB(185,145,255),.5)
-  dot.AnchorPoint=Vector2.new(.5,.5);dot.Active=false;dot.Visible=false;dot.ZIndex=9
-  U.corner(dot,99);self.trails[i]=dot
- end
+ self.motionTrail=CursorTrail.new(layer)
  self.hotspotDebug=U.frame(self.pointer,"HotspotDebug",UDim2.fromOffset(-3,-3),UDim2.fromOffset(7,7),Color3.fromRGB(255,80,85),0)
  self.hotspotDebug.ZIndex=20;self.hotspotDebug.Active=false;self.hotspotDebug.Visible=false
  U.corner(self.hotspotDebug,99)
@@ -73,8 +70,7 @@ function V:preview(host,s)
 end
 function V:restoreCursor()
  if self.pointer and self.pointer.Parent then self.pointer.Visible=false end
- for _,tail in self.trails do if tail.Parent then tail.Visible=false end end
- table.clear(self.trailPoints)
+ self.motionTrail:hide()
  if self.icon~=nil then Input.MouseIconEnabled=self.icon;self.icon=nil end
 end
 function V:destroy()
@@ -82,7 +78,7 @@ function V:destroy()
  self:restoreCursor()
  if self.previewImage then self.previewImage:Destroy();self.previewImage=nil end
  self.glyph:destroy()
- for _,tail in self.trails do tail:Destroy() end
+ self.motionTrail:destroy()
  self.pointer:Destroy()
 end
 -- Keep the real click hotspot and the visual pointer aligned.
@@ -99,8 +95,7 @@ function V:cursorStep(s)
  if locked then
   self.pointer.Visible=false
   self.hotspotDebug.Visible=false
-  for _,tail in self.trails do tail.Visible=false end
-  table.clear(self.trailPoints)
+  self.motionTrail:hide()
   if s.cross then
    if self.icon==nil then self.icon=Input.MouseIconEnabled end
    Input.MouseIconEnabled=false
@@ -156,27 +151,12 @@ function V:cursorStep(s)
  self.skin.Position=UDim2.fromOffset(-cx-size*.5,-cy-size*.5)
  self.pointer.Visible=true
  self.hotspotDebug.Visible=s.cursorDebug==true
- for _,tail in self.trails do tail.Visible=s.cursorTrail==true and not s.reduce end
  -- Only suppress the native cursor after the custom cursor is ready and placed.
  if self.icon==nil then self.icon=Input.MouseIconEnabled end
  Input.MouseIconEnabled=false
  if s.cursorTrail and not s.reduce then
-  local tint=U.hex(s.cursorA or "B78AFF")
-  local previous=hit
-  for i,tail in self.trails do
-   local sampled=self.trailPoints[i] or hit
-   local factor=if i==1 then .42 else .27
-   sampled=sampled:Lerp(previous,factor)
-   self.trailPoints[i]=sampled
-   previous=sampled
-   tail.Size=UDim2.fromOffset(math.max(1,5-i*.6),math.max(1,5-i*.6))
-   tail.Position=UDim2.fromOffset(sampled.X,sampled.Y)
-   tail.BackgroundColor3=tint
-   tail.BackgroundTransparency=.24+i*.095
-  end
- else
-  table.clear(self.trailPoints)
- end
+  self.motionTrail:step(hit,s,os.clock())
+ else self.motionTrail:hide() end
 end
 function V:step(s,hum,menu,dt,t)
  self.menuOpen=menu
