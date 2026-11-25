@@ -11,7 +11,7 @@ local function segment(p,a,b,width)
  local d=b-a
  if d.Magnitude<.001 then p.Transparency=1;return false end
  p.Size=Vector3.new(width,width,d.Magnitude)
- p.CFrame=CFrame.lookAt((a+b)*.5,b)
+ p.CFrame=CFrame.lookAt((a+b)*.5,b,if math.abs(d.Unit.Y)>.98 then Vector3.xAxis else Vector3.yAxis)
  return true
 end
 function F.new() return setmetatable({pool={}},F) end
@@ -50,7 +50,7 @@ function F:step(s,now)
   local r=s.starfallSize/10*star.scale
   local opacity=s.starfallOpacity/100
   local tint=if s.starfallRainbow then Color3.fromHSV((now*.12+star.tint)%1,.55,1) else colorA:Lerp(colorB,star.tint)
-  local cf=CFrame.lookAt(star.pos,star.pos+cam.CFrame.LookVector)*CFrame.Angles(0,0,star.phase+star.age*.6)
+  local cf=CFrame.new(star.pos)*cam.CFrame.Rotation*CFrame.Angles(0,0,star.phase+star.age*.6)
   local spark=s.starfallStyle=="Sparks" or (s.starfallStyle=="Mixed" and star.spark)
   local function vertex(j)
    local a=j*math.pi*2/5+math.pi/2
