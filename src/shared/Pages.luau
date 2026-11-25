@@ -1,6 +1,7 @@
 local U=require(script.Parent.Util);local S=require(script.Parent.Schema);local MotionPacks=require(script.Parent.MotionPacks);local Symbol=require(script.Parent.Symbol);local Hud=require(script.Parent.Hud);local Avatar=require(script.Parent.Avatar);local Cues=require(script.Parent.Cues);local Http=game:GetService("HttpService")
 local WalkMotion=require(script.Parent.WalkMotion)
 local PreviewProps=require(script.Parent.PreviewProps)
+local MotionStudio=require(script.Parent.MotionStudio)
 local Input=game:GetService("UserInputService")
 local E={}
 local function names(t) local a=U.keys(t);return a end
@@ -583,7 +584,11 @@ function E.render(a,tab,ui)
   elseif k=="cross" then ui:note("Shift-Lock reticle stays at the center of the game view.",28);for _,v in {"cross","reticleSize","reticleColor","reticleNeon","reticleGlow"} do ui:control(v) end
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
-  avatarPreview(ui,a)
+  if tab=="Character" then
+   ui:title("AETHER MOTION STUDIO V12.2")
+   ui:chips({"Motion Studio","Avatar Preview"},function(n) a.motionStudioView=n;ui:open("Character") end,2,function() return a.motionStudioView or "Motion Studio" end)
+   if a.motionStudioView=="Avatar Preview" then avatarPreview(ui,a) else MotionStudio.mount(ui,a) end
+  else avatarPreview(ui,a) end
   if tab=="Character" then
    ui:title("ANIMATION PACK-INSPIRED MOTION")
    ui:note("Original AETHER styles based on the feel of Roblox avatar packs, not copied animation assets. Procedural R6/R15 poses for idle, walk, run, jump/fall, swim and climb. Visual-only motion.",55)
