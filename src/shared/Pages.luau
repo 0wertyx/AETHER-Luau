@@ -534,30 +534,6 @@ local function configs(ui,a)
   end,2)
  end
 end
-local function library(ui,a,profiles)
- local list=if profiles then a.bank.profiles else a.bank.assets;local group=a.libraryKind or "Theme";local selected=a.selection or "";local built=not profiles and S.presets[group] or {}
- if not profiles then ui:chips(S.kinds,function(k) a.libraryKind=k;a.selection=nil;ui:open("Workshop") end,4,function() return group end) end
- local function selectItem(n) a.selection=n;ui:open(ui.tab) end
- if not profiles then ui:title("BUNDLED · DUPLICATE TO EDIT");ui:chips(names(built),function(n) selectItem("@"..n) end,3,function() return selected:sub(1,1)=="@" and selected:sub(2) or "" end) end
- local user={};for k,v in list do if profiles or v.kind==group then table.insert(user,k) end end;table.sort(user);ui:title(if profiles then "NAMED HUD / FX PROFILES" else "YOUR ASSETS");if #user>0 then ui:chips(user,selectItem,3,function() return selected end) else ui:note("No saved entries in this collection yet.",23) end
- local box=ui:box("Name",a.libraryName or "",32);ui.page:on(box:GetPropertyChangedSignal("Text"),function() a.libraryName=box.Text end)
- local function name() local n=box.Text:match("^%s*(.-)%s*$");assert(#n>0 and #n<=48 and not n:match("^@") and not n:find("%c"),"Enter a name (1–48 bytes; no @ prefix)");return n end
- local function item() if not profiles and selected:sub(1,1)=="@" then local k=selected:sub(2);assert(built[k],"Select an asset");return {version=1,kind=group,name=k,data=S.copy(built[k])} end;assert(list[selected],"Select an entry first");return S.copy(list[selected]) end
- local function put(n,v,remove,replace) assert(replace or not list[n],"Name already exists");local draft=S.copy(a.bank);local dest=if profiles then draft.profiles else draft.assets;if remove then dest[remove]=nil end;if not profiles then v.name=n end;dest[n]=v;a:library(draft);a.selection=n;ui:open(ui.tab);ui:message("Saved: "..n) end
- ui:chips({"Save current","Apply","Duplicate","Rename","Delete"},function(action)
-  if action=="Save current" then local n=name();put(n,if profiles then S.copy(a.s) else {version=1,kind=group,name=n,data=S.capture(a.s,group)},nil,true)
-  elseif action=="Apply" then local v=item();if profiles then a:replace(v) else a:patch(v.data) end;ui:message("Applied: "..selected)
-  elseif action=="Duplicate" then put(name(),item()) elseif action=="Rename" then assert(list[selected],"Bundled entry is read-only");put(name(),item(),selected)
-  else assert(list[selected],"Choose a user entry");local draft=S.copy(a.bank);(if profiles then draft.profiles else draft.assets)[selected]=nil;a:library(draft);a.selection=nil;ui:open(ui.tab) end
- end,3)
- ui:note("JSON transfer: select and copy the text, or paste JSON and import. Nothing is executed on import.",36)
- local transfer=ui:box("Transfer JSON",a.transfer or "",80);ui.page:on(transfer.FocusLost,function() a.transfer=transfer.Text end)
- ui:chips({"Export JSON","Import JSON"},function(action)
-  if action=="Export JSON" then a.transfer=Http:JSONEncode(if profiles then {format="aether.bank/1",data=a.bank} else {format="aether.asset/1",data=item()});transfer.Text=a.transfer;transfer:CaptureFocus();transfer.CursorPosition=#transfer.Text+1;transfer.SelectionStart=1
-  else assert(#transfer.Text<=110100,"Import too large");local v=Http:JSONDecode(transfer.Text);if profiles then assert(v.format=="aether.bank/1","Expected full bank JSON");a:restore(S.bank(v.data));a:dirty();ui:open("Profiles");ui:message("Bank imported") else assert(v.format=="aether.asset/1","Expected asset JSON");local it=S.asset(v.data);assert(it.kind==group,"Select collection: "..it.kind);put(if box.Text~="" then name() else it.name,it) end end
- end,2)
- if profiles then ui:note("Save now waits for the server acknowledgement. Reload replaces the current bank. Studio defaults to session storage.",40);ui:chips({"Save now","Reload saved"},function(k) if k=="Save now" then a.store:save() else a.store:read(true) end;ui:message(a.store.status) end,2) end
-end
 local function scripts(ui,a)
  local draft=a.scriptTab=="Luau draft";ui:chips({"AETHER Lua","Luau draft"},function(n) a:stopCue();a.scriptTab=n;ui:open("Scripts") end,2,function() return a.scriptTab or "AETHER Lua" end)
  ui:note(if draft then "Author Studio source here. Copy it to a ModuleScript in Studio for compilation. In-game checks are lexical only." else "Bounded HUD language: local values, arithmetic, if/elseif/else, hud calls, onHealthChanged(hp,maxHP) and onEvent(name,hp).",42)
@@ -573,19 +549,15 @@ local function scripts(ui,a)
  if not draft then ui:title("RUN PERMISSIONS · SESSION ONLY");ui:chips({"widgets","appearance","events"},function(p) a:stopCue();a.grants[p]=not a.grants[p];ui:sync() end,3);local report=ui:note("",26);ui:watch(function() local v={};for _,p in {"widgets","appearance","events"} do if a.grants[p] then table.insert(v,p) end end;report.Text="Granted: "..table.concat(v,", ").."   /   "..(if a.cue then "Running" else "Stopped") end)
   ui:chips({"Run HUD script","Stop"},function(op) if op=="Stop" then a:stopCue();ui:message("Stopped") else a:set(k,box.Text);a:runCue() end;ui:sync() end,2)
  end
- ui:chips({"Save / browse script assets"},function() a.libraryKind="Scripts";a.selection=nil;ui:open("Workshop") end,1)
 end
 function E.render(a,tab,ui)
- if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. F8 opens Studio. RightShift opens it only when native Shift-Lock is disabled. LeftAlt controls AETHER shoulder lock.",43);ui:chips({"Game","Simulator"},function(n) a:modeSet(n) end,2,function() return a.mode end);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme",{constellationBgA=true,constellationBgB=true,constellationLineA=true,constellationLineB=true,constellationNodeA=true,constellationNodeB=true});ui:title("CONSTELLATION COLORS");for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end;ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
- elseif tab=="HUD" then preview(ui,a,true);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);ui:chips({"Unlock widget preview","Move top / left panels"},function(n) if n=="Unlock widget preview" then a:set("locked",not a.s.locked) else a:set("movePanels",not a.s.movePanels) end end,2);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:control("compact");ui:title("TOP / LEFT PANELS");for _,v in {"topCapsule","robloxRail","movePanels"} do ui:control(v) end;ui:note("Enable moving panels to drag AI / AETHER / ARCHIVIUM and CHAT / BAG / LIST directly in the preview or live editor.",38);ui:chips({"Reset panel positions"},function() a:patch({topCustom=false,railCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartPalette","heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);ui:chips({"hp","clock","profile","dock","cross","input","wallhop","top","rail"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
-  if k=="top" or k=="rail" then for _,v in {if k=="top" then "topCapsule" else "robloxRail","movePanels",k.."Custom",k.."X",k.."Y"} do ui:control(v) end
-  elseif k=="input" then for _,v in {"inputOverlay","inputMouse","inputX","inputY","inputScale","inputOpacity","inputColor"} do ui:control(v) end
-  elseif k=="wallhop" then for _,v in {"wallhopHelper","wallhopX","wallhopY","wallhopScale","wallhopOpacity"} do ui:control(v) end
-  elseif k=="cross" then ui:note("Shift-Lock reticle stays at the center of the game view.",28);for _,v in {"cross","reticleSize","reticleColor","reticleNeon","reticleGlow"} do ui:control(v) end
+ if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. F8 opens Studio. RightShift opens it only when native Shift-Lock is disabled. LeftAlt controls AETHER shoulder lock.",43);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme",{topCapsule=true,robloxRail=true,constellationBgA=true,constellationBgB=true,constellationLineA=true,constellationLineB=true,constellationNodeA=true,constellationNodeB=true});ui:title("CONSTELLATION COLORS");for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end;ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
+ elseif tab=="HUD" then preview(ui,a,true);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:control("compact");ui:title("TOP / LEFT PANELS");for _,v in {"topCapsule","robloxRail","movePanels"} do ui:control(v) end;ui:note("Enable moving panels to drag the AETHER capsule and CHAT / BAG / LIST shortcuts.",38);ui:chips({"Reset panel positions"},function() a:patch({topCustom=false,railCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);local widgets={"hp","clock","profile","dock","top","rail"};if not table.find(widgets,a.hudTab) then a.hudTab="hp" end;ui:chips(widgets,function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
+  if k=="top" or k=="rail" then for _,v in {k.."Custom",k.."X",k.."Y"} do ui:control(v) end
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
   if tab=="Character" then
-   ui:title("AETHER MOTION STUDIO V12.8")
+   ui:title("AETHER MOTION STUDIO V12.9")
    MotionStudio.mount(ui,a)
   else avatarPreview(ui,a) end
   if tab=="Halos" then
@@ -623,6 +595,7 @@ function E.render(a,tab,ui)
   ui:title("GAME INTERACTION")
   ui:note("Shift-Lock is unchanged. Native Roblox Shift-Lock has priority in Follow mode; LeftAlt toggles AETHER lock when the native option is off. Camera orientation can affect gameplay in some experiences.",60)
   ui:title("SHIFT-LOCK / RETICLE")
+  for _,k in {"cross","crossScale","crossAlpha"} do ui:control(k) end
   local inputKeys={inputOverlay=true,inputMouse=true,inputX=true,inputY=true,inputScale=true,inputOpacity=true,inputColor=true,wallhopHelper=true,wallhopX=true,wallhopY=true,wallhopScale=true,wallhopOpacity=true}
   ui:group(tab,inputKeys)
   ui:title("LIVE INPUT DISPLAY")
@@ -635,18 +608,10 @@ function E.render(a,tab,ui)
  elseif tab=="Simulator" then preview(ui,a);ui:title("WORLD PREVIEW");avatarPreview(ui,a,true);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
  elseif tab=="Scripts" then scripts(ui,a)
  elseif tab=="Profiles" then configs(ui,a)
- elseif tab=="Workshop" then library(ui,a,false)
  elseif tab=="List" then
   ui:title("ROBLOX PLAYER LIST")
   ui:chips({"Toggle native player list"},function() ui:togglePlayerList() end,1)
   ui:note("Roblox updates its own player list automatically as players join or leave.",36)
-  ui:title("AETHER UPDATE LIST")
-  ui:note("PANELS — Movable top capsule and Roblox shortcut rail; release notes.",44)
-  ui:note("HUD EDIT — Live widget positioning and full session unload.",42)
-  ui:note("WALLHOP — Read-only practice display and camera angle measurement.",42)
-  ui:note("INTERACT — Separate Shift-Lock settings and input visualization.",42)
-  ui:note("WING6 — Six sketch-inspired wings and counter-rotating diamonds.",42)
-  ui:note("SKETCH — HD outline icons and ECG heart.",36)
  elseif tab=="Updates" then
   ui:title("LIVE UPDATE CENTER")
   local state=a.liveUpdate
@@ -664,7 +629,6 @@ function E.render(a,tab,ui)
    if n=="Test update" then a:testLiveUpdate() elseif n=="Check updates" then a:checkLiveUpdate() else a:rollbackLiveUpdate() end
   end,3)
   ui:note("RELAY OFFLINE: install the server relay in your own place. HTTP DISABLED: enable Allow HTTP Requests in experience settings. ONLINE: website releases apply automatically.",65)
-  ui:chips({"Browse new presets"},function() a.libraryKind="Theme";a.selection=nil;ui:open("Workshop") end,1)
   ui:title("UPDATE LIST")
   local changelog=ui:note("",280)
   ui:watch(function()
