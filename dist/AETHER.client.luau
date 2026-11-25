@@ -2489,7 +2489,7 @@ end
 
 -- BEGIN MODULE MotionStudio
 __aether_factories["MotionStudio"] = function()
--- AETHER Motion Studio V12.2: native, isolated ViewportFrame editor.
+-- AETHER Motion Studio V12.2: native avatar ViewportFrame editor, staged selection.
 -- No game-character changes, browser, network, or external asset dependencies.
 local U=__aether_require("Util")
 local Packs=__aether_require("MotionPacks")
@@ -2856,19 +2856,115 @@ local function pose(name,t,state)
  end
  return p
 end
-local names={"Torso","Right Arm","Left Arm","Right Leg","Left Leg","Head"}
-local sizes={V(2,2,1),V(1,2,1),V(1,2,1),V(1,2,1),V(1,2,1),V(1.22,1.22,1.22)}
-local function rig(p,O,intensity)
- local cf,pivots={},{}
- local function joint(i) return CFrame.new(p[i].v*O*intensity)*qframe(qslerp(ident,p[i].q,intensity)) end
- cf[1]=joint(1)
- for i=2,6 do
-  local side=if i%2==0 then 1 else -1;local arm=i<4
-  local base=if i==6 then V(0,1,0) elseif arm then V(side,.5,0) else V(side*.5,-1,0)
-  local offset=if i==6 then V(0,.61,0) elseif arm then V(side*.5,-.5,0) else V(0,-1,0)
-  local c=cf[1]*CFrame.new(base)*joint(i)
-  pivots[i]=c.Position;cf[i]=c*CFrame.new(offset)
+-- Pose the user's own cloned R6/R15 rig with its real joints and limb lengths.
+local channelFor={
+ RootJoint=1,Root=1,RightShoulder=2,["Right Shoulder"]=2,
+ LeftShoulder=3,["Left Shoulder"]=3,RightHip=4,["Right Hip"]=4,
+ LeftHip=5,["Left Hip"]=5,Neck=6
+}
+local bodyNames={
+ Torso=true,Head=true,["Right Arm"]=true,["Left Arm"]=true,["Right Leg"]=true,["Left Leg"]=true,
+ UpperTorso=true,LowerTorso=true,RightUpperArm=true,RightLowerArm=true,RightHand=true,
+ LeftUpperArm=true,LeftLowerArm=true,LeftHand=true,RightUpperLeg=true,RightLowerLeg=true,RightFoot=true,
+ LeftUpperLeg=true,LeftLowerLeg=true,LeftFoot=true
+}
+local function cloneRig(char)
+ if not char or not char:FindFirstChildOfClass("Humanoid") then return nil end
+ local old=char.Archivable
+ local ok,model=pcall(function() char.Archivable=true;return char:Clone() end)
+ char.Archivable=old
+ if not ok or not model then return nil end
+ local root=model:FindFirstChild("HumanoidRootPart")
+ if not root or not root:IsA("BasePart") then model:Destroy();return nil end
+ local humanoid=model:FindFirstChildOfClass("Humanoid")
+ if not humanoid then model:Destroy();return nil end
+ local kind=if humanoid.RigType==Enum.HumanoidRigType.R15 then "R15" else "R6"
+ local parts,body,original,localCF,decals={},{},{},{},{}
+ for _,obj in model:GetDescendants() do
+  if not obj.Parent then continue end
+  if obj:IsA("LuaSourceContainer") or obj:IsA("Animator") or obj:IsA("AnimationController") or obj:IsA("Tool") or obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Highlight") or obj:IsA("Sound") then
+   obj:Destroy()
+  elseif obj:IsA("Decal") or obj:IsA("Texture") then
+   table.insert(decals,{object=obj,transparency=obj.Transparency})
+  elseif obj:IsA("BasePart") then
+   obj.Anchored=true;obj.CanCollide=false;obj.CanTouch=false;obj.CanQuery=false;obj.CastShadow=false;obj.LocalTransparencyModifier=0
+   if obj==root then obj.Transparency=1 end
+   table.insert(parts,obj);original[obj]=obj.Transparency;localCF[obj]=root.CFrame:ToObjectSpace(obj.CFrame)
+   if obj.Parent==model and bodyNames[obj.Name] then table.insert(body,obj) end
+  end
  end
+ if #body<6 then model:Destroy();return nil end
+ humanoid.DisplayDistanceType=Enum.HumanoidDisplayDistanceType.None
+ local adjacency={}
+ local function attach(p,e) adjacency[p]=adjacency[p] or {};table.insert(adjacency[p],e) end
+ for _,j in model:GetDescendants() do
+  if j:IsA("Motor6D") or j:IsA("Weld") or j:IsA("ManualWeld") or j:IsA("WeldConstraint") then
+   local a,b=j.Part0,j.Part1
+   if a and b and localCF[a] and localCF[b] then
+    local constraint=j:IsA("WeldConstraint")
+    local e={p0=a,p1=b,joint=j,c0=if constraint then a.CFrame:ToObjectSpace(b.CFrame) else j.C0,c1=if constraint then CFrame.identity else j.C1,channel=if j:IsA("Motor6D") then channelFor[j.Name] else nil}
+    if j:IsA("Motor6D") then j.Transform=CFrame.identity end
+    attach(a,e);attach(b,e)
+   end
+  end
+ end
+ local queue={root};local seen={[root]=true};local owner={[root]=root};local links={};local index=1
+ while index<=#queue do
+  local a=queue[index];index+=1
+  for _,e in adjacency[a] or {} do
+   local forward=e.p0==a;local b=if forward then e.p1 else e.p0
+   if not seen[b] then
+    seen[b]=true;owner[b]=if b.Parent==model and bodyNames[b.Name] then b else owner[a]
+    table.insert(queue,b);table.insert(links,{edge=e,forward=forward,from=a,to=b})
+   end
+  end
+ end
+ -- A disconnected accessory retains its matching attachment if possible.
+ local attachByName={}
+ for _,b in body do
+  for _,at in b:GetChildren() do if at:IsA("Attachment") then attachByName[at.Name]=at end end
+ end
+ local detached={}
+ for _,b in parts do
+  if not seen[b] then
+   local parent=root;local offset=localCF[b]
+   for _,at in b:GetChildren() do
+    if at:IsA("Attachment") and attachByName[at.Name] then
+     local target=attachByName[at.Name];parent=target.Parent;offset=target.CFrame*at.CFrame:Inverse();break
+    end
+   end
+   owner[b]=if b.Parent==model and bodyNames[b.Name] then b else parent
+   table.insert(detached,{part=b,parent=parent,offset=offset})
+  end
+ end
+ local followers={}
+ for _,b in parts do
+  local o=owner[b]
+  if o and o~=b and o~=root then table.insert(followers,{part=b,owner=o}) end
+ end
+ model.Name="MotionStudioAvatar"
+ return {model=model,root=root,kind=kind,parts=parts,body=body,original=original,links=links,detached=detached,owner=owner,followers=followers,decals=decals}
+end
+local function avatarPose(r,p,O,intensity)
+ local cf={[r.root]=CFrame.identity};local pivots={}
+ local jointsCF={}
+ for i=1,6 do jointsCF[i]=CFrame.new(p[i].v*O*intensity)*qframe(qslerp(ident,p[i].q,intensity)) end
+ for _,link in r.links do
+  local e=link.edge;local motion=CFrame.identity
+  if e.channel then
+   local basis=e.c0.Rotation
+   local scale=math.clamp(e.p0.Size.Y/2,.5,1.7)
+   local poseCF=jointsCF[e.channel]
+   motion=basis:Inverse()*CFrame.new(poseCF.Position*scale)*poseCF.Rotation*basis
+  end
+  local offset=e.c0*motion*e.c1:Inverse()
+  cf[link.to]=cf[link.from]*(if link.forward then offset else offset:Inverse())
+  if e.channel then
+   local parentCF=cf[e.p0]
+   if parentCF then pivots[e.channel]=(parentCF*e.c0*motion).Position end
+  end
+ end
+ for _,v in r.detached do cf[v.part]=(cf[v.parent] or CFrame.identity)*v.offset end
  return cf,pivots
 end
 local function bottom(cf,s)
@@ -2883,19 +2979,10 @@ function M.mount(ui,a)
  local view=U.new("ViewportFrame",{Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.fromRGB(26,24,36),BorderSizePixel=0,Ambient=Color3.fromRGB(155,147,174),LightColor=Color3.fromRGB(247,240,255),LightDirection=V(-1,-1,-.6),Active=true},frame);U.corner(view,10)
  local world=U.new("WorldModel",{},view)
  local camera=U.new("Camera",{FieldOfView=35},view);view.CurrentCamera=camera
- local model=U.new("Model",{Name="MotionStudioR6"},world)
- local gray=Color3.fromRGB(198,200,211);local violet=Color3.fromRGB(186,153,243)
- local body={}
- for i,n in names do body[i]=part(model,n,sizes[i],if i==1 then Color3.fromRGB(154,136,188) else gray) end
- local root=part(model,"HumanoidRootPart",V(2,2,1),gray);root.Transparency=1;model.PrimaryPart=root
- U.new("SpecialMesh",{MeshType=Enum.MeshType.Head},body[6])
- local face={}
- local function faceDot(x,y,sx,sy)
-  local p=part(world,"Face",V(sx,sy,.026),Color3.fromRGB(20,20,26));p.Shape=Enum.PartType.Ball
-  table.insert(face,{part=p,cf=CFrame.new(x,y,-math.sqrt(.61*.61-x*x)-.018)})
- end
- faceDot(-.18,.10,.075,.13);faceDot(.18,.10,.075,.13)
- for i=0,12 do local x=-.22+.44*i/12;faceDot(x,-.13+.13*(x/.22)^2,.057,.032) end
+ local rigData=nil;local avatarStatus="Loading avatar..."
+ local player=game:GetService("Players").LocalPlayer
+ local violet=Color3.fromRGB(186,153,243)
+ local avatarSize=V(4,5,2)
  local floor=part(world,"Floor",V(14,.14,14),Color3.fromRGB(46,47,57));floor.CFrame=CFrame.new(0,-.075,0)
  local lines={}
  for i=-7,7 do
@@ -2907,10 +2994,38 @@ function M.mount(ui,a)
  local caption=U.label(frame,"",12,UDim2.fromOffset(12,8),UDim2.new(1,-108,0,22))
  local fpsLabel=U.label(frame,"-- FPS",11,UDim2.new(1,-85,0,8),UDim2.fromOffset(74,22));fpsLabel.TextXAlignment=Enum.TextXAlignment.Right
  local status=U.label(frame,"",11,UDim2.fromOffset(12,32),UDim2.new(1,-24,0,18));status.TextColor3=violet
- local s={pack="Harpy Glide",state="Jump",t=0,seek=0,auto=false,paused=false,speed=1,origin=100,intensity=100,pitch=0,yaw=0,roll=0,cam=65,zoom=1,height=0,props=true,grid=true,joints=false}
+ local s={pack=a.s.walkStyle or "Natural",state="Run",t=0,seek=0,auto=false,paused=false,speed=1,origin=100,intensity=a.s.walkIntensity or 65,pitch=0,yaw=0,roll=0,cam=45,zoom=1,height=0,props=true,grid=true,joints=false}
+ if s.pack=="Godly Aura" then s.pitch=9 end
  local dirty=true;local updates={};local sliding=nil;local oldScroll=nil
  local function mark() dirty=true end
  local function sync() dirty=true;s.seek=s.t%2.8;for _,f in updates do f() end;ui:sync() end
+ local applyRow=ui:row(44,"ConfirmAnimation")
+ local confirm=U.button(applyRow,"CONFIRM")
+ confirm.Position=UDim2.fromOffset(4,4);confirm.Size=UDim2.new(.65,-8,1,-8)
+ local cancel=U.button(applyRow,"CANCEL")
+ cancel.Position=UDim2.new(.65,0,0,4);cancel.Size=UDim2.new(.35,-4,1,-8)
+ local selection=ui:note("",38)
+ local function updateSelection()
+  local saved=a.s.walkStyle or "Natural"
+  local applied=a.s.walkAnimation and saved==s.pack and a.s.walkIntensity==s.intensity
+  local ready=rigData~=nil
+  confirm.Text=if not ready then "AVATAR NOT READY" elseif applied then "APPLIED ✓" else "CONFIRM · "..s.pack
+  confirm.Active=ready and not applied;confirm.AutoButtonColor=ready and not applied
+  confirm.BackgroundColor3=if ready and not applied then Color3.fromRGB(106,74,158) else Color3.fromRGB(49,43,62)
+  selection.Text="Preview: "..s.pack.." / Saved: "..saved..(if a.s.walkAnimation then "" else " (disabled)")..(if rigData and rigData.kind=="R15" then " · R15 adapted poses; props are R6 only" else "")
+ end
+ ui:watch(updateSelection)
+ scope:on(confirm.Activated,function()
+  if not rigData then return end
+  if not a.s.walkAnimation or a.s.walkStyle~=s.pack or a.s.walkIntensity~=s.intensity then
+   a:patch({walkAnimation=true,walkStyle=s.pack,walkIntensity=math.clamp(math.round(s.intensity),0,100)})
+  end
+  updateSelection();ui:message("Animation saved: "..s.pack)
+ end)
+ scope:on(cancel.Activated,function()
+  s.pack=a.s.walkStyle or "Natural";s.intensity=a.s.walkIntensity or 65;s.t=0;s.pitch=if s.pack=="Godly Aura" then 9 else 0;s.yaw=0;s.roll=0
+  sync();ui:message("Preview selection discarded")
+ end)
  local function stopSlide()
   sliding=nil
   if oldScroll~=nil and ui.sc and ui.sc.Parent then ui.sc.ScrollingEnabled=oldScroll end
@@ -2963,7 +3078,7 @@ function M.mount(ui,a)
  slider("Camera orbit",-180,180,1,"cam",degrees)
  slider("Zoom",.65,1.5,.05,"zoom",decimal)
  slider("Origin Motion",0,150,5,"origin",percent)
- slider("Intensity",25,125,5,"intensity",percent)
+ slider("Intensity",0,100,1,"intensity",percent,updateSelection)
  slider("Extra levitation",0,1.5,.02,"height",decimal)
  ui:title("FULL BODY ROTATION")
  slider("Pitch / X",-360,360,1,"pitch",degrees)
@@ -2972,14 +3087,19 @@ function M.mount(ui,a)
  ui:chips({"Zero rotation","Default pose"},function(n) s.pitch=if n=="Default pose" and s.pack=="Godly Aura" then 9 else 0;s.yaw=0;s.roll=0;sync() end,2)
  ui:title("VIEWPORT")
  ui:chips({"Props","Grid","Origins"},function(n) if n=="Props" then s.props=not s.props elseif n=="Grid" then s.grid=not s.grid else s.joints=not s.joints end;sync() end,3)
- ui:chips({"Purple","Orange","Gray","Reset editor"},function(n)
-  if n=="Reset editor" then
-   s.pack="Harpy Glide";s.state="Jump";s.t=0;s.auto=false;s.paused=false;s.speed=1;s.origin=100;s.intensity=100;s.pitch=0;s.yaw=0;s.roll=0;s.cam=65;s.zoom=1;s.height=0;s.props=true;s.grid=true;s.joints=false
-   body[1].Color=Color3.fromRGB(154,136,188)
-  else body[1].Color=if n=="Purple" then Color3.fromRGB(154,136,188) elseif n=="Orange" then Color3.fromRGB(235,139,62) else gray end;sync()
- end,4)
- ui:note("Local R6 dummy only. Native Roblox rendering. The editor does not change live character settings.",38)
- local function visible(i) return if s.pack=="Floating Head" then i==6 elseif s.pack=="Headless Float" then i~=6 else true end
+ ui:chips({"Reset editor"},function()
+  s.pack=a.s.walkStyle or "Natural";s.state="Run";s.t=0;s.auto=false;s.paused=false;s.speed=1;s.origin=100;s.intensity=a.s.walkIntensity or 65;s.pitch=if s.pack=="Godly Aura" then 9 else 0;s.yaw=0;s.roll=0;s.cam=45;s.zoom=1;s.height=0;s.props=true;s.grid=true;s.joints=false
+  sync()
+ end,1)
+ ui:note("Preview uses your avatar. Choose a pack, inspect the motion, then confirm. Camera, rotation, origins and playback controls are preview-only.",48)
+ local function visible(b)
+  local r=rigData
+  if not r or b==r.root then return false end
+  local o=r.owner[b] or b
+  if s.pack=="Floating Head" then return o.Name=="Head" end
+  if s.pack=="Headless Float" then return o.Name~="Head" end
+  return true
+ end
  local function render()
   local t=s.t;local cy=t%2.8;local name=s.pack;local state=s.state;local lt=t
   if s.auto then state=if cy<1.2 then "Jump" elseif cy<2.4 then "Fall" else "Run";lt=if cy<1.2 then cy elseif cy<2.4 then cy-1.2 else cy-2.4 end
@@ -2988,21 +3108,39 @@ function M.mount(ui,a)
   if special then p,spin,h,phase=harpy(t);state=if cy<1.62 then "Jump" elseif cy<2.35 then "Fall" else "Land" else p=pose(name,lt,state) end
   local air=state=="Jump" or state=="Fall"
   local O,I=s.origin/100,s.intensity/100
-  local cf,pivots=rig(p,O,I)
-  if (name=="Skater" and s.props and state~="Fall") or (name=="Harpy Glide" and not air and not special) then
-   local l=math.min(bottom(cf[4],sizes[4]),bottom(cf[5],sizes[5]))
-   for i=4,5 do local d=V(0,l-bottom(cf[i],sizes[i]),0);cf[i]+=d;pivots[i]+=d end
+  local r=rigData
+  if not r then caption.Text="YOUR AVATAR";status.Text=avatarStatus;dirty=false;return end
+  local cf,pivots=avatarPose(r,p,O,I)
+  for _,b in r.parts do
+   b.CFrame=cf[b] or CFrame.identity
+   b.Transparency=if visible(b) then r.original[b] else 1
   end
-  for i,b in body do b.CFrame=cf[i];b.Transparency=if visible(i) then 0 else 1 end
-  root.CFrame=cf[1]
-  if s.props then props:update(model,name,t*4,if state=="Fall" then Enum.HumanoidStateType.Freefall elseif state=="Jump" then Enum.HumanoidStateType.Jumping else Enum.HumanoidStateType.Running) else props:clear() end
-  -- Props are attached before global rotation, so hands and all accessories turn together.
+  for _,d in r.decals do
+   local parent=d.object.Parent
+   d.object.Transparency=if parent and visible(parent) then d.transparency else 1
+  end
+  -- Real R6 props are positioned before the global rigid-body rotation.
+  local model=r.model
+  local follow={}
+  for i,v in r.followers do follow[i]=v.owner.CFrame:ToObjectSpace(v.part.CFrame) end
+  if r.kind=="R6" and ((name=="Skater" and s.props and state~="Fall") or (name=="Harpy Glide" and not air and not special)) then
+   local left,right=model:FindFirstChild("Left Leg"),model:FindFirstChild("Right Leg")
+   if left and right then
+    local l=math.min(bottom(left.CFrame,left.Size),bottom(right.CFrame,right.Size))
+    for _,b in {left,right} do b.CFrame+=V(0,l-bottom(b.CFrame,b.Size),0) end
+   end
+  end
+  if s.props and r.kind=="R6" then props:update(model,name,t*4,if state=="Fall" then Enum.HumanoidStateType.Freefall elseif state=="Jump" then Enum.HumanoidStateType.Jumping else Enum.HumanoidStateType.Running) else props:clear() end
+  for i,v in r.followers do v.part.CFrame=v.owner.CFrame*follow[i] end
   local rotation=angle(s.pitch,s.yaw,s.roll)*angle(spin,0,0)
   if name=="Cartwheel Flow" and not air and state~="Idle" then rotation*=angle(0,0,lt*240) end
-  local center=cf[1].Position;local transform=CFrame.new(center)*rotation*CFrame.new(-center)
+  local center=if model:FindFirstChild("Torso") then model.Torso.Position elseif model:FindFirstChild("UpperTorso") then model.UpperTorso.Position else r.root.Position
+  local transform=CFrame.new(center)*rotation*CFrame.new(-center)
   local all={};local support=math.huge
-  for i,b in body do table.insert(all,b);b.CFrame=transform*b.CFrame;if visible(i) then support=math.min(support,bottom(b.CFrame,b.Size)) end end
+  for _,b in r.parts do table.insert(all,b);b.CFrame=transform*b.CFrame end
+  for _,b in r.body do if visible(b) then support=math.min(support,bottom(b.CFrame,b.Size)) end end
   if props.root then for _,b in props.root:GetDescendants() do if b:IsA("BasePart") then table.insert(all,b);b.CFrame=transform*b.CFrame;support=math.min(support,bottom(b.CFrame,b.Size)) end end end
+  if support==math.huge then support=0 end
   local gap=(profile(name).hover or 0)+s.height
   if name=="Godly Aura" then gap=.18+.045*math.sin(t*tau/3.6)+s.height end
   if name=="Harpy Glide" then gap=s.height end
@@ -3011,23 +3149,68 @@ function M.mount(ui,a)
   if not air and families[name]=="hop" and state~="Idle" then gap+=profile(name).bob*math.abs(math.sin(t*profile(name).cadence)) end
   local dy=gap-support
   if special then
-   local fixed=math.huge;local g=rig(ground,O,I)
-   for i,c in g do fixed=math.min(fixed,bottom(c,sizes[i])) end
+   local fixed=math.huge;local g=avatarPose(r,ground,O,I)
+   for _,b in r.body do if g[b] then fixed=math.min(fixed,bottom(g[b],b.Size)) end end
+   if fixed==math.huge then fixed=support end
    local k=ease(h/1.2);dy=gap+h-(1-k)*support-k*fixed
   end
   local lift=V(0,dy,0)
   for _,b in all do b.CFrame+=lift end
-  root.CFrame=transform*root.CFrame+lift
-  for _,v in face do v.part.CFrame=body[6].CFrame*v.cf;v.part.Transparency=if visible(6) then 0 else 1 end
-  for i,b in markers do b.Position=transform:PointToWorldSpace(pivots[i])+lift;b.Transparency=if s.joints and visible(i) then 0 else 1 end end
+  for i,b in markers do
+   local pos=pivots[i]
+   if pos then b.Position=transform:PointToWorldSpace(pos)+lift end
+   b.Transparency=if s.joints and pos then 0 else 1
+  end
   for i,b in lines do b.Transparency=if s.grid then 0 else 1;if i%2==0 then b.CFrame=CFrame.new(0,.006,math.floor((i-1)/2)-7+(if state=="Idle" or air or special then 0 else (lt*(if state=="Run" then 4 else 2))%1)) end end
-  local a=math.rad(s.cam);local focus=V(0,if special then 4 else 3.1+(if air then .4 else 0),0)
-  local aspect=math.max(.2,view.AbsoluteSize.X/math.max(1,view.AbsoluteSize.Y));local dist=math.max(if special then 17.5 else 12.6,(if special then 11 else 8)/aspect)/s.zoom
+  local a=math.rad(s.cam);local scale=math.clamp(avatarSize.Y/5,.7,2.5);local focus=V(0,(if special then 4 else 3.1+(if air then .4 else 0))*scale,0)
+  local aspect=math.max(.2,view.AbsoluteSize.X/math.max(1,view.AbsoluteSize.Y));local dist=math.max(if special then 17.5 else 12.6,(if special then 11 else 8)/aspect)*math.max(scale,math.clamp(avatarSize.X/4,.8,2.5))/s.zoom
   if name=="Doll Walk" then dist*=1.15 end
   camera.CFrame=CFrame.lookAt(focus+V(math.sin(a)*dist,2.1,-math.cos(a)*dist),focus)
-  caption.Text=string.upper(name);status.Text="R6 / "..string.upper(state).." / "..phase
+  caption.Text=string.upper(name).." · "..player.DisplayName;status.Text=r.kind.." / "..string.upper(state).." / "..phase
   dirty=false
  end
+ -- Refresh only when the local avatar or appearance changes.
+ local generation=0;local charScope=nil
+ local function clearAvatar()
+  props:clear()
+  if rigData then rigData.model:Destroy();rigData=nil end
+  updateSelection();mark()
+ end
+ local function refresh(char)
+  generation+=1;local ticket=generation
+  task.delay(.18,function()
+   if scope.dead or ticket~=generation or char~=player.Character or not char then return end
+   local ok,new=pcall(cloneRig,char)
+   if not ok or not new then
+    if not rigData then avatarStatus="Avatar unavailable · refresh or respawn";mark() end
+    return
+   end
+   clearAvatar();rigData=new
+   new.model.Parent=world
+   local neutralCF=avatarPose(new,neutral,1,1)
+   for _,b in new.parts do b.CFrame=neutralCF[b] or CFrame.identity end
+   local _,size=new.model:GetBoundingBox()
+   avatarSize=V(math.clamp(size.X,2,10),math.clamp(size.Y,3,10),math.clamp(size.Z,1,10))
+   updateSelection();mark()
+  end)
+ end
+ local function bind(char)
+  if charScope then charScope:clear();charScope=nil end
+  generation+=1;avatarStatus="Loading avatar...";clearAvatar()
+  if not char then return end
+  charScope=U.scope()
+  local function appearance(obj)
+   if obj:IsA("Accessory") or obj:IsA("Clothing") or obj:IsA("ShirtGraphic") or obj:IsA("BodyColors") or obj:IsA("BasePart") or obj:IsA("Humanoid") or obj:IsA("Decal") or obj:IsA("CharacterMesh") or obj:IsA("SurfaceAppearance") or obj:IsA("Motor6D") then refresh(char) end
+  end
+  charScope:on(char.DescendantAdded,appearance);charScope:on(char.DescendantRemoving,appearance)
+  refresh(char)
+ end
+ scope:on(player.CharacterAdded,bind)
+ scope:on(player.CharacterRemoving,function() bind(nil) end)
+ scope:on(player.CharacterAppearanceLoaded,function(char) if char==player.Character then refresh(char) end end)
+ ui:chips({"Refresh avatar"},function() refresh(player.Character) end,1)
+ scope:add(function() generation+=1;if charScope then charScope:clear();charScope=nil end;props:clear();if rigData then rigData.model:Destroy();rigData=nil end end)
+ bind(player.Character)
  local frames,elapsed=0,0;local previous=0
  scope:on(view:GetPropertyChangedSignal("AbsoluteSize"),mark)
  scope:on(Run.RenderStepped,function(dt)
@@ -3636,23 +3819,9 @@ function E.render(a,tab,ui)
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
   if tab=="Character" then
-   ui:title("AETHER MOTION STUDIO V12.2")
-   ui:chips({"Motion Studio","Avatar Preview"},function(n) a.motionStudioView=n;ui:open("Character") end,2,function() return a.motionStudioView or "Motion Studio" end)
-   if a.motionStudioView=="Avatar Preview" then avatarPreview(ui,a) else MotionStudio.mount(ui,a) end
+   ui:title("AETHER MOTION STUDIO V12.3")
+   MotionStudio.mount(ui,a)
   else avatarPreview(ui,a) end
-  if tab=="Character" then
-   ui:title("ANIMATION PACK-INSPIRED MOTION")
-   ui:note("Original AETHER styles based on the feel of Roblox avatar packs, not copied animation assets. Procedural R6/R15 poses for idle, walk, run, jump/fall, swim and climb. Visual-only motion.",55)
-   ui:chips({"Toy","Robot","Ninja","Bubbly","Stylish","Mage","Levitation","Oldschool","Vampire","Astronaut","Zombie","Cartoony"},
-    function(style) a:patch({walkAnimation=true,walkStyle=style}) end,4,
-    function() return a.s.walkStyle end)
-   ui:title("COMMUNITY-INSPIRED ANIMATIONS")
-   ui:note("26 original interpretations of creator-made Roblox UGC locomotion: float, swoop, slither, doll-like steps, cartoon bounce, skating and more. Use Walking intensity to adjust the effect.",54)
-   local ugc={}
-   for i=13,#MotionPacks.order do table.insert(ugc,MotionPacks.order[i]) end
-   ui:chips(ugc,function(style) a:patch({walkAnimation=true,walkStyle=style}) end,4,
-    function() return a.s.walkStyle end)
-  end
   if tab=="Halos" then
    ui:title("HALO V2 / INDIVIDUAL LAYERS")
    ui:note("Each layer has its own toggle. Combine styles or use them independently of the legacy halo.",36)
@@ -3679,6 +3848,9 @@ function E.render(a,tab,ui)
    local skip={}
    for i in S.haloV2Styles do for _,suffix in S.haloV2Fields do skip["haloV2"..i..suffix]=true end end
    ui:group(tab,skip)
+  elseif tab=="Character" then
+   ui:title("CHARACTER EFFECTS")
+   ui:group(tab,{walkStyle=true,walkIntensity=true})
   else preset(ui,a,tab);ui:group(tab) end
  elseif tab=="Ambient" then local sky=ui:row(106,"SkyPreview");local grad=U.gradient(sky,Color3.new(),Color3.new(),90);local sun=U.frame(sky,"Sun",nil,UDim2.fromOffset(30,30));U.corner(sun,30);ui:watch(function() local s=a.s;sky.BackgroundColor3=Color3.new(1,1,1);grad.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,U.hex(s.skyA)),ColorSequenceKeypoint.new(.64,U.hex(s.skyB)),ColorSequenceKeypoint.new(1,U.hex(s.skyC))});sun.BackgroundColor3=U.hex(s.skyC);sun.Position=UDim2.fromScale(.7,.66-.45*math.sin(s.time/240*math.pi));sun.BackgroundTransparency=.04+s.fog*.004 end);preset(ui,a,tab);ui:group(tab,{starfallA=true,starfallB=true});ui:title("STARFALL COLORS");ui:colorPicker("starfallA");ui:colorPicker("starfallB")
  elseif tab=="Indicators" then preview(ui,a);gallery(ui,a);ui:group(tab,{shape=true});ui:title("PER-PLAYER OVERRIDE");local id=ui:box("UserId or simulator ID","1");local label=ui:box("Label override","");local color=ui:box("Override hex",a.s.arrowA);ui:chips({"Assign current shape","Remove override"},function(k) local p=S.copy(a.s.players);if k=="Assign current shape" then p[id.Text]={label=label.Text,color=color.Text,shape=a.s.shape} else p[id.Text]=nil end;a:set("players",p);ui:message("Overrides updated") end,2)
