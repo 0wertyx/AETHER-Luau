@@ -3223,11 +3223,11 @@ local function part(parent,name,size,color)
 end
 -- Only confirmed editor settings enter the shared settings bank.
 -- Playback position and pause are transport commands, never autosaved.
-local previewKeys={"state","auto","speed","adaptive","previewVelocity","origin","pitch","yaw","roll","cam","zoom","height","props","grid","joints"}
+local previewKeys={"state","auto","speed","adaptive","previewVelocity","origin","pitch","yaw","roll","cam","zoom","height","physicalLift","props","grid","joints"}
 local liveKeys={pack="walkStyle",enabled="walkAnimation",intensity="walkIntensity",aura="aura",trail="trail",auraRate="auraRate",trailLife="trailLife",auraColor="auraColor"}
 local limits={speed={.25,2},previewVelocity={0,40},origin={0,150},pitch={-360,360},yaw={-360,360},roll={-360,360},cam={-180,180},zoom={.65,1.5},height={0,1.5}}
 local function defaults(pack)
- return {state="Run",auto=false,speed=1,adaptive=true,previewVelocity=16,packRates={},origin=100,pitch=if pack=="Godly Aura" then 9 else 0,yaw=0,roll=0,cam=45,zoom=1,height=0,props=true,grid=true,joints=false}
+ return {state="Run",auto=false,speed=1,adaptive=true,previewVelocity=16,packRates={},origin=100,pitch=if pack=="Godly Aura" then 9 else 0,yaw=0,roll=0,cam=45,zoom=1,height=0,physicalLift=false,props=true,grid=true,joints=false}
 end
 local function readSaved(settings)
  local out=defaults(settings.walkStyle)
@@ -3255,7 +3255,7 @@ end
 -- Shared pose evaluator for the editor and authorized local avatar animation.
 function M.runtimeSettings(settings)
  local saved=readSaved(settings)
- return {style=saved.pack,speed=saved.speed,adaptive=saved.adaptive,origin=saved.origin/100,intensity=math.clamp(saved.intensity/100,0,1),props=saved.props,height=saved.height}
+ return {style=saved.pack,speed=saved.speed,adaptive=saved.adaptive,origin=saved.origin/100,intensity=math.clamp(saved.intensity/100,0,1),props=saved.props,height=saved.height,physicalLift=saved.physicalLift}
 end
 -- Speed scales cadence only, never WalkSpeed, velocity or movement physics.
 function M.speedFactor(config,state,velocity)
@@ -3639,6 +3639,9 @@ function M.mount(ui,a)
  slider("Origin Motion",0,150,5,"origin",percent)
  slider("Intensity",0,100,1,"intensity",percent,updateSelection)
  slider("Extra levitation",0,1.5,.02,"height",function(v) return string.format("%.2f studs",v) end)
+ ui:chips({"Visual lift","Physical lift"},function(n) s.physicalLift=n=="Physical lift";sync();updateSelection() end,2,function() return if s.physicalLift then "Physical lift" else "Visual lift" end)
+ local liftStatus=ui:note("",56)
+ ui:watch(function() liftStatus.Text=if a.walkMotion then a.walkMotion.physicalLiftStatus or "Physical lift inactive" else "Physical lift inactive" end)
  ui:title("FULL BODY ROTATION")
  slider("Pitch / X",-360,360,1,"pitch",degrees)
  slider("Yaw / Y",-360,360,1,"yaw",degrees)
@@ -3664,7 +3667,7 @@ function M.mount(ui,a)
   s.packRates=rates;s.packRates[s.pack]=nil
   s.t=0;s.seek=0;s.paused=false;sync()
  end,1)
- ui:note("Confirm All applies extra levitation to the avatar's visual pose (Local and local overlay on Replicated). Camera and manual rotation remain preview-only. Collision and jump height are unchanged.",74)
+ ui:note("Confirm All saves lift mode. Physical lift adds the selected offset to Humanoid.HipHeight; visual lift affects only the pose. Physical mode respects the place controller and falls back to visuals if overridden.",78)
  local function visible(b)
   local r=rigData
   if not r or b==r.root then return false end
@@ -4831,9 +4834,10 @@ function P:step(s,gameMode,localMotion,dt)
   self.sendAt=now+.35
   local track=localMotion.replicatedTrack
   local published=track~=nil and track.IsPlaying and track.Length>0
-  if self.lastSettings~=s or self.lastPublished~=published then
-   self.lastSettings=s;self.lastPublished=published
-   local ok,packet=pcall(Schema.capturePeer,s,published)
+  local physical=localMotion.physicalLift~=nil
+  if self.lastSettings~=s or self.lastPublished~=published or self.lastPhysical~=physical then
+   self.lastSettings=s;self.lastPublished=published;self.lastPhysical=physical
+   local ok,packet=pcall(Schema.capturePeer,s,published,physical)
    if ok then self.pending=packet end
   end
   if self.pending and (not self.joined or not same(self.sent,self.pending) or now-self.lastHeartbeat>=8) then
@@ -5129,12 +5133,19 @@ function S.peerSettings(packet)
  out.motionPlayback="Local"
  return out
 end
-function S.capturePeer(settings,publishedMotion)
+function S.capturePeer(settings,publishedMotion,physicalLift)
  local data={}
  for k in S.peerKeys do data[k]=settings[k] end
  if settings.motionStudioConfig~="" then data.motionStudioConfig=settings.motionStudioConfig end
  if publishedMotion then data.publishedMotion=true end
- return S.peerPacket(data)
+ local packet=S.peerPacket(data)
+ if physicalLift and packet.motionStudioConfig then
+  local http=game:GetService("HttpService")
+  local config=http:JSONDecode(packet.motionStudioConfig)
+  config.height=0
+  packet.motionStudioConfig=http:JSONEncode(config)
+ end
+ return packet
 end
 function S.menuKey(s) return if s.lockKey=="F8" then "F7" else "F8" end
 function S.defaults() local r={};for k,d in S.defs do r[k]=S.copy(d.default) end;return r end
@@ -6436,7 +6447,7 @@ end
 -- BEGIN MODULE WalkMotion
 __aether_factories["WalkMotion"] = function()
 -- Additive R6 / R15 walking, graceful glide, and ethereal hover.
--- Poses are visual-only; HumanoidRootPart physics and game controls are unchanged.
+-- Poses are visual-only except for the explicitly selected HipHeight lift mode.
 -- Evaluated at PreSimulation after Animator's own animation tracks.
 local MotionPacks=__aether_require("MotionPacks")
 local Signature=__aether_require("SignatureR6")
@@ -6465,8 +6476,54 @@ function W:restoreLive()
  end
  table.clear(self.liveWrites)
 end
+-- Own only our additive HipHeight change. Never repeatedly fight an external reset.
+function W:releasePhysicalLift()
+ local entry=self.physicalLift
+ self.physicalLift=nil
+ self.physicalLiftBlocked=nil
+ if entry and entry.hum.Parent and math.abs(entry.hum.HipHeight-entry.applied)<.001 then
+  entry.hum.HipHeight=entry.base
+ end
+ self.physicalLiftStatus="Physical lift inactive"
+end
+function W:updatePhysicalLift(hum,config,allowed)
+ if self.peer then return false end
+ local amount=math.clamp(config.height or 0,0,1.5)
+ if not allowed or not config.physicalLift or amount<=0 then
+  if self.physicalLift or self.physicalLiftBlocked then self:releasePhysicalLift() end
+  self.physicalLiftStatus="Physical lift inactive"
+  return false
+ end
+ local entry=self.physicalLift
+ if entry then
+  if entry.hum~=hum or math.abs(entry.amount-amount)>.001 then
+   self:releasePhysicalLift()
+  elseif math.abs(hum.HipHeight-entry.applied)>.001 then
+   self.physicalLift=nil
+   self.physicalLiftBlocked={hum=hum,amount=amount}
+  else return true end
+ end
+ local blocked=self.physicalLiftBlocked
+ if blocked and blocked.hum==hum and math.abs(blocked.amount-amount)<.001 then
+  self.physicalLiftStatus="HipHeight overridden by place; using visual lift"
+  return false
+ end
+ self.physicalLiftBlocked=nil
+ local base=hum.HipHeight
+ local target=base+amount
+ local ok=pcall(function() hum.HipHeight=target end)
+ if not ok or math.abs(hum.HipHeight-target)>.001 then
+  self.physicalLiftBlocked={hum=hum,amount=amount}
+  self.physicalLiftStatus="HipHeight unavailable; using visual lift"
+  return false
+ end
+ self.physicalLift={hum=hum,base=base,applied=hum.HipHeight,amount=amount}
+ self.physicalLiftStatus=string.format("Physical lift: %.2f → %.2f studs (HipHeight)",base,hum.HipHeight)
+ return true
+end
 function W:bind(character)
  if self.character==character then return end
+ self:releasePhysicalLift()
  self:restoreLive();self:stopReplicated();table.clear(self.livePose)
  self.liveTime=0;self.liveAir=0;self.liveWasAir=false;self.liveStyle=nil;self.liveState=nil;self.liveTransition=nil;self.liveRetry=0
  self.peerTargets=nil;self.peerSettings=nil;self.peerPoseElapsed=0
@@ -6576,12 +6633,12 @@ function W:liveStep(character,s,dt)
  if not character then return end
  local hum=character:FindFirstChildOfClass("Humanoid")
  if not hum or hum.Health<=0 or hum.Sit or s.reduce or not s.walkAnimation or (s.walkIntensity or 0)<=0 or (self.peer and s.peerPublished) then
-  self:stopReplicated();table.clear(self.livePose);self.liveStyle=nil;self.liveState=nil;self.liveWasAir=false;self.liveTime=0;self.liveTransition=nil
+  self:releasePhysicalLift();self:stopReplicated();table.clear(self.livePose);self.liveStyle=nil;self.liveState=nil;self.liveWasAir=false;self.liveTime=0;self.liveTransition=nil
   return
  end
  local hs=hum:GetState()
  if hs==Enum.HumanoidStateType.Seated or hs==Enum.HumanoidStateType.Dead or hs==Enum.HumanoidStateType.Physics or hs==Enum.HumanoidStateType.Ragdoll or hs==Enum.HumanoidStateType.FallingDown or hs==Enum.HumanoidStateType.PlatformStanding or hs==Enum.HumanoidStateType.GettingUp then
-  self:stopReplicated();table.clear(self.livePose);self.liveStyle=nil;self.liveState=nil;self.liveWasAir=false;self.liveTransition=nil;return
+  self:releasePhysicalLift();self:stopReplicated();table.clear(self.livePose);self.liveStyle=nil;self.liveState=nil;self.liveWasAir=false;self.liveTransition=nil;return
  end
  dt=math.clamp(dt,0,.1)
  self.liveRetry+=dt
@@ -6603,6 +6660,10 @@ function W:liveStep(character,s,dt)
  local air=state=="Jump" or state=="Fall"
  if self.liveSettings~=s then self.liveSettings=s;self.liveConfig=MotionStudio.runtimeSettings(s) end
  local config=self.liveConfig
+ local physical=self:updatePhysicalLift(hum,config,state~="Climb" and state~="Swim" and not hum.PlatformStand and rootPart~=nil and not rootPart.Anchored)
+ if physical then
+  config=table.clone(config);config.height=0
+ end
  local styleChanged=self.liveStyle~=config.style
  local changed=styleChanged or self.liveState~=state
  if styleChanged then self.liveTime=0;self.liveAir=0;self.liveRate=nil end
@@ -7145,7 +7206,7 @@ function W:step(character,s,dt,preview)
  end
 end
 function W:destroy()
- self:stopReplicated();self:restoreLive();table.clear(self.livePose)
+ self:releasePhysicalLift();self:stopReplicated();self:restoreLive();table.clear(self.livePose)
  self.character=nil
  table.clear(self.motors)
 end

@@ -129,12 +129,19 @@ function S.peerSettings(packet)
  out.motionPlayback="Local"
  return out
 end
-function S.capturePeer(settings,publishedMotion)
+function S.capturePeer(settings,publishedMotion,physicalLift)
  local data={}
  for k in S.peerKeys do data[k]=settings[k] end
  if settings.motionStudioConfig~="" then data.motionStudioConfig=settings.motionStudioConfig end
  if publishedMotion then data.publishedMotion=true end
- return S.peerPacket(data)
+ local packet=S.peerPacket(data)
+ if physicalLift and packet.motionStudioConfig then
+  local http=game:GetService("HttpService")
+  local config=http:JSONDecode(packet.motionStudioConfig)
+  config.height=0
+  packet.motionStudioConfig=http:JSONEncode(config)
+ end
+ return packet
 end
 function S.menuKey(s) return if s.lockKey=="F8" then "F7" else "F8" end
 function S.defaults() local r={};for k,d in S.defs do r[k]=S.copy(d.default) end;return r end

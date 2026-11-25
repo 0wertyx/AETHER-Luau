@@ -105,9 +105,10 @@ function P:step(s,gameMode,localMotion,dt)
   self.sendAt=now+.35
   local track=localMotion.replicatedTrack
   local published=track~=nil and track.IsPlaying and track.Length>0
-  if self.lastSettings~=s or self.lastPublished~=published then
-   self.lastSettings=s;self.lastPublished=published
-   local ok,packet=pcall(Schema.capturePeer,s,published)
+  local physical=localMotion.physicalLift~=nil
+  if self.lastSettings~=s or self.lastPublished~=published or self.lastPhysical~=physical then
+   self.lastSettings=s;self.lastPublished=published;self.lastPhysical=physical
+   local ok,packet=pcall(Schema.capturePeer,s,published,physical)
    if ok then self.pending=packet end
   end
   if self.pending and (not self.joined or not same(self.sent,self.pending) or now-self.lastHeartbeat>=8) then

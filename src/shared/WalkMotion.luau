@@ -1,5 +1,5 @@
 -- Additive R6 / R15 walking, graceful glide, and ethereal hover.
--- Poses are visual-only; HumanoidRootPart physics and game controls are unchanged.
+-- Poses are visual-only except for the explicitly selected HipHeight lift mode.
 -- Evaluated at PreSimulation after Animator's own animation tracks.
 local MotionPacks=require(script.Parent.MotionPacks)
 local Signature=require(script.Parent.SignatureR6)
@@ -28,8 +28,54 @@ function W:restoreLive()
  end
  table.clear(self.liveWrites)
 end
+-- Own only our additive HipHeight change. Never repeatedly fight an external reset.
+function W:releasePhysicalLift()
+ local entry=self.physicalLift
+ self.physicalLift=nil
+ self.physicalLiftBlocked=nil
+ if entry and entry.hum.Parent and math.abs(entry.hum.HipHeight-entry.applied)<.001 then
+  entry.hum.HipHeight=entry.base
+ end
+ self.physicalLiftStatus="Physical lift inactive"
+end
+function W:updatePhysicalLift(hum,config,allowed)
+ if self.peer then return false end
+ local amount=math.clamp(config.height or 0,0,1.5)
+ if not allowed or not config.physicalLift or amount<=0 then
+  if self.physicalLift or self.physicalLiftBlocked then self:releasePhysicalLift() end
+  self.physicalLiftStatus="Physical lift inactive"
+  return false
+ end
+ local entry=self.physicalLift
+ if entry then
+  if entry.hum~=hum or math.abs(entry.amount-amount)>.001 then
+   self:releasePhysicalLift()
+  elseif math.abs(hum.HipHeight-entry.applied)>.001 then
+   self.physicalLift=nil
+   self.physicalLiftBlocked={hum=hum,amount=amount}
+  else return true end
+ end
+ local blocked=self.physicalLiftBlocked
+ if blocked and blocked.hum==hum and math.abs(blocked.amount-amount)<.001 then
+  self.physicalLiftStatus="HipHeight overridden by place; using visual lift"
+  return false
+ end
+ self.physicalLiftBlocked=nil
+ local base=hum.HipHeight
+ local target=base+amount
+ local ok=pcall(function() hum.HipHeight=target end)
+ if not ok or math.abs(hum.HipHeight-target)>.001 then
+  self.physicalLiftBlocked={hum=hum,amount=amount}
+  self.physicalLiftStatus="HipHeight unavailable; using visual lift"
+  return false
+ end
+ self.physicalLift={hum=hum,base=base,applied=hum.HipHeight,amount=amount}
+ self.physicalLiftStatus=string.format("Physical lift: %.2f → %.2f studs (HipHeight)",base,hum.HipHeight)
+ return true
+end
 function W:bind(character)
  if self.character==character then return end
+ self:releasePhysicalLift()
  self:restoreLive();self:stopReplicated();table.clear(self.livePose)
  self.liveTime=0;self.liveAir=0;self.liveWasAir=false;self.liveStyle=nil;self.liveState=nil;self.liveTransition=nil;self.liveRetry=0
  self.peerTargets=nil;self.peerSettings=nil;self.peerPoseElapsed=0
@@ -139,12 +185,12 @@ function W:liveStep(character,s,dt)
  if not character then return end
  local hum=character:FindFirstChildOfClass("Humanoid")
  if not hum or hum.Health<=0 or hum.Sit or s.reduce or not s.walkAnimation or (s.walkIntensity or 0)<=0 or (self.peer and s.peerPublished) then
-  self:stopReplicated();table.clear(self.livePose);self.liveStyle=nil;self.liveState=nil;self.liveWasAir=false;self.liveTime=0;self.liveTransition=nil
+  self:releasePhysicalLift();self:stopReplicated();table.clear(self.livePose);self.liveStyle=nil;self.liveState=nil;self.liveWasAir=false;self.liveTime=0;self.liveTransition=nil
   return
  end
  local hs=hum:GetState()
  if hs==Enum.HumanoidStateType.Seated or hs==Enum.HumanoidStateType.Dead or hs==Enum.HumanoidStateType.Physics or hs==Enum.HumanoidStateType.Ragdoll or hs==Enum.HumanoidStateType.FallingDown or hs==Enum.HumanoidStateType.PlatformStanding or hs==Enum.HumanoidStateType.GettingUp then
-  self:stopReplicated();table.clear(self.livePose);self.liveStyle=nil;self.liveState=nil;self.liveWasAir=false;self.liveTransition=nil;return
+  self:releasePhysicalLift();self:stopReplicated();table.clear(self.livePose);self.liveStyle=nil;self.liveState=nil;self.liveWasAir=false;self.liveTransition=nil;return
  end
  dt=math.clamp(dt,0,.1)
  self.liveRetry+=dt
@@ -166,6 +212,10 @@ function W:liveStep(character,s,dt)
  local air=state=="Jump" or state=="Fall"
  if self.liveSettings~=s then self.liveSettings=s;self.liveConfig=MotionStudio.runtimeSettings(s) end
  local config=self.liveConfig
+ local physical=self:updatePhysicalLift(hum,config,state~="Climb" and state~="Swim" and not hum.PlatformStand and rootPart~=nil and not rootPart.Anchored)
+ if physical then
+  config=table.clone(config);config.height=0
+ end
  local styleChanged=self.liveStyle~=config.style
  local changed=styleChanged or self.liveState~=state
  if styleChanged then self.liveTime=0;self.liveAir=0;self.liveRate=nil end
@@ -708,7 +758,7 @@ function W:step(character,s,dt,preview)
  end
 end
 function W:destroy()
- self:stopReplicated();self:restoreLive();table.clear(self.livePose)
+ self:releasePhysicalLift();self:stopReplicated();self:restoreLive();table.clear(self.livePose)
  self.character=nil
  table.clear(self.motors)
 end

@@ -633,11 +633,11 @@ local function part(parent,name,size,color)
 end
 -- Only confirmed editor settings enter the shared settings bank.
 -- Playback position and pause are transport commands, never autosaved.
-local previewKeys={"state","auto","speed","adaptive","previewVelocity","origin","pitch","yaw","roll","cam","zoom","height","props","grid","joints"}
+local previewKeys={"state","auto","speed","adaptive","previewVelocity","origin","pitch","yaw","roll","cam","zoom","height","physicalLift","props","grid","joints"}
 local liveKeys={pack="walkStyle",enabled="walkAnimation",intensity="walkIntensity",aura="aura",trail="trail",auraRate="auraRate",trailLife="trailLife",auraColor="auraColor"}
 local limits={speed={.25,2},previewVelocity={0,40},origin={0,150},pitch={-360,360},yaw={-360,360},roll={-360,360},cam={-180,180},zoom={.65,1.5},height={0,1.5}}
 local function defaults(pack)
- return {state="Run",auto=false,speed=1,adaptive=true,previewVelocity=16,packRates={},origin=100,pitch=if pack=="Godly Aura" then 9 else 0,yaw=0,roll=0,cam=45,zoom=1,height=0,props=true,grid=true,joints=false}
+ return {state="Run",auto=false,speed=1,adaptive=true,previewVelocity=16,packRates={},origin=100,pitch=if pack=="Godly Aura" then 9 else 0,yaw=0,roll=0,cam=45,zoom=1,height=0,physicalLift=false,props=true,grid=true,joints=false}
 end
 local function readSaved(settings)
  local out=defaults(settings.walkStyle)
@@ -665,7 +665,7 @@ end
 -- Shared pose evaluator for the editor and authorized local avatar animation.
 function M.runtimeSettings(settings)
  local saved=readSaved(settings)
- return {style=saved.pack,speed=saved.speed,adaptive=saved.adaptive,origin=saved.origin/100,intensity=math.clamp(saved.intensity/100,0,1),props=saved.props,height=saved.height}
+ return {style=saved.pack,speed=saved.speed,adaptive=saved.adaptive,origin=saved.origin/100,intensity=math.clamp(saved.intensity/100,0,1),props=saved.props,height=saved.height,physicalLift=saved.physicalLift}
 end
 -- Speed scales cadence only, never WalkSpeed, velocity or movement physics.
 function M.speedFactor(config,state,velocity)
@@ -1049,6 +1049,9 @@ function M.mount(ui,a)
  slider("Origin Motion",0,150,5,"origin",percent)
  slider("Intensity",0,100,1,"intensity",percent,updateSelection)
  slider("Extra levitation",0,1.5,.02,"height",function(v) return string.format("%.2f studs",v) end)
+ ui:chips({"Visual lift","Physical lift"},function(n) s.physicalLift=n=="Physical lift";sync();updateSelection() end,2,function() return if s.physicalLift then "Physical lift" else "Visual lift" end)
+ local liftStatus=ui:note("",56)
+ ui:watch(function() liftStatus.Text=if a.walkMotion then a.walkMotion.physicalLiftStatus or "Physical lift inactive" else "Physical lift inactive" end)
  ui:title("FULL BODY ROTATION")
  slider("Pitch / X",-360,360,1,"pitch",degrees)
  slider("Yaw / Y",-360,360,1,"yaw",degrees)
@@ -1074,7 +1077,7 @@ function M.mount(ui,a)
   s.packRates=rates;s.packRates[s.pack]=nil
   s.t=0;s.seek=0;s.paused=false;sync()
  end,1)
- ui:note("Confirm All applies extra levitation to the avatar's visual pose (Local and local overlay on Replicated). Camera and manual rotation remain preview-only. Collision and jump height are unchanged.",74)
+ ui:note("Confirm All saves lift mode. Physical lift adds the selected offset to Humanoid.HipHeight; visual lift affects only the pose. Physical mode respects the place controller and falls back to visuals if overridden.",78)
  local function visible(b)
   local r=rigData
   if not r or b==r.root then return false end
