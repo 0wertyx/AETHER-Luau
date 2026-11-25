@@ -2487,6 +2487,9 @@ local function avatarPreview(ui,a,worldMode)
  local full=false
  local paused=false
  local speed=1
+ local demoState="Walk"
+ local demoStrength=100
+ local previewStatus=nil
  local stage=nil
  local floorOffset=2
  local centerOffset=Vector3.zero
@@ -2513,7 +2516,7 @@ local function avatarPreview(ui,a,worldMode)
   local aspect=math.max(.1,view.AbsoluteSize.X/math.max(1,view.AbsoluteSize.Y))
   local half=math.rad(cam.FieldOfView*.5)
   local angle=math.min(half,math.atan(math.tan(half)*aspect))
-  local distance=if worldMode and full then 12*zoom else radius/math.sin(angle)*1.12*zoom
+  local distance=if worldMode and full then 12*zoom else radius/math.sin(angle)*(if worldMode then 1.12 else 1.26)*zoom
   local offset=Vector3.new(math.sin(yaw)*math.cos(pitch),math.sin(pitch),-math.cos(yaw)*math.cos(pitch))
   local pos=center+offset*distance
   if worldMode and full and stage then
@@ -2637,7 +2640,7 @@ local function avatarPreview(ui,a,worldMode)
  end
  previewState.pose=function(settings,dt)
   local rig=previewState.rig
-  if page.dead or not rootPart or not rootPart.Parent or not rig then return end
+  if page.dead or not ui.opened or not rootPart or not rootPart.Parent or not rig then return end
   if worldMode then
    if paused then return end
    dt=math.min(dt,.05)*speed
@@ -2679,11 +2682,25 @@ local function avatarPreview(ui,a,worldMode)
    end
    center=rootPart.Position+centerOffset;applyCamera()
   end
+  if not worldMode and paused then return end
   for _,motor in motors do motor.Transform=CFrame.identity end
-  if ((ui.tab=="Character" and settings.walkAnimation) or (worldMode and (moving or not grounded))) and not settings.reduce then
-   local demo=settings
-   if worldMode and not settings.walkAnimation then demo=table.clone(settings);demo.walkAnimation=true end
-   motion:step(rig,demo,dt,if worldMode then {movement=math.clamp(velocity.Magnitude/16,0,1),grounded=grounded,jumping=verticalSpeed>0} else true)
+  if (ui.tab=="Character" or worldMode) and not settings.reduce then
+   local demo=table.clone(settings);demo.walkAnimation=true
+   local virtual
+   if worldMode then
+    virtual={movement=math.clamp(velocity.Magnitude/16,0,1),grounded=grounded,jumping=verticalSpeed>0,fullPose=true}
+   else
+    dt=math.min(dt,.05)*speed
+    demo.walkIntensity=demoStrength
+    local state=if demoState=="Jump" then Enum.HumanoidStateType.Jumping
+     elseif demoState=="Fall" then Enum.HumanoidStateType.Freefall
+     elseif demoState=="Swim" then Enum.HumanoidStateType.Swimming
+     elseif demoState=="Climb" then Enum.HumanoidStateType.Climbing
+     else Enum.HumanoidStateType.Running
+    local airborne=demoState=="Jump" or demoState=="Fall"
+    virtual={movement=if demoState=="Idle" then 0 elseif demoState=="Walk" then .78 else 1,grounded=not airborne,jumping=demoState=="Jump",state=state,speed=if demoState=="Run" then 24 else 16,fullPose=true}
+   end
+   motion:step(rig,demo,dt,virtual)
   else
    motion:bind(nil)
   end
@@ -2710,7 +2727,7 @@ local function avatarPreview(ui,a,worldMode)
    end
    for _,obj in rig:GetDescendants() do
     if not obj.Parent then continue end
-    if obj:IsA("LuaSourceContainer") or obj:IsA("Tool") or obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Highlight") or obj:IsA("Sound") then
+    if obj:IsA("LuaSourceContainer") or obj:IsA("Animator") or obj:IsA("AnimationController") or obj:IsA("Tool") or obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Highlight") or obj:IsA("Sound") then
      obj:Destroy()
     elseif obj:IsA("BasePart") then
      obj.Anchored=true;obj.CanCollide=false;obj.CanTouch=false;obj.CanQuery=false;obj.LocalTransparencyModifier=0
@@ -2724,7 +2741,7 @@ local function avatarPreview(ui,a,worldMode)
    rig.Name="LocalAvatarPreview"
    avatar:clear()
    if previewState.rig then previewState.rig:Destroy() end
-   rig.Parent=w;previewState.rig=rig;prepareRig(rig);previewState.pose(a.s,0);label.Visible=false;fit()
+   rig.Parent=w;previewState.rig=rig;prepareRig(rig);fit();previewState.pose(a.s,0);label.Visible=false
    if worldMode then resetScene() end
   end)
  end
@@ -2837,7 +2854,21 @@ local function avatarPreview(ui,a,worldMode)
    applyCamera()
   end
  end)
- ui:note(if worldMode then "Capture visible scene · Full screen: WASD, Space, RMB camera, Shift lock" else "Hold middle mouse to orbit · Scroll to zoom · Walking preview",32)
+ ui:note(if worldMode then "Capture visible scene · Full screen: WASD, Space, RMB camera, Shift lock" else "Hold middle mouse to orbit · Scroll to zoom · Full-body preview (independent of game animation)",42)
+ if not worldMode and ui.tab=="Character" then
+  ui:title("FULL-BODY ANIMATION PREVIEW")
+  ui:note("Preview plays the selected style even when Custom walking animation is off. Only the local GUI rig is animated here.",44)
+  ui:chips({"Idle","Walk","Run","Jump","Fall","Swim","Climb"},function(n)
+   demoState=n;motion:bind(nil);ui:sync()
+  end,4,function() return demoState end)
+  ui:chips({"0.5x","1x","1.5x","2x"},function(n) speed=tonumber(n:sub(1,-2)) or 1;ui:sync() end,4,function() return tostring(speed).."x" end)
+  ui:chips({"50%","75%","100%"},function(n) demoStrength=tonumber(n:sub(1,-2)) or 100;ui:sync() end,3,function() return tostring(demoStrength).."%" end)
+  ui:chips({"Pause","Play"},function(n) paused=n=="Pause";ui:sync() end,2,function() return if paused then "Pause" else "Play" end)
+  previewStatus=ui:note("",28)
+  ui:watch(function()
+   previewStatus.Text=(a.s.walkStyle or "Natural").." / "..demoState.." · "..tostring(demoStrength).."%"
+  end)
+ end
  if worldMode then
   ui:chips({"Capture visible scene","Full screen"},function(n) if n=="Full screen" then openFull() else captureScene() end end,2)
   ui:chips({"Demo stage","Pause / resume","Playback speed"},function(n) if n=="Demo stage" then resetScene() elseif n=="Pause / resume" then togglePause() else cycleSpeed() end end,3)
@@ -4298,7 +4329,7 @@ function W:step(character,s,dt,preview)
  local floating=style=="Floating" or style=="Glide" or style=="Ethereal"
  local enabled=s.walkAnimation and not s.reduce and (preview or (hum.Health>0 and not hum.Sit))
  local virtual=if type(preview)=="table" then preview else nil
- local state=if virtual and not virtual.grounded then (if virtual.jumping then Enum.HumanoidStateType.Jumping else Enum.HumanoidStateType.Freefall) elseif preview then Enum.HumanoidStateType.Running else hum:GetState()
+ local state=if virtual and virtual.state then virtual.state elseif virtual and not virtual.grounded then (if virtual.jumping then Enum.HumanoidStateType.Jumping else Enum.HumanoidStateType.Freefall) elseif preview then Enum.HumanoidStateType.Running else hum:GetState()
  local jumping=state==Enum.HumanoidStateType.Jumping
  local falling=state==Enum.HumanoidStateType.Freefall
  local climbing=state==Enum.HumanoidStateType.Climbing
@@ -4307,6 +4338,7 @@ function W:step(character,s,dt,preview)
  local grounded=if virtual then virtual.grounded elseif preview then true else hum.FloorMaterial~=Enum.Material.Air
  local movement=if virtual then virtual.movement elseif preview then 1 else hum.MoveDirection.Magnitude
  local intensity=math.clamp((s.walkIntensity or 65)/100,0,1)
+ local fullPreview=virtual and virtual.fullPose==true
  local target=0
  if enabled then
   if pack then
@@ -4318,9 +4350,10 @@ function W:step(character,s,dt,preview)
    target=intensity*(if grounded then movement else 0)
   end
  end
- self.blend+=(target-self.blend)*(1-math.exp(-dt*9))
+ if fullPreview and enabled then target=intensity end
+ self.blend+=(target-self.blend)*(1-math.exp(-dt*(if fullPreview then 14 else 9)))
  if self.blend<.002 then return end
- local speed=math.clamp(hum.WalkSpeed/16,.6,2.3)
+ local speed=math.clamp((if virtual and virtual.speed then virtual.speed else hum.WalkSpeed)/16,.6,2.3)
  local moving=math.clamp(movement,0,1)
  local cadence=if pack then pack.cadence*(.62+.38*moving)*speed
   elseif floating then (2.3+2.8*moving)*speed else 7.8*speed
@@ -4328,6 +4361,64 @@ function W:step(character,s,dt,preview)
  local ph=self.phase;local wave=math.sin(ph);local cross=math.cos(ph)
  local weight=self.blend
  local j=self.motors
+ -- In the isolated viewport, author full poses in body-part axes. R6 uses
+ -- rotated C0 joint frames, so transform the pose into each motor's basis.
+ -- Keep the existing additive live-character behavior unchanged.
+ local function pose(m,cf)
+  if not m or not m.Parent then return end
+  if not fullPreview then add(m,cf);return end
+  local x,y,z=cf:ToOrientation()
+  local isShoulder=m==j.RightShoulder or m==j.LeftShoulder
+  local isHip=m==j.RightHip or m==j.LeftHip
+  local isElbow=m==j.RightElbow or m==j.LeftElbow
+  if isShoulder or isHip then z=-z end
+  if isElbow then x=-x end
+  local limb=isShoulder or isHip or isElbow or m==j.RightKnee or m==j.LeftKnee or m==j.RightAnkle or m==j.LeftAnkle
+  local gain=if limb then 2.35 elseif m==j.Root then 1.8 else 1.65
+  local rx=math.clamp(x*gain,-1.7,1.7)
+  local ry=math.clamp(y*gain,-1.2,1.2)
+  local rz=math.clamp(z*gain,-1.5,1.5)
+  local basis=m.C0.Rotation
+  local body=CFrame.new(cf.Position*(if m==j.Root then 2 else 1.4))*CFrame.fromOrientation(rx,ry,rz)
+  m.Transform=m.Transform*basis:Inverse()*body*basis
+ end
+ local add=pose
+ if fullPreview and (airborne or climbing or swimming) then
+  -- Full-body state-specific choreography; these are original preview poses.
+  local st=pack or {}
+  local flair=math.clamp((st.spread or .12)*.32,0,.2)
+  local function ang(m,x,y,z) add(m,CFrame.Angles(x*weight,y*weight,z*weight)) end
+  if swimming then
+   local stroke=math.sin(ph*.8)
+   add(j.Root,CFrame.Angles(-.55*weight,0,.07*wave*weight))
+   ang(j.RightShoulder,.65+.22*stroke,.12,-.16-flair)
+   ang(j.LeftShoulder,.65-.22*stroke,-.12,.16+flair)
+   ang(j.RightElbow,-.45-.12*stroke,0,0);ang(j.LeftElbow,-.45+.12*stroke,0,0)
+   ang(j.RightHip,.27*wave,0,0);ang(j.LeftHip,-.27*wave,0,0)
+   ang(j.RightKnee,-.22-.14*cross,0,0);ang(j.LeftKnee,-.22+.14*cross,0,0)
+   ang(j.Neck,.22,0,0)
+  elseif climbing then
+   local lift=math.sin(ph*.85)
+   add(j.Root,CFrame.new(0,.07*math.abs(cross)*weight,0)*CFrame.Angles(.07*weight,0,0))
+   ang(j.RightShoulder,.58+.23*lift,.08,-.13-flair)
+   ang(j.LeftShoulder,.58-.23*lift,-.08,.13+flair)
+   ang(j.RightElbow,-.36-.16*lift,0,0);ang(j.LeftElbow,-.36+.16*lift,0,0)
+   ang(j.RightHip,.22+.31*lift,0,0);ang(j.LeftHip,.22-.31*lift,0,0)
+   ang(j.RightKnee,-.3-.17*lift,0,0);ang(j.LeftKnee,-.3+.17*lift,0,0)
+   ang(j.Neck,-.12,0,0)
+  else
+   local float=st.hover or 0
+   local tuck=if jumping then .29 else .10
+   add(j.Root,CFrame.new(0,(if jumping then .25 else .12)*weight+float*.5*weight,0)*CFrame.Angles((if jumping then -.12 else .10)*weight,0,.035*wave*weight))
+   ang(j.RightShoulder,if jumping then .48 else .16,0,-.29-flair)
+   ang(j.LeftShoulder,if jumping then .38 else .16,0,.29+flair)
+   ang(j.RightElbow,-.24,0,0);ang(j.LeftElbow,-.24,0,0)
+   ang(j.RightHip,tuck+.10,0,0);ang(j.LeftHip,tuck-.08,0,0)
+   ang(j.RightKnee,-tuck-.12,0,0);ang(j.LeftKnee,-tuck,0,0)
+   ang(j.Neck,if jumping then -.07 else .07,0,0)
+  end
+  return
+ end
  if pack then
   -- Original procedural interpretation of an avatar pack (not purchased clips).
   -- Each state has its own posture, on both R6 and R15; optional joints on R15.
@@ -4337,7 +4428,7 @@ function W:step(character,s,dt,preview)
   local stride=if airborne then .08 elseif climbing then .25
    elseif swimming then .15 else pack.stride
   local walk=if airborne then .14 elseif moving>.08 then moving else 0
-  local run=if moving>.08 and hum.WalkSpeed>19 then 1 else 0
+  local run=if moving>.08 and ((virtual and virtual.speed or hum.WalkSpeed)>19) then 1 else 0
   local cycle=gait*walk
   local swing=stride*cycle*(1+run*.3)
   local pitch=pack.lean*(if moving>.08 or airborne then 1 else .32)
@@ -4542,7 +4633,7 @@ function W:step(character,s,dt,preview)
    rootRoll=math.sin(ph*.5)*.08
   end
   local r6=hum.RigType==Enum.HumanoidRigType.R6
-  local scale=if r6 then .78 else 1
+  local scale=if r6 and not fullPreview then .78 else 1
   local leftKnee=-(pack.knee or 0)*(.3+.7*math.max(0,-gait))*walk+kneeBend
   local rightKnee=-(pack.knee or 0)*(.3+.7*math.max(0,gait))*walk+kneeBend
   if airborne then rightKnee-=.13;leftKnee-=.13 end
@@ -4584,11 +4675,11 @@ function W:step(character,s,dt,preview)
   add(j.LeftAnkle,CFrame.Angles((foot*.53-wave*.035)*weight,0,0))
  else
   -- Natural / Heroic / Bouncy: subtle animation layered over existing walk.
-  local power=if style=="Heroic" then .22 elseif style=="Bouncy" then .21 else .15
-  local leg=wave*power*weight
+  local power=if fullPreview then (if style=="Heroic" then .37 elseif style=="Bouncy" then .32 else .29) else (if style=="Heroic" then .22 elseif style=="Bouncy" then .21 else .15)
+  local leg=wave*power*weight*(if fullPreview then moving else 1)
   local arm=-leg*.82
-  local dip=(if style=="Bouncy" then .085 else .036)*math.abs(cross)*weight
-  local twist=wave*(if style=="Heroic" then .09 else .043)*weight
+  local dip=(if style=="Bouncy" then .085 else .036)*math.abs(cross)*weight*(if fullPreview then .2+.8*moving else 1)
+  local twist=wave*(if style=="Heroic" then .09 else .043)*weight*(if fullPreview then .2+.8*moving else 1)
   add(j.RightHip,CFrame.Angles(leg,0,0))
   add(j.LeftHip,CFrame.Angles(-leg,0,0))
   add(j.RightShoulder,CFrame.Angles(arm,0,twist*.32))
@@ -4598,6 +4689,11 @@ function W:step(character,s,dt,preview)
   add(j.Waist,CFrame.new(0,dip,0)*CFrame.Angles(dip*.18,twist,0))
   add(j.Neck,CFrame.Angles(0,-twist*.36,0))
   add(j.Root,CFrame.new(0,dip*.5,0)*CFrame.Angles(0,twist*.55,0))
+ end
+ if fullPreview and style=="Cartwheel Flow" and moving>.08 and j.Root then
+  -- Full cartwheel roll is confined to the isolated GUI rig.
+  local basis=j.Root.C0.Rotation
+  j.Root.Transform=j.Root.Transform*basis:Inverse()*CFrame.Angles(0,0,ph*.52)*basis
  end
 end
 function W:destroy()
