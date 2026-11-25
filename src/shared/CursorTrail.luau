@@ -37,7 +37,7 @@ function T:step(hit,s,now)
  if not self.visible then self.root.Visible=true;self.visible=true end
  if last and (now-last.t>.2 or (hit-last.p).Magnitude>300) then table.clear(h);last=nil end
  -- Time-based history: frame rate changes do not stretch or shorten the trail.
- if not last or now-last.t>=1/240 then h[#h+1]={p=hit,t=now} else h[#h]={p=hit,t=now} end
+ h[#h+1]={p=hit,t=now}
  local life=s.cursorTrailLength/1000
  while #h>2 and (h[2].t<now-life or #h>256) do table.remove(h,1) end
  local index=#h
