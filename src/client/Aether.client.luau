@@ -473,7 +473,10 @@ local function bind(char)
 end
 scope:on(player.CharacterAdded, bind)
 scope:on(player.CharacterRemoving, function(char)
-    if character == char then character, humanoid = nil, nil end
+    if character == char then
+        view:releaseCamera(view:nativeLockAvailable())
+        character, humanoid = nil, nil
+    end
     avatar:clear()
     motionProps:clear()
 end)
@@ -572,7 +575,7 @@ local function frame(dt, now)
     hud:step(styled, result, dt)
     avatar:step(if app.mode == "Game" then character else nil, styled, now)
     world:apply(styled)
-    view:step(styled, humanoid, ui.opened or app.editingHUD==true, dt, now)
+    view:step(styled, if app.mode=="Game" then humanoid else nil, ui.opened or app.editingHUD==true, dt, now)
     if app.preview then
         if app.preview.hud then app.preview.hud:step(styled, result, dt) end
         if app.preview.pose then app.preview.pose(styled, dt) end
