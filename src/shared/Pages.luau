@@ -557,35 +557,69 @@ function E.render(a,tab,ui)
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
   if tab=="Character" then
-   ui:title("AETHER MOTION STUDIO V12.9")
+   ui:title("AETHER MOTION STUDIO V12.10")
    MotionStudio.mount(ui,a)
   else avatarPreview(ui,a) end
   if tab=="Halos" then
-   ui:title("HALO V2 / INDIVIDUAL LAYERS")
-   ui:note("Each layer has its own toggle. Combine styles or use them independently of the legacy halo.",36)
+   ui:title("HALO COLLECTION")
+   ui:note("All halo styles in one list. Layered styles can be combined; classic styles share one active slot.",38)
+   local collection={}
    for i,style in S.haloV2Styles do
-    local k="haloV2"..i
-    local row=ui:row(42,"HaloV2Style")
-    local label=U.label(row,style,12,UDim2.fromOffset(9,0),UDim2.new(.47,0,1,0))
-    local edit=U.button(row,"EDIT");edit.Position=UDim2.new(.49,0,0,4);edit.Size=UDim2.new(.20,-4,1,-8)
+    collection[#collection+1]={id="layer:"..i,name=style,key="haloV2"..i}
+   end
+   for _,style in S.defs.haloStyle.min do
+    collection[#collection+1]={id="classic:"..style,name=style,classic=true}
+   end
+   local selected=a.haloSelected
+   local function active(item)
+    if item.classic then return a.s.halo and a.s.haloStyle==item.name end
+    return a.s[item.key.."Enabled"]
+   end
+   for _,entry in collection do
+    local item=entry
+    local row=ui:row(42,"HaloStyle")
+    local label=U.label(row,item.name,12,UDim2.fromOffset(9,0),UDim2.new(.47,-10,1,0))
+    local edit=U.button(row,"EDIT");edit.Position=UDim2.new(.49,0,0,4);edit.Size=UDim2.new(.20,-4,1,-8);edit.TextSize=11
     local state=U.button(row,"");state.Position=UDim2.new(.70,0,0,4);state.Size=UDim2.new(.30,-6,1,-8);state.TextSize=10
-    ui.page:on(edit.Activated,function() a.haloV2Selected=i;ui:open("Halos") end)
-    ui.page:on(state.Activated,function() a:set(k.."Enabled",not a.s[k.."Enabled"]) end)
+    ui.page:on(edit.Activated,function()
+     a.haloSelected=if selected==item.id then nil else item.id
+     a.haloScroll=ui.sc.CanvasPosition.Y
+     ui:open("Halos")
+    end)
+    ui.page:on(state.Activated,function()
+     if item.classic then
+      if active(item) then a:set("halo",false)
+      else a:patch({halo=true,haloStyle=item.name}) end
+     else a:set(item.key.."Enabled",not active(item)) end
+    end)
     ui:watch(function()
-     state.Text=if a.s[k.."Enabled"] then "ENABLED" else "DISABLED"
-     state.BackgroundColor3=if a.s[k.."Enabled"] then Color3.fromRGB(75,54,112) else Color3.fromRGB(43,39,52)
-     label.TextColor3=if a.haloV2Selected==i then U.hex(a.s.accent) else Color3.fromRGB(229,220,242)
+     local enabled=active(item)
+     state.Text=if enabled then "ENABLED" else "DISABLED"
+     state.BackgroundColor3=if enabled then Color3.fromRGB(75,54,112) else Color3.fromRGB(43,39,52)
+     edit.Text=if selected==item.id then "CLOSE" else "EDIT"
+     edit.BackgroundColor3=if selected==item.id then Color3.fromRGB(84,61,118) else Color3.fromRGB(52,40,77)
+     label.TextColor3=if selected==item.id then U.hex(a.s.accent) else Color3.fromRGB(229,220,242)
+    end)
+    if selected==item.id then
+     ui:title("CUSTOMIZE / "..string.upper(item.name))
+     if item.classic then
+      ui:note("Classic styles share these visual settings. Enable this style to view it on your avatar.",34)
+      ui:colorPicker("haloColor")
+      for _,k in {"haloRadius","haloHeight","haloSpin","haloRainbow","haloDetail","haloWalk","haloGlow"} do ui:control(k) end
+     else
+      local k=item.key
+      ui:colorPicker(k.."Color");ui:colorPicker(k.."Secondary")
+      for _,suffix in {"Radius","Height","Spin","Opacity","Glow","Thickness","Count","Tilt"} do ui:control(k..suffix) end
+     end
+    end
+   end
+   if a.haloScroll then
+    local y=a.haloScroll;a.haloScroll=nil
+    local page,sc=ui.page,ui.sc
+    task.defer(function()
+     if not page.dead and sc.Parent then sc.CanvasPosition=Vector2.new(0,math.max(0,y)) end
     end)
    end
-   local selected=a.haloV2Selected or 1;local k="haloV2"..selected
-   ui:title("CUSTOMIZE / "..string.upper(S.haloV2Styles[selected]))
-   ui:colorPicker(k.."Color");ui:colorPicker(k.."Secondary")
-   for _,suffix in {"Radius","Height","Spin","Opacity","Glow","Thickness","Count","Tilt"} do ui:control(k..suffix) end
-   ui:title("LEGACY HALOS")
-   preset(ui,a,tab)
-   local skip={}
-   for i in S.haloV2Styles do for _,suffix in S.haloV2Fields do skip["haloV2"..i..suffix]=true end end
-   ui:group(tab,skip)
   elseif tab~="Character" then preset(ui,a,tab);ui:group(tab) end
  elseif tab=="Ambient" then local sky=ui:row(106,"SkyPreview");local grad=U.gradient(sky,Color3.new(),Color3.new(),90);local sun=U.frame(sky,"Sun",nil,UDim2.fromOffset(30,30));U.corner(sun,30);ui:watch(function() local s=a.s;sky.BackgroundColor3=Color3.new(1,1,1);grad.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,U.hex(s.skyA)),ColorSequenceKeypoint.new(.64,U.hex(s.skyB)),ColorSequenceKeypoint.new(1,U.hex(s.skyC))});sun.BackgroundColor3=U.hex(s.skyC);sun.Position=UDim2.fromScale(.7,.66-.45*math.sin(s.time/240*math.pi));sun.BackgroundTransparency=.04+s.fog*.004 end);preset(ui,a,tab);ui:group(tab,{starfallA=true,starfallB=true});ui:title("STARFALL COLORS");ui:colorPicker("starfallA");ui:colorPicker("starfallB")
  elseif tab=="Indicators" then preview(ui,a);gallery(ui,a);ui:group(tab,{shape=true});ui:title("PER-PLAYER OVERRIDE");local id=ui:box("UserId or simulator ID","1");local label=ui:box("Label override","");local color=ui:box("Override hex",a.s.arrowA);ui:chips({"Assign current shape","Remove override"},function(k) local p=S.copy(a.s.players);if k=="Assign current shape" then p[id.Text]={label=label.Text,color=color.Text,shape=a.s.shape} else p[id.Text]=nil end;a:set("players",p);ui:message("Overrides updated") end,2)
