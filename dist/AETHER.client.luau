@@ -50,8 +50,9 @@ end
 local function segment(p,a,b,thick)
  local d=b-a
  if d.Magnitude<.001 then p.Transparency=1;return end
- p.Transparency=0
- p.Size=Vector3.new(thick,thick,d.Magnitude)
+ if p.Transparency~=0 then p.Transparency=0 end
+ local size=Vector3.new(thick,thick,d.Magnitude)
+ if p.Size~=size then p.Size=size end
  p.CFrame=CFrame.lookAt((a+b)*.5,b)
 end
 -- Each path is traced from one half of the supplied drawing in image coordinates.
@@ -155,7 +156,7 @@ end
 function A:clear()
  if self.scope then self.scope:clear();self.scope=nil end
  self.root=nil;self.highlight=nil;self.emitter=nil;self.trail=nil;self.light=nil;self.neonEnergy=0;self.neonHP=nil
- self.key="";self.char=nil;self.lastAt=nil;self.walk=0;self.phase=0;self.glowKey=nil
+ self.key="";self.char=nil;self.lastAt=nil;self.walk=0;self.phase=0;self.glowKey=nil;self.bindSettings=nil;self.bindBody=nil;self.bindHead=nil;self.settings=nil
  table.clear(self.feathers);table.clear(self.trims);table.clear(self.beads)
  table.clear(self.ornaments);table.clear(self.parts);table.clear(self.frames);table.clear(self.geoWings);table.clear(self.geoHalos);table.clear(self.haloV2);table.clear(self.sketchEdges);table.clear(self.diamonds);table.clear(self.diamondTime)
 end
@@ -165,6 +166,7 @@ function A:add(partInstance)
  return partInstance
 end
 function A:bind(char,body,head,s)
+ if self.bindSettings==s and self.bindBody==body and self.bindHead==head and (not self.root or self.root.Parent) then return end
  local wdetail=s.wingDetail or "High";local hdetail=s.haloDetail or "High"
  local v2Key={};local hasV2=false
  for i in S.haloV2Styles do local k="haloV2"..i
@@ -173,10 +175,12 @@ function A:bind(char,body,head,s)
  local key=table.concat({tostring(s.wings),s.wingStyle,wdetail,
   tostring(s.halo),s.haloStyle,hdetail,tostring(s.neon),tostring(s.aura),tostring(s.trail),table.concat(v2Key,",")},"/")
  if not (char and body and head) or not(s.wings or s.halo or hasV2 or s.neon or s.aura or s.trail or s.redDiamond or s.blueDiamond) then
-  if self.root then self:clear() end;return
+  if self.root then self:clear() end
+  self.bindSettings=s;self.bindBody=body;self.bindHead=head;return
  end
- if self.key==key and self.char==char then return end
+ if self.key==key and self.char==char and self.bindBody==body and self.bindHead==head and self.root and self.root.Parent then self.bindSettings=s;return end
  self:clear()
+ self.bindSettings=s;self.bindBody=body;self.bindHead=head
  self.key=key;self.char=char;self.scope=U.scope()
  self.root=self.scope:add(U.new("Folder",{Name="AetherAvatarFX"},self.parent))
  self.paintAt=-1
@@ -325,6 +329,10 @@ function A:step(char,s,t)
  local dt=math.clamp(t-(self.lastAt or t),0,.08);self.lastAt=t
  local hum=char:FindFirstChildOfClass("Humanoid")
  local running=if hum then hum.MoveDirection.Magnitude else 0
+ if self.peer and hum then
+  local root=char:FindFirstChild("HumanoidRootPart")
+  if root then local v=root.AssemblyLinearVelocity;running=math.clamp(Vector3.new(v.X,0,v.Z).Magnitude/8,0,1) end
+ end
  if self.preview and s.walkAnimation then running=1 end
  if hum and (hum.Health<=0 or hum.Sit) then running=0 end
  local smooth=1-math.exp(-dt*9)
@@ -4547,6 +4555,15 @@ function E.render(a,tab,ui)
  elseif tab=="Indicators" then preview(ui,a);gallery(ui,a);ui:group(tab,{shape=true});ui:title("PER-PLAYER OVERRIDE");local id=ui:box("UserId or simulator ID","1");local label=ui:box("Label override","");local color=ui:box("Override hex",a.s.arrowA);ui:chips({"Assign current shape","Remove override"},function(k) local p=S.copy(a.s.players);if k=="Assign current shape" then p[id.Text]={label=label.Text,color=color.Text,shape=a.s.shape} else p[id.Text]=nil end;a:set("players",p);ui:message("Overrides updated") end,2)
  elseif tab=="Cursor" then local f=ui:row(94,"CursorPreview");local host=U.frame(f,"OriginalCursorPreview",UDim2.fromScale(.5,.5),UDim2.fromOffset(60,60),nil,1);host.AnchorPoint=Vector2.new(.5,.5);a.preview={cursorHost=host};preset(ui,a,tab);ui:group(tab,{cursorTrailA=true,cursorTrailB=true});ui:title("TRAIL COLORS");ui:colorPicker("cursorTrailA");ui:colorPicker("cursorTrailB");ui:note("Cursor animation never moves its click hotspot. Enable Show hotspot marker to compare the real mouse position with the skin; use Pointer offset X/Y only for calibration. EditableImage renders desktop SVG; imports need an authorized asset ID.",57)
  elseif tab=="Interaction" then
+  ui:title("AETHER PEER VISUALS")
+  ui:note("Opt in to share only avatar cosmetics with other opted-in AETHER clients on this server. No external service. Requires the AETHER server relay in this place.",54)
+  ui:control("peerVisuals");ui:control("peerQuality")
+  local peerStatus=ui:note("",36)
+  if a.peers then
+   a.peers.statusLabel=peerStatus
+   ui.page:add(function() if a.peers.statusLabel==peerStatus then a.peers.statusLabel=nil end end)
+  end
+  ui:watch(function() peerStatus.Text=if a.peers then a.peers.status else "Peer relay unavailable" end)
   ui:title("CAMERA")
   preset(ui,a,"Camera");ui:group("Camera")
   ui:title("CUSTOM LOCK / KEYBIND")
@@ -4565,7 +4582,7 @@ function E.render(a,tab,ui)
   end)
   ui:title("SHIFT-LOCK / RETICLE")
   for _,k in {"cross","crossScale","crossAlpha"} do ui:control(k) end
-  local inputKeys={lockKey=true,inputOverlay=true,inputMouse=true,inputX=true,inputY=true,inputScale=true,inputOpacity=true,inputColor=true,wallhopHelper=true,wallhopX=true,wallhopY=true,wallhopScale=true,wallhopOpacity=true}
+  local inputKeys={peerVisuals=true,peerQuality=true,lockKey=true,inputOverlay=true,inputMouse=true,inputX=true,inputY=true,inputScale=true,inputOpacity=true,inputColor=true,wallhopHelper=true,wallhopX=true,wallhopY=true,wallhopScale=true,wallhopOpacity=true}
   ui:group(tab,inputKeys)
   ui:title("LIVE INPUT DISPLAY")
   ui:note("Shows your own WASD, Space, Shift and mouse presses. Read-only visualization: no synthetic inputs or game automation.",44)
@@ -4667,6 +4684,157 @@ return E
 end
 -- END MODULE Pages
 
+
+-- BEGIN MODULE PeerVisuals
+__aether_factories["PeerVisuals"] = function()
+-- Local rendering of cosmetics voluntarily shared through the current experience server.
+local Players=game:GetService("Players")
+local RS=game:GetService("ReplicatedStorage")
+local Schema=__aether_require("Schema")
+local Avatar=__aether_require("Avatar")
+local Motion=__aether_require("WalkMotion")
+local Studio=__aether_require("MotionStudio")
+local Props=__aether_require("PreviewProps")
+local P={};P.__index=P
+local function same(a,b)
+ if not a or not b then return false end
+ for k,v in a do if b[k]~=v then return false end end
+ for k,v in b do if a[k]~=v then return false end end
+ return true
+end
+local quality={Low={radius=90,count=4,hz=15,pose=15},Balanced={radius=160,count=8,hz=30,pose=30},High={radius=240,count=12,hz=60,pose=60}}
+function P.new(player,scope)
+ local self=setmetatable({player=player,scope=scope,peers={},active={},status="Peer visuals OFF",sendAt=0,selectAt=0,linkAt=0,lastHeartbeat=0},P)
+ scope:add(function() self:close() end)
+ return self
+end
+function P:drop(player)
+ local entry=self.peers[player]
+ if not entry then return end
+ if entry.fx then entry.fx:clear();entry.motion:destroy();entry.props:clear();entry.fx=nil end
+ self.peers[player]=nil
+end
+function P:reset()
+ for player in self.peers do self:drop(player) end
+ table.clear(self.active)
+end
+function P:close()
+ if self.link and self.enabled then pcall(function() self.link:FireServer("leave") end) end
+ if self.connection then self.connection:Disconnect();self.connection=nil end
+ self.link=nil;self.joined=false;self.enabled=false;self.sent=nil;self.pending=nil;self.lastSettings=nil;self.lastPublished=nil;self:reset()
+end
+function P:connect(remote)
+ self:close()
+ self.link=remote
+ self.connection=remote.OnClientEvent:Connect(function(op,who,packet)
+  if not self.enabled then return end
+  if op=="ready" then self.joined=true;return end
+  if op=="remove" then self:drop(who);return end
+  if op~="update" or typeof(who)~="Instance" or not who:IsA("Player") or who==self.player or who.Parent~=Players then return end
+  local ok,settings=pcall(Schema.peerSettings,packet)
+  if not ok then return end
+  local entry=self.peers[who]
+  if not entry then entry={};self.peers[who]=entry end
+  entry.settings=settings;entry.config=Studio.runtimeSettings(settings);entry.packet=packet
+  self.selectAt=0
+ end)
+end
+function P:select(q)
+ local camera=workspace.CurrentCamera
+ local pos=camera and camera.CFrame.Position
+ local candidates={}
+ for player,entry in self.peers do
+  if player.Parent~=Players then self:drop(player);continue end
+  local char=player.Character
+  local root=char and char:FindFirstChild("HumanoidRootPart")
+  local hum=char and char:FindFirstChildOfClass("Humanoid")
+  if pos and root and hum and hum.Health>0 then
+   local distance=(root.Position-pos).Magnitude
+   if distance<q.radius then candidates[#candidates+1]={entry=entry,char=char,hum=hum,distance=distance} end
+  end
+ end
+ table.sort(candidates,function(a,b) return a.distance<b.distance end)
+ table.clear(self.active)
+ local chosen={}
+ for i=1,math.min(q.count,#candidates) do
+  local c=candidates[i];local entry=c.entry;chosen[entry]=true
+  if not entry.fx then
+   entry.fx=Avatar.new(workspace,false);entry.fx.peer=true
+   entry.motion=Motion.new(true);entry.props=Props.new(workspace,true);entry.nextFX=0
+  end
+  if entry.char~=c.char then
+   entry.fx:clear();entry.motion:bind(c.char);entry.props:clear();entry.char=c.char;entry.nextFX=0
+  end
+  entry.motion.peerPoseHz=if c.distance>q.radius*.6 then math.min(15,q.pose) else q.pose
+  entry.hum=c.hum;entry.hz=if c.distance>q.radius*.6 then math.min(15,q.hz) else q.hz
+  self.active[#self.active+1]=entry
+ end
+ for _,entry in self.peers do
+  if entry.fx and not chosen[entry] then
+   entry.fx:clear();entry.motion:destroy();entry.props:clear();entry.fx=nil;entry.char=nil
+  end
+ end
+end
+function P:step(s,gameMode,localMotion,dt)
+ local now=os.clock()
+ if not s.peerVisuals or not gameMode then
+  if self.link then self:close() end
+  self.status="Peer visuals OFF";return
+ end
+ if self.link and self.link.Parent~=RS then self:close() end
+ if not self.link then
+  if now<self.linkAt then return end
+  self.linkAt=now+2
+  local remote=RS:FindFirstChild("AetherPeerVisualsV1")
+  if not remote or not remote:IsA("RemoteEvent") then self.status="Peer relay unavailable in this place";return end
+  self:connect(remote)
+ end
+ self.enabled=true
+ if now>=self.sendAt then
+  self.sendAt=now+.35
+  local track=localMotion.replicatedTrack
+  local published=track~=nil and track.IsPlaying and track.Length>0
+  if self.lastSettings~=s or self.lastPublished~=published then
+   self.lastSettings=s;self.lastPublished=published
+   local ok,packet=pcall(Schema.capturePeer,s,published)
+   if ok then self.pending=packet end
+  end
+  if self.pending and (not self.joined or not same(self.sent,self.pending) or now-self.lastHeartbeat>=8) then
+   self.link:FireServer("share",self.pending);self.sent=self.pending;self.lastHeartbeat=now
+  end
+ end
+ local q=quality[s.peerQuality] or quality.Balanced
+ if now>=self.selectAt or self.lastQuality~=q then self.selectAt=now+.4;self.lastQuality=q;self:select(q) end
+ local t=workspace:GetServerTimeNow()
+ for _,entry in self.active do
+  if now>=entry.nextFX and entry.fx and entry.char and entry.char.Parent then
+   entry.nextFX=now+1/entry.hz
+   local ok=pcall(function()
+    entry.fx:step(entry.char,entry.settings,t)
+    local cfg=entry.config
+    if cfg and cfg.props and entry.settings.walkAnimation and not entry.settings.reduce then entry.props:update(entry.char,cfg.style,(if entry.settings.peerPublished then t else entry.motion.liveTime)*4,entry.hum:GetState()) else entry.props:clear() end
+   end)
+   if not ok then entry.fx:clear();entry.props:clear();entry.nextFX=now+1 end
+  end
+ end
+ local count=0;for _ in self.peers do count+=1 end
+ self.status=if self.joined then string.format("PEERS · %d connected / %d rendered",count,#self.active) else "Connecting to place relay..."
+end
+function P:restore()
+ for _,entry in self.active do if entry.fx then entry.motion:restoreLive() end end
+end
+function P:animate(dt)
+ for _,entry in self.active do
+  if entry.fx and entry.char and entry.char.Parent then
+   local ok=pcall(entry.motion.liveStep,entry.motion,entry.char,entry.settings,dt)
+   if not ok then entry.motion:restoreLive() end
+  end
+ end
+end
+return P
+
+end
+-- END MODULE PeerVisuals
 
 -- BEGIN MODULE PreviewProps
 __aether_factories["PreviewProps"] = function()
@@ -4851,7 +5019,7 @@ toggle("Neon","neon","Character outline",true);range("Neon","neonFill","Body tin
 toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA","High sky","282057");color("Ambient","skyB","Horizon","8C70C2");color("Ambient","skyC","Ground light","EAB6CD");range("Ambient","fog","Fog density %",35,0,90);range("Ambient","bloom","Legacy bloom (inactive)",0,0,100);range("Ambient","time","Time (tenths of an hour)",166,0,239);range("Ambient","light","Brightness %",105,25,180);range("Ambient","saturation","Saturation %",9,-85,85);range("Ambient","blur","Depth blur",0,0,16);range("Ambient","fade","Atmosphere fade (ms)",700,0,3500);range("Ambient","worldContrast","Contrast %",0,-80,80);range("Ambient","worldExposure","Exposure %",0,-100,100);range("Ambient","worldGlare","Atmospheric glare %",0,0,100);range("Ambient","worldRays","Sun rays %",0,0,100);range("Ambient","worldFocus","Depth of field %",0,0,100);range("Ambient","worldFocusDistance","Focus distance (studs)",60,8,250);range("Ambient","worldBloomSize","Bloom radius",26,0,56);toggle("Ambient","starfall","Falling shapes",false);choice("Ambient","starfallShape","Falling shape","Rounded Star",{"Mixed","Rounded Star","Soft Star","Sparkle","Long Sparkle","Six Point Star","Eight Point Star","Circle","Rounded Square","Diamond","Rounded Triangle","Rounded Hexagon","Rounded Pentagon","Heart"});range("Ambient","starfallRotation","Star rotation (degrees/sec)",8,0,25);choice("Ambient","starfallMaterial","Star material","Neon",{"Neon","Glass","SmoothPlastic","Metal"});range("Ambient","starfallCount","Star count",8,1,16);range("Ambient","starfallSpeed","Fall speed (studs/sec)",35,10,90);range("Ambient","starfallSize","Star size (tenths of stud)",18,5,40);range("Ambient","starfallOpacity","Star opacity %",85,10,100);range("Ambient","starfallGlow","Star neon glow %",80,0,100);toggle("Ambient","starfallTail","Star streaks",true);toggle("Ambient","starfallRainbow","Rainbow stars",false);color("Ambient","starfallA","Star color start","E5D1FF");color("Ambient","starfallB","Star color end","83CFFF")
 toggle("Indicators","indicators","Directional indicators",true);choice("Indicators","shape","Indicator shape","Soft Triangle",S.shapes);range("Indicators","size","Size (px)",31,14,72);range("Indicators","corners","Corner softness %",30,0,100);range("Indicators","edge","Distance from edges %",11,4,30);range("Indicators","turn","Rotation smoothing (ms)",180,0,800);range("Indicators","ink","Neon intensity %",60,0,100);range("Indicators","spread","Neon spread (px)",6,0,18);range("Indicators","arrowAlpha","Opacity %",95,10,100);range("Indicators","arrowSpeed","Animation speed %",100,40,220);color("Indicators","arrowA","Gradient start","BFA2FF");color("Indicators","arrowB","Gradient end","FF9ECE");toggle("Indicators","arrowRainbow","Rainbow gradient",false);toggle("Indicators","pulse","Pulsation",true);choice("Indicators","labels","Arrow labels","Both",{"Off","Name","Distance","Both"});toggle("Indicators","nearby","Nearby nameplates",false);range("Indicators","reach","Tracking range (studs)",800,50,2500)
 toggle("Cursor","cursor","Custom game pointer",false);choice("Cursor","cursorShape","Pointer shape","Rounded Triangle",{"Rounded Triangle","Soft Arrow","Diamond","Orbit","Spark","Chevron","Neon Pointer","Arrowhead","Split Arrow","Needle","Crystal","Spear","Star Pointer","Compass","Crosshair","Heart","Image"});range("Cursor","cursorSize","Pointer size",30,12,72);range("Cursor","cursorGlow","Pointer glow %",55,0,100);choice("Cursor","cursorPalette","Desktop AETHER palette","Aurora",{"Aurora","Sunset","Ocean","Rainbow","Mono","Custom"});range("Cursor","hotX","Hotspot X %",19,0,100);range("Cursor","hotY","Hotspot Y %",8,0,100);color("Cursor","cursorA","Gradient start","BA99FF");color("Cursor","cursorB","Gradient end","69D9FA");toggle("Cursor","cursorRainbow","Rainbow pointer",true);range("Cursor","cursorSpeed","Gradient speed %",65,10,200);choice("Cursor","cursorAnimation","Cursor animation","Sway",{"Off","Breathe","Sway","Spin","Pulse"});range("Cursor","cursorMotionSpeed","Animation speed %",100,20,200);toggle("Cursor","cursorTrail","Cursor motion trail",false);choice("Cursor","cursorTrailStyle","Trail style","Triple",{"Triple","Single","Dots"});range("Cursor","cursorTrailLength","Trail lifetime (ms)",220,80,450);range("Cursor","cursorTrailWidth","Trail width (tenths of px)",12,5,35);range("Cursor","cursorTrailSpread","Trail spacing (px)",6,2,16);range("Cursor","cursorTrailGlow","Trail glow %",65,0,100);color("Cursor","cursorTrailA","Trail start","F5E5FF");color("Cursor","cursorTrailB","Trail end","9B6BFF");range("Cursor","cursorOffsetX","Pointer offset X (px)",0,-120,120);range("Cursor","cursorOffsetY","Pointer offset Y (px)",0,-120,120);toggle("Cursor","cursorDebug","Show hotspot marker",false);def("Cursor","image","Roblox image asset ID","asset","")
-toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Interaction","lock","Custom camera lock",false);toggle("Interaction","blockShift","Block both Shift keys",true);S.lockKeys={};for _,key in Enum.KeyCode:GetEnumItems() do if key~=Enum.KeyCode.Unknown then table.insert(S.lockKeys,key.Name) end end;choice("Interaction","lockKey","Lock keybind","LeftAlt",S.lockKeys);choice("Interaction","lockReticle","Shift-lock reticle","Orbit",{"None","Dot","Ring","Orbit","Cross","Split Cross","Diamond","Triangle","Hexagon","Star","Corners","Compass","Double Ring","Petal"});range("Interaction","reticleSize","Reticle size (px)",28,12,64);range("Interaction","reticleStroke","Reticle thickness (px)",2,1,5);color("Interaction","reticleColor","Reticle color","C8A6FF");toggle("Interaction","reticleRainbow","Rainbow reticle",false);toggle("Interaction","reticleMotion","Reticle animation",true);range("Interaction","reticleSpeed","Reticle animation %",70,0,200);toggle("Interaction","reticleNeon","Neon reticle glow",true);range("Interaction","reticleGlow","Reticle glow intensity %",65,0,100);range("Interaction","reticleGlowRadius","Reticle glow radius (px)",4,1,8);toggle("Interaction","reticleGlowPulse","Pulsating glow",true)
+toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Interaction","lock","Custom camera lock",false);toggle("Interaction","peerVisuals","Share and see AETHER cosmetics",false);choice("Interaction","peerQuality","Peer rendering quality","Balanced",{"Low","Balanced","High"});toggle("Interaction","blockShift","Block both Shift keys",true);S.lockKeys={};for _,key in Enum.KeyCode:GetEnumItems() do if key~=Enum.KeyCode.Unknown then table.insert(S.lockKeys,key.Name) end end;choice("Interaction","lockKey","Lock keybind","LeftAlt",S.lockKeys);choice("Interaction","lockReticle","Shift-lock reticle","Orbit",{"None","Dot","Ring","Orbit","Cross","Split Cross","Diamond","Triangle","Hexagon","Star","Corners","Compass","Double Ring","Petal"});range("Interaction","reticleSize","Reticle size (px)",28,12,64);range("Interaction","reticleStroke","Reticle thickness (px)",2,1,5);color("Interaction","reticleColor","Reticle color","C8A6FF");toggle("Interaction","reticleRainbow","Rainbow reticle",false);toggle("Interaction","reticleMotion","Reticle animation",true);range("Interaction","reticleSpeed","Reticle animation %",70,0,200);toggle("Interaction","reticleNeon","Neon reticle glow",true);range("Interaction","reticleGlow","Reticle glow intensity %",65,0,100);range("Interaction","reticleGlowRadius","Reticle glow radius (px)",4,1,8);toggle("Interaction","reticleGlowPulse","Pulsating glow",true)
 toggle("Interaction","inputOverlay","Show input overlay",false);toggle("Interaction","inputMouse","Show mouse buttons",true);range("Interaction","inputX","Input overlay X %",91,0,100);range("Interaction","inputY","Input overlay Y %",76,0,100);range("Interaction","inputScale","Input overlay size %",100,60,150);range("Interaction","inputOpacity","Input overlay opacity %",80,20,100);color("Interaction","inputColor","Pressed key color","BCA0FF");toggle("Interaction","wallhopHelper","Wallhop Helper",false);range("Interaction","wallhopX","Wallhop display X %",87,0,100);range("Interaction","wallhopY","Wallhop display Y %",42,0,100);range("Interaction","wallhopScale","Wallhop display size %",100,60,150);range("Interaction","wallhopOpacity","Wallhop display opacity %",90,20,100)
 choice("Fonts","font","Typeface","Gotham",S.fonts);choice("Fonts","weight","Weight","Bold",{"Regular","Medium","Bold","Heavy"});def("Fonts","fontAsset","Optional Roblox font family ID","asset","");text("Fonts","sample","Preview text","AETHER · Your interface",96);range("Fonts","fontSize","HUD type scale %",100,70,145);toggle("Fonts","fontGradient","Gradient lettering",true);range("Fonts","fontOutline","Text outline %",24,0,100);range("Fonts","fontGlow","Letter glow %",35,0,100);color("Fonts","fontA","Letter color","F1E6FF");color("Fonts","fontB","Letter gradient","CCA4FF")
 S.example='hud.widget("status", "Ready", 8, 38)\nfunction onHealthChanged(hp, maxHP)\n  hud.widget("status", hud.join("HP: ", hp), 8, 38)\n  if hp > 0 and hp <= maxHP * 0.3 then\n    hud.animate("status", "pulse")\n  else\n    hud.animate("status", "none")\n  end\nend'
@@ -4874,6 +5042,61 @@ function S.value(k,v)
    n+=1;assert(n<=16 and str(id,18) and id:match("^%-?%d+$") and type(o)=="table" and str(o.label,32) and hex(o.color) and table.find(S.shapes,o.shape),"Invalid player override");r[id]={label=o.label,color=o.color,shape=o.shape}
   end;return r end
  error("Invalid value: "..k,0)
+end
+-- Same-server opt-in cosmetic protocol. No account information, chat, inventory,
+-- controls, HUD, targeting, scripts, world lighting or external endpoints.
+local peerGroups={Character=true,Wings=true,Halos=true,Neon=true}
+S.peerKeys={}
+for _,k in S.order do
+ local d=S.defs[k]
+ if (peerGroups[d.group] and k~="motionPlayback" and k~="motionStudioConfig" and not k:find("^visualBloom")) or k=="reduce" or k=="secondary" then
+  if d.kind=="bool" or d.kind=="number" or d.kind=="choice" or d.kind=="color" then S.peerKeys[k]=true end
+ end
+end
+local function peerNumber(v,lo,hi,default)
+ if type(v)=="number" and v==v and v>=lo and v<=hi then return v end
+ return default
+end
+function S.peerPacket(raw)
+ assert(type(raw)=="table","Expected cosmetic settings")
+ local packet={};local count=0
+ for k,v in raw do
+  count+=1;assert(count<=256,"Too many cosmetic fields")
+  if S.peerKeys[k] then
+   local value=S.value(k,v)
+   if value~=S.defs[k].default then packet[k]=value end
+  elseif k=="motionStudioConfig" then
+   assert(type(v)=="string" and #v<=2048,"Invalid motion config")
+   local ok,config=pcall(function() return game:GetService("HttpService"):JSONDecode(v) end)
+   if ok and type(config)=="table" then
+    local style=raw.walkStyle or S.defs.walkStyle.default
+    local rate=peerNumber(type(config.packRates)=="table" and config.packRates[style],.25,2,peerNumber(config.speed,.25,2,1))
+    local clean={speed=rate,adaptive=config.adaptive~=false,origin=peerNumber(config.origin,0,150,100),props=config.props~=false,packRates={[style]=rate}}
+    packet.motionStudioConfig=game:GetService("HttpService"):JSONEncode(clean)
+   end
+  elseif k=="publishedMotion" then
+   assert(type(v)=="boolean","Invalid motion flag")
+   if v then packet.publishedMotion=true end
+  else error("Not a cosmetic field",0) end
+ end
+ return packet
+end
+function S.peerSettings(packet)
+ local clean=S.peerPacket(packet)
+ local out=S.defaults()
+ for k,v in clean do if k~="publishedMotion" then out[k]=v end end
+ -- Published Animator tracks already replicate normally. Never play another
+ -- player's asset or overwrite their published tracks on the observer.
+ out.peerPublished=clean.publishedMotion==true
+ out.motionPlayback="Local"
+ return out
+end
+function S.capturePeer(settings,publishedMotion)
+ local data={}
+ for k in S.peerKeys do data[k]=settings[k] end
+ if settings.motionStudioConfig~="" then data.motionStudioConfig=settings.motionStudioConfig end
+ if publishedMotion then data.publishedMotion=true end
+ return S.peerPacket(data)
 end
 function S.menuKey(s) return if s.lockKey=="F8" then "F7" else "F8" end
 function S.defaults() local r={};for k,d in S.defs do r[k]=S.copy(d.default) end;return r end
@@ -6173,8 +6396,8 @@ local function part0(m) return select(1,MotionStudio.jointFrames(m)) end
 local function part1(m) return select(2,MotionStudio.jointFrames(m)) end
 local function c0(m) return select(3,MotionStudio.jointFrames(m)) end
 local function c1(m) return select(4,MotionStudio.jointFrames(m)) end
-function W.new()
- return setmetatable({character=nil,motors={},phase=0,blend=0,hover=0,liveWrites={},livePose={},liveTime=0,liveAir=0,liveRetry=0},W)
+function W.new(peer)
+ return setmetatable({peer=peer==true,character=nil,motors={},phase=0,blend=0,hover=0,liveWrites={},livePose={},liveTime=0,liveAir=0,liveRetry=0},W)
 end
 function W:restoreLive()
  for m,entry in self.liveWrites do
@@ -6186,25 +6409,20 @@ function W:bind(character)
  if self.character==character then return end
  self:restoreLive();self:stopReplicated();table.clear(self.livePose)
  self.liveTime=0;self.liveAir=0;self.liveWasAir=false;self.liveStyle=nil;self.liveState=nil;self.liveTransition=nil;self.liveRetry=0
+ self.peerTargets=nil;self.peerSettings=nil;self.peerPoseElapsed=0
  self.character=character;self.phase=0;self.blend=0;self.hover=0;self.airTime=0;self.wasAir=false;self.signatureActive=false;self.airProgress=0
  table.clear(self.motors)
  if not character then return end
- local j=self.motors
- j.RightHip=motor(character,"RightHip","Right Hip")
- j.LeftHip=motor(character,"LeftHip","Left Hip")
- j.RightShoulder=motor(character,"RightShoulder","Right Shoulder")
- j.LeftShoulder=motor(character,"LeftShoulder","Left Shoulder")
- j.RightWrist=motor(character,"RightWrist")
- j.LeftWrist=motor(character,"LeftWrist")
- j.RightElbow=motor(character,"RightElbow")
- j.LeftElbow=motor(character,"LeftElbow")
- j.RightKnee=motor(character,"RightKnee")
- j.LeftKnee=motor(character,"LeftKnee")
- j.RightAnkle=motor(character,"RightAnkle")
- j.LeftAnkle=motor(character,"LeftAnkle")
- j.Waist=motor(character,"Waist")
- j.Neck=motor(character,"Neck")
- j.Root=motor(character,"RootJoint","Root")
+ -- One descendant scan rather than a full scan for every named joint.
+ for _,m in character:GetDescendants() do
+  if MotionStudio.isJoint(m) then
+   local name=MotionStudio.jointName(m)
+   if name and not self.motors[name] then
+    local a,b=MotionStudio.jointFrames(m)
+    if a and b and a:IsDescendantOf(character) and b:IsDescendantOf(character) then self.motors[name]=m end
+   end
+  end
+ end
 end
 local function add(j,cf)
  if j and j.Parent then j.Transform=j.Transform*cf end
@@ -6297,7 +6515,7 @@ function W:liveStep(character,s,dt)
  self:bind(character)
  if not character then return end
  local hum=character:FindFirstChildOfClass("Humanoid")
- if not hum or hum.Health<=0 or hum.Sit or s.reduce or not s.walkAnimation or (s.walkIntensity or 0)<=0 then
+ if not hum or hum.Health<=0 or hum.Sit or s.reduce or not s.walkAnimation or (s.walkIntensity or 0)<=0 or (self.peer and s.peerPublished) then
   self:stopReplicated();table.clear(self.livePose);self.liveStyle=nil;self.liveState=nil;self.liveWasAir=false;self.liveTime=0;self.liveTransition=nil
   return
  end
@@ -6307,8 +6525,9 @@ function W:liveStep(character,s,dt)
  end
  dt=math.clamp(dt,0,.1)
  self.liveRetry+=dt
- if self.liveRetry>=.35 and (not self.motors.Root or not self.motors.Root.Parent or not self.motors.RightHip or not self.motors.RightHip.Parent or not self.motors.LeftHip or not self.motors.LeftHip.Parent) then
-  self:bind(nil);self:bind(character)
+ if self.liveRetry>=.35 then
+  self.liveRetry=0
+  if not self.motors.Root or not self.motors.Root.Parent or not self.motors.RightHip or not self.motors.RightHip.Parent or not self.motors.LeftHip or not self.motors.LeftHip.Parent then self:bind(nil);self:bind(character) end
  end
  local rootPart=character:FindFirstChild("HumanoidRootPart")
  local v=if rootPart and rootPart:IsA("BasePart") then rootPart.AssemblyLinearVelocity else Vector3.zero
@@ -6318,7 +6537,7 @@ function W:liveStep(character,s,dt)
   elseif hs==Enum.HumanoidStateType.Swimming then "Swim"
   elseif hs==Enum.HumanoidStateType.Jumping then "Jump"
   elseif hs==Enum.HumanoidStateType.Freefall then "Fall"
-  elseif hum.MoveDirection.Magnitude<.08 then "Idle"
+  elseif (if self.peer then horizontal<.65 else hum.MoveDirection.Magnitude<.08) then "Idle"
   elseif isRun then "Run" else "Walk"
  local movementSpeed=if state=="Climb" then math.abs(v.Y) elseif state=="Swim" then v.Magnitude else horizontal
  local air=state=="Jump" or state=="Fall"
@@ -6338,8 +6557,16 @@ function W:liveStep(character,s,dt)
  local targetRate=MotionStudio.speedFactor(config,state,movementSpeed)
  self.liveRate=if changed or self.liveRate==nil then targetRate else self.liveRate+(targetRate-self.liveRate)*(1-math.exp(-dt*12))
  self.liveTime+=dt*config.speed*self.liveRate
- if self:replicatedStep(hum,s,config,state,self.liveRate) then return end
- local targets=MotionStudio.jointTargets(self.motors,config,self.liveTime,state,self.liveAir,hum.RigType)
+ if not self.peer and self:replicatedStep(hum,s,config,state,self.liveRate) then return end
+ local targets
+ if self.peer then
+  self.peerPoseElapsed=(self.peerPoseElapsed or 0)+dt
+  if changed or self.peerSettings~=s or not self.peerTargets or self.peerPoseElapsed>=1/(self.peerPoseHz or 30) then
+   self.peerPoseElapsed=0;self.peerSettings=s
+   self.peerTargets=MotionStudio.jointTargets(self.motors,config,self.liveTime,state,self.liveAir,hum.RigType)
+  end
+  targets=self.peerTargets
+ else targets=MotionStudio.jointTargets(self.motors,config,self.liveTime,state,self.liveAir,hum.RigType) end
  self.liveTransition=math.min(1,(self.liveTransition or 0)+dt/.14)
  local k=self.liveTransition*self.liveTransition*(3-2*self.liveTransition)
  for m,target in targets do
@@ -6916,6 +7143,7 @@ local S = module("Schema")
 local Hud = module("Hud")
 local Avatar = module("Avatar")
 local WalkMotion = module("WalkMotion")
+local PeerVisuals = module("PeerVisuals")
 local PreviewProps = module("PreviewProps")
 local World = module("World")
 local View = module("View")
@@ -7195,6 +7423,8 @@ local hud = Hud.new(scope, overlay, false, function(tab) app.ui:open(tab) end,ni
 local avatar = Avatar.new(workspace, false)
 local walkMotion = WalkMotion.new()
 app.walkMotion = walkMotion
+local peers = PeerVisuals.new(player,scope)
+app.peers = peers
 local motionProps = PreviewProps.new(workspace, true)
 local world = World.new()
 local view = View.new(player, pointer)
@@ -7496,7 +7726,9 @@ local function frame(dt, now)
     result.shiftLock=view.shiftReticleActive==true and not ui.opened and not app.editingHUD and app.mode=="Game"
     ui:animateBackground(now)
     hud:step(styled, result, dt)
-    avatar:step(if app.mode == "Game" then character else nil, styled, now)
+    avatar:step(if app.mode == "Game" then character else nil, styled, workspace:GetServerTimeNow())
+    peers:step(styled, app.mode=="Game", walkMotion, dt)
+    if peers.statusLabel and peers.statusLabel.Parent and peers.statusLabel.Text~=peers.status then peers.statusLabel.Text=peers.status end
     world:apply(styled)
     view:step(styled, if app.mode=="Game" then humanoid else nil, ui.opened or app.editingHUD==true, dt, now)
     if app.preview then
@@ -7527,7 +7759,7 @@ scope:add(function() RunService:UnbindFromRenderStep(pointerRenderBinding) end)
 
 -- Remove last frame's local visual layer before Animator evaluates.
 scope:on(RunService.PreAnimation, function()
-    if not app.stopping and gui.Parent then walkMotion:restoreLive() end
+    if not app.stopping and gui.Parent then walkMotion:restoreLive();peers:restore() end
 end)
 -- Motion Studio poses follow the real humanoid state, after Animator evaluates.
 scope:on(RunService.PreSimulation, function(dt)
@@ -7539,6 +7771,7 @@ scope:on(RunService.PreSimulation, function(dt)
         app:log("Motion", tostring(err))
         warn("AETHER walk cycle:", err)
     elseif ok then app.walkError = false end
+    peers:animate(dt)
 end)
 
 -- Props follow the already evaluated local pose without modifying character parts.

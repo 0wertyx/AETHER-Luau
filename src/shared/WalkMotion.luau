@@ -19,8 +19,8 @@ local function part0(m) return select(1,MotionStudio.jointFrames(m)) end
 local function part1(m) return select(2,MotionStudio.jointFrames(m)) end
 local function c0(m) return select(3,MotionStudio.jointFrames(m)) end
 local function c1(m) return select(4,MotionStudio.jointFrames(m)) end
-function W.new()
- return setmetatable({character=nil,motors={},phase=0,blend=0,hover=0,liveWrites={},livePose={},liveTime=0,liveAir=0,liveRetry=0},W)
+function W.new(peer)
+ return setmetatable({peer=peer==true,character=nil,motors={},phase=0,blend=0,hover=0,liveWrites={},livePose={},liveTime=0,liveAir=0,liveRetry=0},W)
 end
 function W:restoreLive()
  for m,entry in self.liveWrites do
@@ -32,25 +32,20 @@ function W:bind(character)
  if self.character==character then return end
  self:restoreLive();self:stopReplicated();table.clear(self.livePose)
  self.liveTime=0;self.liveAir=0;self.liveWasAir=false;self.liveStyle=nil;self.liveState=nil;self.liveTransition=nil;self.liveRetry=0
+ self.peerTargets=nil;self.peerSettings=nil;self.peerPoseElapsed=0
  self.character=character;self.phase=0;self.blend=0;self.hover=0;self.airTime=0;self.wasAir=false;self.signatureActive=false;self.airProgress=0
  table.clear(self.motors)
  if not character then return end
- local j=self.motors
- j.RightHip=motor(character,"RightHip","Right Hip")
- j.LeftHip=motor(character,"LeftHip","Left Hip")
- j.RightShoulder=motor(character,"RightShoulder","Right Shoulder")
- j.LeftShoulder=motor(character,"LeftShoulder","Left Shoulder")
- j.RightWrist=motor(character,"RightWrist")
- j.LeftWrist=motor(character,"LeftWrist")
- j.RightElbow=motor(character,"RightElbow")
- j.LeftElbow=motor(character,"LeftElbow")
- j.RightKnee=motor(character,"RightKnee")
- j.LeftKnee=motor(character,"LeftKnee")
- j.RightAnkle=motor(character,"RightAnkle")
- j.LeftAnkle=motor(character,"LeftAnkle")
- j.Waist=motor(character,"Waist")
- j.Neck=motor(character,"Neck")
- j.Root=motor(character,"RootJoint","Root")
+ -- One descendant scan rather than a full scan for every named joint.
+ for _,m in character:GetDescendants() do
+  if MotionStudio.isJoint(m) then
+   local name=MotionStudio.jointName(m)
+   if name and not self.motors[name] then
+    local a,b=MotionStudio.jointFrames(m)
+    if a and b and a:IsDescendantOf(character) and b:IsDescendantOf(character) then self.motors[name]=m end
+   end
+  end
+ end
 end
 local function add(j,cf)
  if j and j.Parent then j.Transform=j.Transform*cf end
@@ -143,7 +138,7 @@ function W:liveStep(character,s,dt)
  self:bind(character)
  if not character then return end
  local hum=character:FindFirstChildOfClass("Humanoid")
- if not hum or hum.Health<=0 or hum.Sit or s.reduce or not s.walkAnimation or (s.walkIntensity or 0)<=0 then
+ if not hum or hum.Health<=0 or hum.Sit or s.reduce or not s.walkAnimation or (s.walkIntensity or 0)<=0 or (self.peer and s.peerPublished) then
   self:stopReplicated();table.clear(self.livePose);self.liveStyle=nil;self.liveState=nil;self.liveWasAir=false;self.liveTime=0;self.liveTransition=nil
   return
  end
@@ -153,8 +148,9 @@ function W:liveStep(character,s,dt)
  end
  dt=math.clamp(dt,0,.1)
  self.liveRetry+=dt
- if self.liveRetry>=.35 and (not self.motors.Root or not self.motors.Root.Parent or not self.motors.RightHip or not self.motors.RightHip.Parent or not self.motors.LeftHip or not self.motors.LeftHip.Parent) then
-  self:bind(nil);self:bind(character)
+ if self.liveRetry>=.35 then
+  self.liveRetry=0
+  if not self.motors.Root or not self.motors.Root.Parent or not self.motors.RightHip or not self.motors.RightHip.Parent or not self.motors.LeftHip or not self.motors.LeftHip.Parent then self:bind(nil);self:bind(character) end
  end
  local rootPart=character:FindFirstChild("HumanoidRootPart")
  local v=if rootPart and rootPart:IsA("BasePart") then rootPart.AssemblyLinearVelocity else Vector3.zero
@@ -164,7 +160,7 @@ function W:liveStep(character,s,dt)
   elseif hs==Enum.HumanoidStateType.Swimming then "Swim"
   elseif hs==Enum.HumanoidStateType.Jumping then "Jump"
   elseif hs==Enum.HumanoidStateType.Freefall then "Fall"
-  elseif hum.MoveDirection.Magnitude<.08 then "Idle"
+  elseif (if self.peer then horizontal<.65 else hum.MoveDirection.Magnitude<.08) then "Idle"
   elseif isRun then "Run" else "Walk"
  local movementSpeed=if state=="Climb" then math.abs(v.Y) elseif state=="Swim" then v.Magnitude else horizontal
  local air=state=="Jump" or state=="Fall"
@@ -184,8 +180,16 @@ function W:liveStep(character,s,dt)
  local targetRate=MotionStudio.speedFactor(config,state,movementSpeed)
  self.liveRate=if changed or self.liveRate==nil then targetRate else self.liveRate+(targetRate-self.liveRate)*(1-math.exp(-dt*12))
  self.liveTime+=dt*config.speed*self.liveRate
- if self:replicatedStep(hum,s,config,state,self.liveRate) then return end
- local targets=MotionStudio.jointTargets(self.motors,config,self.liveTime,state,self.liveAir,hum.RigType)
+ if not self.peer and self:replicatedStep(hum,s,config,state,self.liveRate) then return end
+ local targets
+ if self.peer then
+  self.peerPoseElapsed=(self.peerPoseElapsed or 0)+dt
+  if changed or self.peerSettings~=s or not self.peerTargets or self.peerPoseElapsed>=1/(self.peerPoseHz or 30) then
+   self.peerPoseElapsed=0;self.peerSettings=s
+   self.peerTargets=MotionStudio.jointTargets(self.motors,config,self.liveTime,state,self.liveAir,hum.RigType)
+  end
+  targets=self.peerTargets
+ else targets=MotionStudio.jointTargets(self.motors,config,self.liveTime,state,self.liveAir,hum.RigType) end
  self.liveTransition=math.min(1,(self.liveTransition or 0)+dt/.14)
  local k=self.liveTransition*self.liveTransition*(3-2*self.liveTransition)
  for m,target in targets do

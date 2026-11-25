@@ -26,8 +26,9 @@ end
 local function segment(p,a,b,thick)
  local d=b-a
  if d.Magnitude<.001 then p.Transparency=1;return end
- p.Transparency=0
- p.Size=Vector3.new(thick,thick,d.Magnitude)
+ if p.Transparency~=0 then p.Transparency=0 end
+ local size=Vector3.new(thick,thick,d.Magnitude)
+ if p.Size~=size then p.Size=size end
  p.CFrame=CFrame.lookAt((a+b)*.5,b)
 end
 -- Each path is traced from one half of the supplied drawing in image coordinates.
@@ -131,7 +132,7 @@ end
 function A:clear()
  if self.scope then self.scope:clear();self.scope=nil end
  self.root=nil;self.highlight=nil;self.emitter=nil;self.trail=nil;self.light=nil;self.neonEnergy=0;self.neonHP=nil
- self.key="";self.char=nil;self.lastAt=nil;self.walk=0;self.phase=0;self.glowKey=nil
+ self.key="";self.char=nil;self.lastAt=nil;self.walk=0;self.phase=0;self.glowKey=nil;self.bindSettings=nil;self.bindBody=nil;self.bindHead=nil;self.settings=nil
  table.clear(self.feathers);table.clear(self.trims);table.clear(self.beads)
  table.clear(self.ornaments);table.clear(self.parts);table.clear(self.frames);table.clear(self.geoWings);table.clear(self.geoHalos);table.clear(self.haloV2);table.clear(self.sketchEdges);table.clear(self.diamonds);table.clear(self.diamondTime)
 end
@@ -141,6 +142,7 @@ function A:add(partInstance)
  return partInstance
 end
 function A:bind(char,body,head,s)
+ if self.bindSettings==s and self.bindBody==body and self.bindHead==head and (not self.root or self.root.Parent) then return end
  local wdetail=s.wingDetail or "High";local hdetail=s.haloDetail or "High"
  local v2Key={};local hasV2=false
  for i in S.haloV2Styles do local k="haloV2"..i
@@ -149,10 +151,12 @@ function A:bind(char,body,head,s)
  local key=table.concat({tostring(s.wings),s.wingStyle,wdetail,
   tostring(s.halo),s.haloStyle,hdetail,tostring(s.neon),tostring(s.aura),tostring(s.trail),table.concat(v2Key,",")},"/")
  if not (char and body and head) or not(s.wings or s.halo or hasV2 or s.neon or s.aura or s.trail or s.redDiamond or s.blueDiamond) then
-  if self.root then self:clear() end;return
+  if self.root then self:clear() end
+  self.bindSettings=s;self.bindBody=body;self.bindHead=head;return
  end
- if self.key==key and self.char==char then return end
+ if self.key==key and self.char==char and self.bindBody==body and self.bindHead==head and self.root and self.root.Parent then self.bindSettings=s;return end
  self:clear()
+ self.bindSettings=s;self.bindBody=body;self.bindHead=head
  self.key=key;self.char=char;self.scope=U.scope()
  self.root=self.scope:add(U.new("Folder",{Name="AetherAvatarFX"},self.parent))
  self.paintAt=-1
@@ -301,6 +305,10 @@ function A:step(char,s,t)
  local dt=math.clamp(t-(self.lastAt or t),0,.08);self.lastAt=t
  local hum=char:FindFirstChildOfClass("Humanoid")
  local running=if hum then hum.MoveDirection.Magnitude else 0
+ if self.peer and hum then
+  local root=char:FindFirstChild("HumanoidRootPart")
+  if root then local v=root.AssemblyLinearVelocity;running=math.clamp(Vector3.new(v.X,0,v.Z).Magnitude/8,0,1) end
+ end
  if self.preview and s.walkAnimation then running=1 end
  if hum and (hum.Health<=0 or hum.Sit) then running=0 end
  local smooth=1-math.exp(-dt*9)

@@ -8,6 +8,9 @@
       }
     },
     "ServerScriptService": {
+      "AetherPeerVisuals": {
+        "$path": "src/server/PeerVisuals.server.luau"
+      },
       "AetherCameraSettings": {
         "$path": "src/server/CameraSettings.server.luau"
       },

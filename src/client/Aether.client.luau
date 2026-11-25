@@ -19,6 +19,7 @@ local S = module("Schema")
 local Hud = module("Hud")
 local Avatar = module("Avatar")
 local WalkMotion = module("WalkMotion")
+local PeerVisuals = module("PeerVisuals")
 local PreviewProps = module("PreviewProps")
 local World = module("World")
 local View = module("View")
@@ -298,6 +299,8 @@ local hud = Hud.new(scope, overlay, false, function(tab) app.ui:open(tab) end,ni
 local avatar = Avatar.new(workspace, false)
 local walkMotion = WalkMotion.new()
 app.walkMotion = walkMotion
+local peers = PeerVisuals.new(player,scope)
+app.peers = peers
 local motionProps = PreviewProps.new(workspace, true)
 local world = World.new()
 local view = View.new(player, pointer)
@@ -599,7 +602,9 @@ local function frame(dt, now)
     result.shiftLock=view.shiftReticleActive==true and not ui.opened and not app.editingHUD and app.mode=="Game"
     ui:animateBackground(now)
     hud:step(styled, result, dt)
-    avatar:step(if app.mode == "Game" then character else nil, styled, now)
+    avatar:step(if app.mode == "Game" then character else nil, styled, workspace:GetServerTimeNow())
+    peers:step(styled, app.mode=="Game", walkMotion, dt)
+    if peers.statusLabel and peers.statusLabel.Parent and peers.statusLabel.Text~=peers.status then peers.statusLabel.Text=peers.status end
     world:apply(styled)
     view:step(styled, if app.mode=="Game" then humanoid else nil, ui.opened or app.editingHUD==true, dt, now)
     if app.preview then
@@ -630,7 +635,7 @@ scope:add(function() RunService:UnbindFromRenderStep(pointerRenderBinding) end)
 
 -- Remove last frame's local visual layer before Animator evaluates.
 scope:on(RunService.PreAnimation, function()
-    if not app.stopping and gui.Parent then walkMotion:restoreLive() end
+    if not app.stopping and gui.Parent then walkMotion:restoreLive();peers:restore() end
 end)
 -- Motion Studio poses follow the real humanoid state, after Animator evaluates.
 scope:on(RunService.PreSimulation, function(dt)
@@ -642,6 +647,7 @@ scope:on(RunService.PreSimulation, function(dt)
         app:log("Motion", tostring(err))
         warn("AETHER walk cycle:", err)
     elseif ok then app.walkError = false end
+    peers:animate(dt)
 end)
 
 -- Props follow the already evaluated local pose without modifying character parts.
