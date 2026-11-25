@@ -488,15 +488,15 @@ scope:on(UserInputService.InputBegan, function(input, processed)
     if app.bindingLockKey and ui.opened and ui.tab=="Interaction" then
         if input.UserInputType==Enum.UserInputType.Keyboard and not UserInputService:GetFocusedTextBox() then
             local name=input.KeyCode.Name
-            if name=="Escape" then app.bindingLockKey=false;ui:sync()
-            elseif table.find(S.lockKeys,name) then app.bindingLockKey=false;app:set("lockKey",name)
-            else ui:message("Choose a supported key (not Shift, movement or F8).") end
+            if name~="Unknown" and table.find(S.lockKeys,name) then app.bindingLockKey=false;app:set("lockKey",name)
+            else ui:message("Roblox did not report a usable key code.") end
         end
         return
     end
     if processed or UserInputService:GetFocusedTextBox() then return end
-    if app.editingHUD then if input.KeyCode==Enum.KeyCode.F8 then app:editHUD(false) end;return end
-    if input.KeyCode == Enum.KeyCode.F8 then
+    local menuKey=S.menuKey(app.s)
+    if app.editingHUD then if input.KeyCode.Name==menuKey then app:editHUD(false) end;return end
+    if input.KeyCode.Name == menuKey then
         ui:show(not ui.opened)
     elseif input.KeyCode.Name == app.s.lockKey and app.mode=="Game" and not ui.opened and not game:GetService("GuiService").MenuIsOpen then
         local enable=not app.s.lock
