@@ -511,7 +511,12 @@ local function readSaved(settings)
 end
 local function differences(draft,saved)
  local n=0
- for _,k in previewKeys do if draft[k]~=saved[k] then n+=1 end end
+ for _,k in previewKeys do
+  local x,y=draft[k],saved[k]
+  if type(x)=="number" and type(y)=="number" then
+   if math.abs(x-y)>1e-7 then n+=1 end
+  elseif x~=y then n+=1 end
+ end
  for k in liveKeys do if draft[k]~=saved[k] then n+=1 end end
  return n
 end
@@ -690,7 +695,11 @@ function M.mount(ui,a)
   local air=state=="Jump" or state=="Fall"
   local O,I=s.origin/100,s.intensity/100
   local r=rigData
-  if not r then caption.Text="YOUR AVATAR";status.Text=avatarStatus;dirty=false;return end
+  if not r then
+   for _,b in fxDots do b.Transparency=1 end;for _,b in fxTrail do b.Transparency=1 end
+   for _,b in markers do b.Transparency=1 end
+   caption.Text="YOUR AVATAR";status.Text=avatarStatus;dirty=false;return
+  end
   local cf,pivots=avatarPose(r,p,O,I)
   for _,b in r.parts do
    b.CFrame=cf[b] or CFrame.identity
