@@ -701,6 +701,32 @@ local function stepAirControl(dt)
     if not app.s.airControl then app.airDiagnostic="Skipped: disabled in settings";return app.airDiagnostic end
     local input = humanoid.MoveDirection
     local direction = Vector3.new(input.X,0,input.Z)
+    local inputSource = "Humanoid"
+    -- Read directional keys independently of AETHER menu visibility.
+    -- Do not interpret text entry as movement.
+    if UserInputService.KeyboardEnabled and not UserInputService:GetFocusedTextBox() then
+        local function down(key,alternate)
+            return UserInputService:IsKeyDown(key) or UserInputService:IsKeyDown(alternate)
+        end
+        local x = (if down(Enum.KeyCode.D,Enum.KeyCode.Right) then 1 else 0)-(if down(Enum.KeyCode.A,Enum.KeyCode.Left) then 1 else 0)
+        local z = (if down(Enum.KeyCode.W,Enum.KeyCode.Up) then 1 else 0)-(if down(Enum.KeyCode.S,Enum.KeyCode.Down) then 1 else 0)
+        local camera = workspace.CurrentCamera
+        if camera and (x~=0 or z~=0) then
+            local look = camera.CFrame.LookVector
+            local forward = Vector3.new(look.X,0,look.Z)
+            if forward.Magnitude<.01 then
+                local up = camera.CFrame.UpVector
+                forward = Vector3.new(up.X,0,up.Z)
+            end
+            if forward.Magnitude>.01 then
+                forward=forward.Unit
+                local right=forward:Cross(Vector3.yAxis)
+                local raw=forward*z+right*x
+                if raw.Magnitude>.01 then direction=raw.Unit;inputSource="Keyboard" end
+            end
+        end
+    end
+    app.airInputSource = inputSource
     local horizontal = Vector3.new(v.X,0,v.Z)
     local speed = horizontal.Magnitude
     if direction.Magnitude < .01 then app.airDiagnostic = "Skipped: MoveDirection is zero";return app.airDiagnostic end
@@ -709,7 +735,8 @@ local function stepAirControl(dt)
     -- Use a recent ground-speed sample for the same avatar when airborne.
     -- Do not invent a speed or retain a sample from a previous character.
     local groundSpeed = if os.clock()-speedSample.time <= 2 then speedSample.speed else 0
-    local cap = if walkSpeed > 0 then walkSpeed elseif groundSpeed > 0 then groundSpeed else speed
+    local baseCap = if walkSpeed > 0 then walkSpeed elseif groundSpeed > 0 then groundSpeed else 0
+    local cap = if baseCap > 0 then baseCap*math.clamp(app.s.airControlSpeed or 125,100,200)/100 else speed
     if cap < .01 then
         app.airDiagnostic = string.format("Skipped: no speed sample | WalkSpeed %.2f | speed %.2f | ground %.2f",walkSpeed,speed,groundSpeed)
         return app.airDiagnostic
