@@ -119,6 +119,57 @@ do
     local ReplicatedStorage=game:GetService("ReplicatedStorage")
     local vb={originals={},multiplierRequests={},corners={},auto=false,status="Waiting for compatible game",target=nil,tiltAim="Correct edges",tiltScale=1,tiltWrites=0,tiltOverrides=0}
     app.volleyball=vb
+    vb.curveEnabled=false
+    vb.curveStatus="Off | local special experiment"
+    local curveController,curveOriginal,curveApplied
+    local function stopCurve(reason)
+        local c,old,applied=curveController,curveOriginal,curveApplied
+        vb.curveEnabled=false
+        curveController=nil;curveOriginal=nil;curveApplied=nil
+        if c and applied then
+            local ok,err=pcall(function()
+                -- Do not overwrite a real style change made during the test.
+                if c.Special()==applied then
+                    c:SetSpecialFromStyle(if old then {Metadata={Special=old}} else nil)
+                end
+            end)
+            if not ok then
+                vb.curveStatus="Restore failed: "..tostring(err)
+                return
+            end
+        end
+        vb.curveStatus=reason or "Off | original local special restored"
+    end
+    function vb:toggleCurve()
+        if self.curveEnabled then stopCurve();return end
+        if app.mode~="Game" or player:GetAttribute("Gameplay_InGame")~=true then
+            self.curveStatus="Enter a match in Game mode first";return
+        end
+        local ok,err=pcall(function()
+            local packages=ReplicatedStorage:FindFirstChild("Packages")
+            local knit=packages and packages:FindFirstChild("Knit")
+            local content=ReplicatedStorage:FindFirstChild("Content")
+            local styles=content and content:FindFirstChild("Style")
+            local jester=styles and styles:FindFirstChild("Jester")
+            assert(knit and jester and jester:IsA("ModuleScript"),"Jester style or Knit unavailable")
+            local style=require(jester)
+            local special=type(style)=="table" and style.Metadata and style.Metadata.Special
+            assert(type(special)=="table" and type(special.PostAction)=="function","Jester PostAction unavailable")
+            local c=require(knit).GetController("SpecialController")
+            assert(type(c)=="table" and type(c.SetSpecialFromStyle)=="function","SpecialController unavailable")
+            local old=c.Special()
+            if old==special then
+                self.curveStatus="Jinko special already selected locally"
+                return
+            end
+            curveController,curveOriginal,curveApplied=c,old,special
+            c:SetSpecialFromStyle(style)
+            assert(c.Special()==special,"Local special selection not confirmed")
+            self.curveEnabled=true
+            self.curveStatus="Local Jester selected | server response unverified"
+        end)
+        if not ok then stopCurve("Test failed: "..tostring(err)) end
+    end
     local attrs={
         BlockPower=true,BumpPower=true,DashPower=true,DiveSpeed=true,
         DrawPower=true,JumpPower=true,ServePower=true,SetPower=true
@@ -232,6 +283,7 @@ do
     end
     function vb:reset()
         self.auto=false;detachTilt()
+        stopCurve()
         table.clear(self.multiplierRequests)
         for key in table.clone(self.originals) do restore(key) end
         self.target=nil
@@ -390,17 +442,30 @@ do
         local ok,err=pcall(attachTilt)
         if not ok then detachTilt();self.status="Tilt module unavailable: "..tostring(err);return end
         self.tiltWrites=0;self.tiltHooks=0;self.requestedTilt=nil
-        self.auto=true;self.status="All-style tilt correction enabled"
+        self.auto=true;self.status="Local tilt correction enabled; ball response depends on style"
     end
     local elapsed=0
     scope:on(RunService.Heartbeat,function(dt)
         elapsed+=dt
         if elapsed<.1 then return end
         elapsed=0
-        if app.stopping or not gui.Parent then return end
-        if app.mode~="Game" then
-            if next(vb.originals) or vb.auto then vb:reset() end
+        if app.stopping or not gui.Parent then
+            if vb.curveEnabled then stopCurve() end
             return
+        end
+        if app.mode~="Game" then
+            if next(vb.originals) or vb.auto or vb.curveEnabled then vb:reset() end
+            return
+        end
+        if vb.curveEnabled then
+            if player:GetAttribute("Gameplay_InGame")~=true then
+                stopCurve("Off | match ended")
+            else
+                local ok,current=pcall(function() return curveController.Special() end)
+                if not ok or current~=curveApplied then
+                    stopCurve("Off | local style changed or controller unavailable")
+                end
+            end
         end
         if not vb.auto then return end
         if not available() or not physics or physics._handleTilt~=wrappedTilt then
@@ -439,7 +504,14 @@ do
             end
             local straightLateral=px+look:Dot(u)*(depth-pz)/dv
             local margin=math.min(2,width*.2)
-            local lateral=if vb.tiltAim=="Aim center" then width*.5 else math.clamp(straightLateral,margin,width-margin)
+            local lateral=if vb.tiltAim=="Aim center" then width*.5
+                elseif vb.tiltAim=="Aim left" then width*.2
+                elseif vb.tiltAim=="Aim right" then width*.8
+                else math.clamp(straightLateral,margin,width-margin)
+            -- Court left/right are relative to the player's attacking half.
+            if (vb.tiltAim=="Aim left" or vb.tiltAim=="Aim right") and u:Dot(flatten(root.CFrame.RightVector))<0 then
+                lateral=width-lateral
+            end
             local target=a+u*lateral+v*depth
             if vb.courtZones then
                 -- Clamp the target within the actual opposite zone's local rectangle.

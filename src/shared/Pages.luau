@@ -792,6 +792,19 @@ function E.render(a,tab,ui)
     trajectoryElapsed+=dt
     if trajectoryElapsed>=.25 then trajectoryElapsed=0;if ui.opened then refreshTrajectory() end end
    end)
+   ui:title("CURVE SPECIAL / EXPERIMENT")
+   ui:note("Attempts a local Jinko special selection only. The server may ignore it. Stops on match exit or style change and restores the previous local special where unchanged.",84)
+   ui:chips({"Toggle local Curve test"},function() vb:toggleCurve();ui:sync() end,1,function() return if vb.curveEnabled then "Toggle local Curve test" else "" end)
+   local curveStatus=ui:note("",72)
+   local function refreshCurve()
+    curveStatus.Text=(if vb.curveEnabled then "ON | " else "OFF | ")..vb.curveStatus
+   end
+   ui:watch(refreshCurve)
+   local curveElapsed=0
+   ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
+    curveElapsed+=dt
+    if curveElapsed>=.25 then curveElapsed=0;if ui.opened then refreshCurve() end end
+   end)
    ui:title("AUTO TILT / BETA")
    ui:note("All-style beta: adjusts local jump tilt used by the hit handler. Correct edges preserves manual tilt when the straight heading is in bounds; Aim center estimates a lateral correction. Ball response depends on style and server logic.",96)
    ui:chips({"Auto detect court"},function() vb:detectCourt();ui:sync() end,1)
@@ -806,10 +819,10 @@ function E.render(a,tab,ui)
     if label=="Clear court" then vb:clearCourt() else vb:toggleAuto() end
     ui:sync()
    end,2,function() return if vb.auto then "Toggle Auto Tilt" else "" end)
-   ui:chips({"Correct edges","Aim center"},function(label)
+   ui:chips({"Correct edges","Aim center","Aim left","Aim right"},function(label)
     vb.tiltAim=label;vb.requestedTilt=nil;ui:sync()
    end,2,function() return vb.tiltAim end)
-   local strength=ui:box("Tilt horizontal scale",tostring(vb.tiltScale),32,function(raw)
+   local strength=ui:box("Curve input strength (0–1)",tostring(vb.tiltScale),32,function(raw)
     local n=assert(tonumber(raw),"Enter a number")
     assert(n==n and n>=0 and n<=1,"Enter 0 to 1")
     vb.tiltScale=n;vb.requestedTilt=nil
