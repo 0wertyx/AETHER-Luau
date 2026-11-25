@@ -660,6 +660,7 @@ __aether_factories["Constellation"] = function()
 -- Decorative menu-only background. No external assets or services.
 local U=__aether_require("Util")
 local Input=game:GetService("UserInputService")
+local AssetService=game:GetService("AssetService")
 local Shapes=__aether_require("FxShapes")
 local FX={};FX.__index=FX
 local MAX_LINKS=100
@@ -685,7 +686,9 @@ function FX.new(parent)
  links.Active=false;links.Interactable=false
  local nodes=U.frame(parent,"Figures",nil,nil,nil,1)
  nodes.Active=false;nodes.Interactable=false
- return setmetatable({parent=parent,linkLayer=links,nodeLayer=nodes,nodes={},links={},w=0,h=0},FX)
+ local self=setmetatable({parent=parent,linkLayer=links,nodeLayer=nodes,nodes={},links={},textures={},w=0,h=0},FX)
+ parent.Destroying:Once(function() for _,img in self.textures do if img then img:Destroy() end end;table.clear(self.textures) end)
+ return self
 end
 function FX:addNode(w,h)
  local root=frame(self.nodeLayer,"Figure")
@@ -703,12 +706,46 @@ function FX:addLink()
  self.links[#self.links+1]=l
  return l
 end
-local function drawNode(n,kind,r,color,opacity)
+function FX:shapeTexture(kind)
+ if self.textures[kind]~=nil then return self.textures[kind] or nil end
+ local edit
+ local ok=pcall(function()
+  local n=64;local ss=4;local count=buffer.create(n*n)
+  local outline=Shapes.outline(kind)
+  for y=0,n*ss-1 do
+   local yy=1-2*(y+.5)/(n*ss);local hits={}
+   for j,a in outline do
+    local b=outline[j%#outline+1]
+    if (a.Y>yy)~=(b.Y>yy) then table.insert(hits,a.X+(yy-a.Y)*(b.X-a.X)/(b.Y-a.Y)) end
+   end
+   table.sort(hits)
+   for j=1,#hits-1,2 do
+    local first=math.clamp(math.ceil((hits[j]+1)*n*ss/2-.5),0,n*ss)
+    local last=math.clamp(math.ceil((hits[j+1]+1)*n*ss/2-.5)-1,-1,n*ss-1)
+    for x=first,last do
+     local at=math.floor(y/ss)*n+math.floor(x/ss)
+     buffer.writeu8(count,at,buffer.readu8(count,at)+1)
+    end
+   end
+  end
+  local data=buffer.create(n*n*4)
+  for k=0,n*n-1 do
+   buffer.writeu32(data,k*4,0x00FFFFFF)
+   buffer.writeu8(data,k*4+3,math.round(buffer.readu8(count,k)*255/(ss*ss)))
+  end
+  edit=AssetService:CreateEditableImage({Size=Vector2.new(n,n)})
+  assert(edit,"EditableImage unavailable")
+  edit:WritePixelsBuffer(Vector2.zero,Vector2.new(n,n),data)
+ end)
+ if not ok then if edit then edit:Destroy() end;self.textures[kind]=false;return nil end
+ self.textures[kind]=edit;return edit
+end
+local function drawNode(self,n,kind,r,color,opacity)
  local root=n.root
  local key=kind..":"..tostring(r)..":"..color:ToHex()..":"..tostring(opacity)
  if n.key==key then return end
  n.key=key
- root.Size=UDim2.fromOffset(r*2,r*2)
+ local pixels=math.max(2,math.round(r*2));root.Size=UDim2.fromOffset(pixels,pixels)
  root.Rotation=0
  root.BackgroundTransparency=1
  local rim=root:FindFirstChildOfClass("UIStroke")
@@ -718,12 +755,30 @@ local function drawNode(n,kind,r,color,opacity)
  local corner=root:FindFirstChildOfClass("UICorner")
  if not corner then corner=U.corner(root,0) end
  corner.CornerRadius=if ring then UDim.new(.5,0) else UDim.new(0,0)
- local spans=if ring then {} else Shapes.spans(aliases[kind] or kind)
+ local shape=aliases[kind] or kind
+ local texture=if ring then nil else self:shapeTexture(shape)
+ if texture then
+  if not n.image then
+   local ok,img=pcall(function()
+    return U.new("ImageLabel",{Name="AAFigure",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Active=false,Interactable=false,Selectable=false,ResampleMode=Enum.ResamplerMode.Default,ImageContent=Content.fromObject(texture)},root)
+   end)
+   if ok then n.image=img end
+  elseif n.imageKey~=shape then
+   n.image.ImageContent=Content.fromObject(texture)
+  end
+ end
+ local imageReady=texture~=nil and n.image~=nil
+ if n.image then
+  n.image.Visible=imageReady
+  if imageReady then n.imageKey=shape;n.image.ImageColor3=color;n.image.ImageTransparency=1-opacity end
+ end
+ local spans=if ring or imageReady then {} else Shapes.spans(shape)
  for j,p in spans do
   local e=n.edges[j]
   if not e then e=frame(root,"Fill");e.AnchorPoint=Vector2.zero;n.edges[j]=e end
-  e.Position=UDim2.fromScale(p.x,p.y)
-  e.Size=UDim2.fromScale(p.w,p.h)
+  local x,y=math.round(p.x*pixels),math.round(p.y*pixels)
+  local right,bottom=math.round((p.x+p.w)*pixels),math.round((p.y+p.h)*pixels)
+  e.Position=UDim2.fromOffset(x,y);e.Size=UDim2.fromOffset(math.max(0,right-x),math.max(0,bottom-y))
   e.BackgroundColor3=color;e.BackgroundTransparency=1-opacity;e.Visible=true
  end
  for j=#spans+1,#n.edges do n.edges[j].Visible=false end
@@ -754,8 +809,8 @@ function FX:step(dt,s)
   n.x+=n.vx*step*speed;n.y+=n.vy*step*speed
   if n.x<0 or n.x>w then n.x=math.clamp(n.x,0,w);n.vx=-n.vx end
   if n.y<0 or n.y>h then n.y=math.clamp(n.y,0,h);n.vy=-n.vy end
-  n.root.Position=UDim2.fromOffset(n.x,n.y)
-  drawNode(n,if s.menuShape=="Mixed" then n.kind else s.menuShape,s.constellationSize*n.scale,na:Lerp(nb,n.t),opacity)
+  n.root.Position=UDim2.fromOffset(math.round(n.x),math.round(n.y))
+  drawNode(self,n,if s.menuShape=="Mixed" then n.kind else s.menuShape,s.constellationSize*n.scale,na:Lerp(nb,n.t),opacity)
  end
  local pairs={}
  if cap>0 and opacity>0 then
@@ -773,8 +828,9 @@ function FX:step(dt,s)
   local pair=pairs[k];local a,b=self.nodes[pair.i],self.nodes[pair.j]
   local line=self.links[k] or self:addLink()
   local f=line.frame
-  segment(f,Vector2.new(a.x,a.y),Vector2.new(b.x,b.y),s.constellationThickness/10)
-  f.BackgroundTransparency=1-opacity*(1-math.sqrt(pair.d)/radius)
+  local width=s.constellationThickness/10
+  segment(f,Vector2.new(math.round(a.x),math.round(a.y)),Vector2.new(math.round(b.x),math.round(b.y)),math.max(1,width))
+  f.BackgroundTransparency=1-opacity*math.min(1,width)*(1-math.sqrt(pair.d)/radius)
   line.gradient.Color=ColorSequence.new(la:Lerp(lb,a.t),la:Lerp(lb,b.t))
   f.Visible=true
  end
@@ -792,6 +848,26 @@ local StarterGui=game:GetService("StarterGui");local Chat=game:GetService("TextC
 local Constellation=__aether_require("Constellation")
 local UI={};UI.__index=UI
 local bg=Color3.fromRGB(19,16,32);local dim=Color3.fromRGB(173,163,197);local soft=Color3.fromRGB(43,35,60)
+-- Native GUI at rest: CanvasGroup is only a short-lived fade compositor.
+-- Restore direct descendants at full opacity so text, glyphs and ViewportFrames
+-- do not keep rendering into a potentially downsampled offscreen surface.
+local function transition(root,q)
+ local group=root:FindFirstChild("AETHERTransitionSurface")
+ if q>=.99999 then
+  if group then
+   for _,child in group:GetChildren() do child.Parent=root end
+   group:Destroy()
+  end
+  return
+ end
+ if not group then
+  group=U.new("CanvasGroup",{Name="AETHERTransitionSurface",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,GroupTransparency=1-q},root)
+ end
+ for _,child in root:GetChildren() do
+  if child~=group and child:IsA("GuiObject") then child.Parent=group end
+ end
+ group.GroupTransparency=1-q
+end
 function UI.new(app,gui,scope)
  local self=setmetatable({app=app,gui=gui,scope=scope,syncs={},icons={},tab="Dashboard",opened=true,seq=0,menuProgress=0,pageProgress=0,navHover={},navAmount={}},UI)
  self.stage=U.frame(gui,"StudioArea",nil,nil,nil,1)
@@ -859,7 +935,7 @@ function UI.new(app,gui,scope)
   self:message(if enabled then "Roblox player list hidden" else "Roblox player list enabled")
  end
  scope:on(self.railCollapse.Activated,function() self.railCollapsed=not self.railCollapsed;self:layout() end)
- self.panel=U.new("CanvasGroup",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=.035,BorderSizePixel=0,Size=UDim2.fromScale(1,1),GroupTransparency=1,Visible=false,Active=true},self.stage);U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3);self.panel.BackgroundTransparency=1;self.panel.GroupColor3=Color3.new(1,1,1)
+ self.panel=U.new("Frame",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=1,BorderSizePixel=0,Size=UDim2.fromScale(1,1),Visible=false,Active=true},self.stage);U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3)
  self.panelBackground=U.frame(self.panel,"GlassBackground",nil,nil,Color3.new(1,1,1),.035);self.panelBackground.Active=false;self.panelBackground.Interactable=false;self.panelBackground.ZIndex=1;U.corner(self.panelBackground,17)
  self.backgroundGradient=U.gradient(self.panelBackground,bg,Color3.fromRGB(39,30,58),82)
  self.geoLayer=U.frame(self.panel,"GeometryBackground",UDim2.fromOffset(3,3),UDim2.new(1,-6,1,-6),nil,1)
@@ -883,7 +959,7 @@ function UI.new(app,gui,scope)
  end
  self.place=U.label(self.panel,"PLACE  /  "..tostring(game.PlaceId),10,nil,nil);self.place.TextColor3=dim
  self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
- self.pageBox=U.new("CanvasGroup",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,GroupTransparency=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
+ self.pageBox=U.new("Frame",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
  self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Interaction","Fonts","Simulator","Scripts","Workshop","Profiles","Updates","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
  function self:layout()
   local sz=self.stage.AbsoluteSize
@@ -1023,7 +1099,7 @@ function UI:animateBackground(t)
  else self.menuProgress=math.clamp(self.menuProgress+step*(if self.opened then 1 else -1),0,1) end
  self.panel.Visible=self.opened or self.menuProgress>0
  local q=U.ease(self.menuProgress,s.ease)
- self.panel.GroupTransparency=1-q
+ transition(self.panel,if self.panel.Visible then q else 1)
  local strength=s.menuAnimStrength/100
  if self.xy then
   local dx,dy=0,0
@@ -1037,7 +1113,7 @@ function UI:animateBackground(t)
    elseif side=="Bottom" then dy=(sz.Y-self.xy.Y+8)*distance
    else dy=18*strength*(1-q) end
   end
-  self.panel.Position=UDim2.fromOffset(self.xy.X+dx,self.xy.Y+dy)
+  self.panel.Position=UDim2.fromOffset(math.round(self.xy.X+dx),math.round(self.xy.Y+dy))
  end
  local accent=U.hex(s.accent)
  local secondary=U.hex(s.secondary)
@@ -1071,7 +1147,7 @@ function UI:animateBackground(t)
    local phase=motion*.64+index*1.73
    local twinkle=if s.reduce then .7 else .54+.46*math.sin(phase)
    local size=(if kind=="Dust" then 3+index%4 else 7+index%10)*( .82+.18*twinkle)
-   particle.root.Size=UDim2.fromOffset(size,size)
+   particle.root.Size=UDim2.fromOffset(math.max(2,math.round(size)),math.max(2,math.round(size)))
    particle.root.Position=UDim2.fromScale(.03+((index*.618)%1)*.94+math.sin(phase*.43)*.014,(index*.381+1-motion*.012)%1)
    particle.root.Rotation=if kind=="Diamonds" then 45+motion*4 elseif kind=="Stars" then motion*5+index*19 else 0
    local color=accent:Lerp(secondary,(index%7)/6)
@@ -1081,7 +1157,7 @@ function UI:animateBackground(t)
    for j,bar in particle.bars do
     bar.Visible=kind=="Stars"
     if bar.Visible then
-     bar.Size=UDim2.fromScale(if j%2==1 then 1 else .63, .13)
+     bar.Size=UDim2.fromOffset(math.max(1,math.round(size*(if j%2==1 then 1 else .63))),math.max(1,math.round(size*.13)))
      bar.BackgroundColor3=color;bar.BackgroundTransparency=1-alpha*twinkle*.77
     end
    end
@@ -1091,10 +1167,11 @@ function UI:animateBackground(t)
  local tm=if s.reduce then 0 else t*s.speed/100
  self.outline.Color=accent:Lerp(U.hex(s.secondary),if s.reduce or not s.navGlow then 0 else .18+.15*math.sin(tm*1.6))
  self.outline.Transparency=1-math.clamp(s.rim/100*(if s.reduce or not s.navGlow then 1 else .85+.15*math.sin(tm*1.8)),0,1)
+ self.outline.Transparency=1-(1-self.outline.Transparency)*q
  self.outline.Thickness=if s.reduce or not s.navGlow then 1 else 1.2+.3*math.sin(tm*1.6)
  self.pageProgress=if immediate or not s.tabTransition then 1 else math.min(1,self.pageProgress+dt/math.max(.06,duration*.72))
  local pageQ=U.ease(self.pageProgress,s.ease)
- self.pageBox.GroupTransparency=1-pageQ
+ transition(self.pageBox,pageQ)
  if self.sc and self.sc.Parent then self.sc.Position=UDim2.fromOffset((1-pageQ)*12*strength,0) end
  for name,b in self.buttons do
   local desired=if name==self.tab then 1 elseif self.navHover[name] then .45 else 0
@@ -1116,7 +1193,7 @@ function UI:show(on)
  if self.menuDraft then self.menuDraft=nil;self:layout() end
  if self.app.s.reduce or self.app.s.menuTransition=="Off" then
   self.menuProgress=if on then 1 else 0
-  self.panel.GroupTransparency=if on then 0 else 1
+  transition(self.panel,1)
   self.panel.Visible=on
  end
  if self.app.onMenu then self.app:onMenu(on) end
@@ -1125,7 +1202,7 @@ function UI:message(s) self.status.Text=s end
 function UI:open(tab)
  if not self.buttons[tab] then return end;self:show(true);self.drag=nil;if self.page then self.page:clear() end;self.app.preview=nil;self.page=U.scope();self.syncs={};self.seq=0;self.tab=tab
  self.pageProgress=if self.app.s.reduce or not self.app.s.tabTransition or self.app.s.menuTransition=="Off" then 1 else 0
- self.pageBox.GroupTransparency=1-U.ease(self.pageProgress,self.app.s.ease)
+ transition(self.pageBox,U.ease(self.pageProgress,self.app.s.ease))
  local sc=self.page:add(U.new("ScrollingFrame",{Name="Page_"..tab,Size=UDim2.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=4,ScrollBarImageColor3=dim,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y},self.pageBox));U.new("UIListLayout",{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder},sc);self.sc=sc
  self:title(tab:upper().."   /   AETHER STUDIO");self.app:page(tab,self);self:sync()
 end
@@ -1626,7 +1703,7 @@ function H.new(scope,parent,preview,go,drag,close,showPanels)
  end
  for _,k in {"hp","clock","profile","dock","cross"} do
   local d=sizes[k]
-  local p=U.new("CanvasGroup",{Name=k,BackgroundTransparency=1,GroupColor3=Color3.new(1,1,1),Size=UDim2.fromOffset(d.X,d.Y),BorderSizePixel=0,ZIndex=3},parent)
+  local p=U.new(if k=="cross" then "Frame" else "CanvasGroup",{Name=k,BackgroundTransparency=1,Size=UDim2.fromOffset(d.X,d.Y),BorderSizePixel=0,ZIndex=3},parent)
   -- A gradient on a CanvasGroup tints the entire composited texture.
   -- Put glass shading on a separate first child; leave text and glyphs untouched.
   local background=U.frame(p,"GlassBackground",nil,nil,Color3.new(1,1,1),0)
@@ -1709,10 +1786,12 @@ function H.new(scope,parent,preview,go,drag,close,showPanels)
  self.reticleRoot.AnchorPoint=Vector2.new(.5,.5);self.reticleRoot.Active=false
  self.reticleEdges={};self.reticleGlowEdges={}
  for i=1,48 do
+  local glow=U.frame(self.reticleRoot,"SoftGlow"..i,nil,UDim2.fromOffset(1,1),Color3.new(1,1,1),1)
+  glow.AnchorPoint=Vector2.new(.5,.5);glow.Active=false;glow.Interactable=false;glow.Visible=false;glow.ZIndex=4
+  U.new("UICorner",{CornerRadius=UDim.new(.5,0)},glow);self.reticleGlowEdges[i]=glow
   local edge=U.frame(self.reticleRoot,"Line"..i,nil,UDim2.fromOffset(1,1),Color3.new(1,1,1),0)
-  edge.AnchorPoint=Vector2.new(.5,.5);edge.Active=false;edge.Visible=false;U.corner(edge,3);self.reticleEdges[i]=edge
-  local glow=U.stroke(edge,Color3.fromRGB(193,142,255),1,3)
-  glow.Enabled=false;self.reticleGlowEdges[i]=glow
+  edge.AnchorPoint=Vector2.new(.5,.5);edge.Active=false;edge.Interactable=false;edge.Visible=false;edge.ZIndex=5
+  U.new("UICorner",{CornerRadius=UDim.new(.5,0)},edge);self.reticleEdges[i]=edge
  end
  -- A read-only key display. It neither intercepts nor generates any game input.
  self.inputRoot=U.new("CanvasGroup",{Name="InputOverlay",AnchorPoint=Vector2.new(.5,.5),Size=UDim2.fromOffset(172,114),BackgroundTransparency=1,Active=false,Interactable=false,Visible=false,ZIndex=6},parent)
@@ -1825,14 +1904,14 @@ function H:setStyle(s)
   w.p.AnchorPoint=Vector2.new(x,y)
   w.p.Position=UDim2.new(x,ox,y,oy)
   w.p.Rotation=s[k.."Turn"]
-  w.scale.Scale=factor*s[k.."Scale"]/100
-  w.p.GroupTransparency=1-s[k.."Alpha"]/100
+  w.scale.Scale=if k=="cross" then 1 else factor*s[k.."Scale"]/100
+  if w.p:IsA("CanvasGroup") then w.p.GroupTransparency=1-s[k.."Alpha"]/100 end
   w.p.Visible=s[k]
   w.rim.Color=accent
   w.rim.Transparency=1-s.rim/100
   w.g.Color=ColorSequence.new(a,b)
   w.p.BackgroundTransparency=1
-  w.p.GroupColor3=Color3.new(1,1,1)
+  if w.p:IsA("CanvasGroup") then w.p.GroupColor3=Color3.new(1,1,1) end
   local legacyGradient=w.p:FindFirstChildOfClass("UIGradient")
   if legacyGradient then legacyGradient:Destroy() end
   w.background.BackgroundTransparency=1-s.glass/100
@@ -1867,9 +1946,12 @@ function H:reticle(s,f,t)
  widget.p.Visible=s.cross and s.lockReticle~="None" and (self.preview or f.shiftLock==true)
  if not widget.p.Visible then return end
  if not self.preview then widget.p.AnchorPoint=Vector2.new(.5,.5);widget.p.Position=UDim2.fromScale(.5,.5);widget.p.Rotation=0 end
- widget.p.Size=UDim2.fromOffset(s.reticleSize,s.reticleSize)
+ local scale=(if self.preview then self.factor or 1 else 1)*s.crossScale/100
+ local px=math.max(6,math.round(s.reticleSize*scale))
+ local strokePx=math.max(1,math.round(s.reticleStroke*scale))
+ widget.p.Size=UDim2.fromOffset(px,px)
  local style=s.lockReticle
- local key=style..":"..s.reticleSize..":"..s.reticleStroke
+ local key=style..":"..px..":"..strokePx
  if self.reticleKey~=key then
   self.reticleKey=key
   local used=0
@@ -1877,8 +1959,8 @@ function H:reticle(s,f,t)
    used+=1
    local edge=self.reticleEdges[used];if not edge then return end
    local dx,dy=x2-x1,y2-y1
-   edge.Position=UDim2.fromScale((x1+x2)*.5,(y1+y2)*.5)
-   edge.Size=UDim2.new(math.sqrt(dx*dx+dy*dy),0,0,s.reticleStroke)
+   edge.Position=UDim2.fromOffset((x1+x2)*.5*px,(y1+y2)*.5*px)
+   edge.Size=UDim2.fromOffset(math.max(strokePx,math.sqrt(dx*dx+dy*dy)*px+strokePx*.65),strokePx)
    edge.Rotation=math.deg(math.atan2(dy,dx));edge.Visible=true
   end
   local function poly(count,r,phase,star)
@@ -1890,7 +1972,7 @@ function H:reticle(s,f,t)
    end
   end
   if style=="Dot" then
-   used=1;local d=self.reticleEdges[1];d.Position=UDim2.fromScale(.5,.5);d.Size=UDim2.fromOffset(s.reticleStroke*2,s.reticleStroke*2);d.Rotation=0;d.Visible=true
+   used=1;local d=self.reticleEdges[1];d.Position=UDim2.fromScale(.5,.5);d.Size=UDim2.fromOffset(strokePx*2,strokePx*2);d.Rotation=0;d.Visible=true
   elseif style=="Cross" then line(.08,.5,.92,.5);line(.5,.08,.5,.92)
   elseif style=="Split Cross" then for i=0,3 do local a=i*math.pi/2;line(.5+.18*math.cos(a),.5+.18*math.sin(a),.5+.44*math.cos(a),.5+.44*math.sin(a)) end
   elseif style=="Corners" then for _,x in {-1,1} do for _,y in {-1,1} do line(.5+x*.43,.5+y*.43,.5+x*.23,.5+y*.43);line(.5+x*.43,.5+y*.43,.5+x*.43,.5+y*.23) end end
@@ -1903,7 +1985,7 @@ function H:reticle(s,f,t)
   elseif style=="Double Ring" then poly(24,.44,0,false);poly(20,.25,0,false)
   elseif style=="Orbit" then for i=0,21 do local a=i/24*math.pi*2;local b=(i+1)/24*math.pi*2;line(.5+.40*math.cos(a),.5+.40*math.sin(a),.5+.40*math.cos(b),.5+.40*math.sin(b)) end
   else poly(28,.42,0,false) end
-  for i=used+1,#self.reticleEdges do self.reticleEdges[i].Visible=false end
+  for i=used+1,#self.reticleEdges do self.reticleEdges[i].Visible=false;self.reticleGlowEdges[i].Visible=false end
   self.reticleUsed=math.min(used,#self.reticleEdges)
   self.reticlePaint=nil
  end
@@ -1914,18 +1996,23 @@ function H:reticle(s,f,t)
   self.reticlePaint=col
   for i=1,self.reticleUsed do
    self.reticleEdges[i].BackgroundColor3=col
-   self.reticleGlowEdges[i].Color=col
+   self.reticleGlowEdges[i].BackgroundColor3=col
   end
  end
  local intensity=s.reticleGlow/100
  local pulse=if s.reduce or not s.reticleGlowPulse then 1 else .82+.18*math.sin(t*s.reticleSpeed/100*3)
  local enabled=s.reticleNeon and intensity>0
- local transparency=1-intensity*pulse*.54
- local radius=s.reticleGlowRadius*(.72+.28*pulse)
+ local alpha=s.crossAlpha/100
+ local radius=math.max(1,s.reticleGlowRadius*scale*(.72+.28*pulse))
  for i=1,self.reticleUsed do
-  local stroke=self.reticleGlowEdges[i]
-  stroke.Enabled=enabled
-  if enabled then stroke.Transparency=transparency;stroke.Thickness=radius end
+  local edge=self.reticleEdges[i];local glow=self.reticleGlowEdges[i]
+  edge.BackgroundTransparency=1-alpha
+  glow.Visible=enabled
+  if enabled then
+   glow.Position=edge.Position;glow.Rotation=edge.Rotation
+   glow.Size=UDim2.fromOffset(edge.Size.X.Offset+radius*2,edge.Size.Y.Offset+radius*2)
+   glow.BackgroundTransparency=1-intensity*pulse*alpha*.16
+  end
  end
 end
 function H:vitals(s,f,dt)
@@ -1974,7 +2061,7 @@ function H:vitals(s,f,dt)
  self.heartTint2=(self.heartTint2 or hb):Lerp(hb,mix)
  local angle=if s.heartDirection=="Horizontal" then 0 elseif s.heartDirection=="Diagonal" then 45 elseif s.heartDirection=="Reverse" then 270 elseif s.heartDirection=="Orbit" and not dead and not s.reduce then (90+self.time*s.heartGradientSpeed*.6)%360 else 90
  self.heart:paint(self.heartTint,self.heartTint2,if dead then 0 else math.clamp(s.heartGlow+beat*25,0,100),8,self.heartMid,angle)
- self.heart.root.GroupTransparency=if dead then .55 else 0
+ self.heart:opacity(if dead then .55 else 0)
  local shake=if not s.reduce and not dead and self.effect=="Damage" and self.age<.28 then math.sin(self.age*100)*3*(1-self.age/.28) else 0;self.hpShake=shake;w.rim.Color=self.tint;w.rim.Transparency=if dead then .9 else 1-math.min(1,(s.rim+beat*15)/100)
  self.shine.Visible=s.hudShine and not dead and not s.reduce and self.bar>.02 and s.hudMotion~="Off"
  if self.shine.Visible then
@@ -2036,9 +2123,9 @@ function H:directions(s,f,dt,t,paint)
   local k=if s.reduce or s.turn==0 then 1 else 1-math.exp(-dt*4500/s.turn);local angle=math.deg(math.atan2(dir.X,-dir.Y));m.pos=(m.pos or dest):Lerp(dest,k);m.angle=m.angle or angle;m.angle+=((angle-m.angle+180)%360-180)*k;m.root.Position=UDim2.fromOffset(m.pos.X,m.pos.Y);m.glyph.root.Rotation=m.angle
   local pulse=if s.pulse and not s.reduce then 1+.075*math.sin(t*4*s.arrowSpeed/100) else 1;m.root.Size=UDim2.fromOffset(sz*pulse,sz*pulse);m.fade=if s.reduce then 1 else math.min(1,m.fade+dt*6)
   if paint or m.style~=s then local time=if s.reduce then 0 else t;local c=if custom then U.hex(custom.color) elseif s.arrowRainbow then Color3.fromHSV((time*.14*s.arrowSpeed/100)%1,.68,1) else U.hex(s.arrowA);local b=if s.arrowRainbow then Color3.fromHSV((time*.14*s.arrowSpeed/100+.29)%1,.62,1) else U.hex(s.arrowB);m.glyph:paint(c,b,s.ink,s.spread);m.label.FontFace=U.font(s);m.style=s end
-  local title=if custom and custom.label~="" then custom.label else p.label;local dist=math.round(p.distance).."m";m.label.Visible=s.labels~="Off";m.label.Text=if s.labels=="Both" then title.." · "..math.round(p.distance).." st" elseif s.labels=="Distance" then math.round(p.distance).." st" else title
+  local title=if custom and custom.label~="" then custom.label else p.label;local dist=math.round(p.distance).."m";m.glyph:opacity(1-m.fade*s.arrowAlpha/100);m.label.TextTransparency=1-m.fade*s.arrowAlpha/100;m.label.Visible=s.labels~="Off";m.label.Text=if s.labels=="Both" then title.." · "..math.round(p.distance).." st" elseif s.labels=="Distance" then math.round(p.distance).." st" else title
  end end
- for id,m in self.markers do if m.serial~=self.serial then m.fade=if s.reduce then 0 else math.max(0,m.fade-dt*7) end;if m.fade<=0 then m.root:Destroy();self.markers[id]=nil else local alpha=1-m.fade*s.arrowAlpha/100;m.glyph.root.GroupTransparency=alpha;m.label.TextTransparency=alpha end end
+ for id,m in self.markers do if m.serial~=self.serial then m.fade=if s.reduce then 0 else math.max(0,m.fade-dt*7) end;if m.fade<=0 then m.root:Destroy();self.markers[id]=nil else local alpha=1-m.fade*s.arrowAlpha/100;m.glyph:opacity(alpha);m.label.TextTransparency=alpha end end
 end
 function H:step(s,f,dt)
  if self.settings~=s or self.width~=self.view.AbsoluteSize.X then self:setStyle(s) end;self.time+=dt;local t=self.time;local paint=t>=self.paintAt;if paint then self.paintAt=t+.075 end
@@ -2272,11 +2359,9 @@ local function raster(name,glow)
     end
     local dist=math.sqrt(dist2)
     local coverage=if glow then math.exp(-((math.max(0,dist-radius)/1.05)^2))*.75 else math.clamp((radius-dist)/pixel+.5,0,1)
-    if coverage>0 then
-     local offset=(y*n+x)*4
-     buffer.writeu32(data,offset,0x00FFFFFF)
-     buffer.writeu8(data,offset+3,math.round(coverage*255))
-    end
+    local offset=(y*n+x)*4
+    buffer.writeu32(data,offset,0x00FFFFFF)
+    buffer.writeu8(data,offset+3,math.round(coverage*255))
    end
   end
   edit:WritePixelsBuffer(Vector2.zero,Vector2.new(n,n),data)
@@ -2335,7 +2420,7 @@ function I.new(button,tab)
   end)
   if ok then
    hd=result
-   halo=hd:Clone();halo.Name="IconGlow";halo.ZIndex=hd.ZIndex-1;halo.ImageTransparency=.55
+   halo=hd:Clone();halo.Name="IconGlow";halo.ZIndex=hd.ZIndex-1;halo.ImageTransparency=.76
    local glowTexture=raster(name,true)
    if glowTexture then halo.ImageContent=Content.fromObject(glowTexture);halo.Parent=button else halo:Destroy();halo=nil end
    U.new("UIGradient",{Color=ColorSequence.new(Color3.fromRGB(220,187,255),Color3.fromRGB(255,209,245)),Rotation=45},hd)
@@ -4070,7 +4155,7 @@ function E.render(a,tab,ui)
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
   if tab=="Character" then
-   ui:title("AETHER MOTION STUDIO V12.7")
+   ui:title("AETHER MOTION STUDIO V12.8")
    MotionStudio.mount(ui,a)
   else avatarPreview(ui,a) end
   if tab=="Halos" then
@@ -4873,7 +4958,7 @@ __aether_factories["Symbol"] = function()
 local AssetService=game:GetService("AssetService")
 local U=__aether_require("Util")
 local Icons=__aether_require("Icons")
-local M={};local masks={};local N=64
+local M={};local masks={};local N=96
 local paths={
  ["Soft Triangle"]="16,1 30,29 16,22 2,29",Chevron="4,8 6,7 16,15 26,7 28,8 28,14 16,26 4,14",Diamond="16,2 18,4 30,16 18,29 16,30 14,29 2,16",
  ["Neon Pointer"]="16,1 27,30 16,21 5,30|16,8 19,19 13,19",["Double Chevron"]="3,16 16,3 29,16 25,20 16,11 7,20|3,26 16,13 29,26 25,30 16,21 7,30",
@@ -4927,7 +5012,7 @@ local function build(name,round)
    if name=="Location Pin" then return ((xx-16)^2+(yy-20)^2<112 or (yy>=2 and yy<21 and math.abs(xx-16)<(yy-1)*.56)) and (xx-16)^2+(yy-20)^2>15 end
    if name=="Orbit Arc" or name=="Orbit" then local d=(xx-16)^2+(yy-17)^2;return (d<186 and d>93 and (yy>=13 or xx<13)) or (yy<13 and math.abs(xx-18)<yy*.55) end
    for i=1,#inter-1,2 do if xx>=inter[i] and xx<inter[i+1] then return true end end;return false end
-  local x=0;local nextRow={};while x<N do if not pixel(x) then x+=1;continue end;local l=x;repeat x+=1 until x==N or not pixel(x);local id=l*64+x;local b=last[id];if b then b.h+=1 else b={x=l,y=y,w=x-l,h=1};table.insert(rows,b) end;nextRow[id]=b end;last=nextRow
+  local x=0;local nextRow={};while x<N do if not pixel(x) then x+=1;continue end;local l=x;repeat x+=1 until x==N or not pixel(x);local id=l*(N+1)+x;local b=last[id];if b then b.h+=1 else b={x=l,y=y,w=x-l,h=1};table.insert(rows,b) end;nextRow[id]=b end;last=nextRow
  end;return rows
 end
 -- Share the exact outline / ECG geometry with the Health navigation icon.
@@ -5052,10 +5137,21 @@ function M.gallery(parent,name,round)
  return M.new(parent,name,round)
 end
 function M.new(parent,name,round)
- local root=U.new("CanvasGroup",{Name="Glyph",BackgroundTransparency=1,AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromScale(1,1)},parent)
+ local root=U.new("Frame",{Name="Glyph",BackgroundTransparency=1,AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromScale(1,1),Active=false,Interactable=false},parent)
  local outer=U.frame(root,"OuterGlow",nil,nil,nil,.89);U.corner(outer,999);local inner=U.frame(root,"InnerGlow",nil,nil,nil,.80);U.corner(inner,999)
  local ink=U.frame(root,"Ink",nil,nil,nil,1);for _,f in {outer,inner,ink} do f.AnchorPoint=Vector2.new(.5,.5);f.Position=UDim2.fromScale(.5,.5) end
- local self={root=root,ink=ink,parts={},key=""}
+ local self={root=root,ink=ink,parts={},key="",alpha=0}
+ function self:opacity(value)
+  local alpha=math.clamp(value,0,1)
+  if self.alpha==alpha then return end
+  self.alpha=alpha
+  for _,part in self.parts do part.BackgroundTransparency=alpha end
+  if self.hd then self.hd.ImageTransparency=alpha end
+  local glow=self.glow or 0
+  outer.BackgroundTransparency=1-(1-alpha)*glow*.0016
+  inner.BackgroundTransparency=1-(1-alpha)*glow*.0024
+  if self.hdGlow then self.hdGlow.ImageTransparency=1-(1-alpha)*glow*.008 end
+ end
  if name=="Heart" then self.hd,self.hdGradient,self.hdGlow=heartImage(ink) end
  function self:shape(n,r)
   r=math.round(r/10)*10;local key=n..r;if self.key==key then return end;self.key=key
@@ -5065,7 +5161,7 @@ function M.new(parent,name,round)
    if n=="Heart" then for _,part in self.parts do part.Visible=false end;self.mask={};self.a=nil;return end
   end
   local mask=masks[key];if not mask then mask=build(n,r);masks[key]=mask end
-  for i,rect in mask do local part=self.parts[i] or U.frame(ink,"Run",nil,nil,Color3.new(1,1,1));self.parts[i]=part;part.Position=UDim2.fromScale(rect.x/N,rect.y/N);part.Size=UDim2.fromScale(rect.w/N,rect.h/N);part.Visible=true end
+  for i,rect in mask do local part=self.parts[i] or U.frame(ink,"Run",nil,nil,Color3.new(1,1,1));self.parts[i]=part;part.Position=UDim2.fromScale(rect.x/N,rect.y/N);part.Size=UDim2.fromScale(rect.w/N,rect.h/N);part.BackgroundTransparency=self.alpha;part.Visible=true end
   for i=#mask+1,#self.parts do self.parts[i].Visible=false end;self.mask=mask;self.a=nil
  end
  function self:paint(a,b,glow,spread,middle,angle)
@@ -5087,7 +5183,7 @@ function M.new(parent,name,round)
    if self.hdGlow then self.hdGlow.ImageColor3=middle or a:Lerp(b,.5) end
    outer.BackgroundColor3=b;inner.BackgroundColor3=a;self.a=a;self.b=b;self.mid=middle;self.angle=angle
   end
-  if self.glow~=glow or self.spread~=spread then outer.BackgroundTransparency=1-glow*.0016;inner.BackgroundTransparency=1-glow*.0024;outer.Visible=glow>0 and not (self.hd and self.hd.Visible);inner.Visible=outer.Visible;if self.hdGlow then self.hdGlow.ImageTransparency=1-glow*.008 end;local k=.69+spread*.016;outer.Size=UDim2.fromScale(k,k);inner.Size=UDim2.fromScale(k*.77,k*.77);ink.Size=if self.hd and self.hd.Visible then UDim2.fromScale(.94,.94) else UDim2.fromScale(.73,.73);self.glow=glow;self.spread=spread end
+  if self.glow~=glow or self.spread~=spread then outer.BackgroundTransparency=1-(1-self.alpha)*glow*.0016;inner.BackgroundTransparency=1-(1-self.alpha)*glow*.0024;outer.Visible=glow>0 and not (self.hd and self.hd.Visible);inner.Visible=outer.Visible;if self.hdGlow then self.hdGlow.ImageTransparency=1-(1-self.alpha)*glow*.008 end;local k=.69+spread*.016;outer.Size=UDim2.fromScale(k,k);inner.Size=UDim2.fromScale(k*.77,k*.77);ink.Size=if self.hd and self.hd.Visible then UDim2.fromScale(.94,.94) else UDim2.fromScale(.73,.73);self.glow=glow;self.spread=spread end
  end
  self:shape(name,round or 30);self:paint(Color3.fromRGB(185,150,255),Color3.fromRGB(255,165,220),50,8);return self
 end
@@ -5169,7 +5265,7 @@ local AssetService=game:GetService("AssetService")
 local U=__aether_require("Util")
 local Symbol=__aether_require("Symbol")
 local M={}
-local RES=128
+local RES=256
 local paths={
  ["Rounded Triangle"]="M 8 3 Q 6 2 6 6 L 6 29 Q 6 32 9 29 L 15 22 L 24 22 Q 28 22 25 19 Z",
  ["Soft Arrow"]="M 6 4 Q 5 2 9 4 L 27 17 Q 30 19 26 21 L 18 22 L 14 29 Q 12 32 10 28 Z",
@@ -5228,8 +5324,10 @@ local function contours(path)
  finish()
  return output
 end
+local maskOrder={}
 local function prepare(name)
  local mask=masks[name];if mask then return mask end
+ if #maskOrder>=4 then masks[table.remove(maskOrder,1)]=nil end
  local curves=contours(paths[name])
  local edges={}
  for _,poly in curves do
@@ -5276,7 +5374,7 @@ local function prepare(name)
    bloom[i]=(horizontal[math.max(0,y-2)*RES+x+1]+4*horizontal[math.max(0,y-1)*RES+x+1]+6*horizontal[i]+4*horizontal[math.min(RES-1,y+1)*RES+x+1]+horizontal[math.min(RES-1,y+2)*RES+x+1])/16
   end
  end
- mask={coverage=coverage,bloom=bloom};masks[name]=mask;return mask
+ mask={coverage=coverage,bloom=bloom};masks[name]=mask;table.insert(maskOrder,name);return mask
 end
 local function colors(s)
  local list=palettes[s.cursorPalette] or {s.cursorA or "B78AFF",s.cursorB or "FC82D6"}
@@ -5296,11 +5394,9 @@ local function render(img,mask,glowPercent)
   local fill=mask.coverage[i]
   local haze=mask.bloom[i]
   local alpha=math.clamp(fill+(1-fill)*haze*glow*.5,0,1)
-  if alpha>0 then
-   local offset=(i-1)*4
-   buffer.writeu32(data,offset,0x00FFFFFF)
-   buffer.writeu8(data,offset+3,math.round(alpha*255))
-  end
+  local offset=(i-1)*4
+  buffer.writeu32(data,offset,0x00FFFFFF)
+  buffer.writeu8(data,offset+3,math.round(alpha*255))
  end
  img:WritePixelsBuffer(Vector2.zero,Vector2.new(RES,RES),data)
 end
@@ -5317,7 +5413,7 @@ local function nativeImage(parent,source)
  return U.new("ImageLabel",{
   Name="OriginalSVGCursor",BackgroundTransparency=1,BorderSizePixel=0,
   Active=false,Selectable=false,Size=UDim2.fromScale(1,1),
-  ScaleType=Enum.ScaleType.Fit,ImageContent=Content.fromObject(source)
+  ScaleType=Enum.ScaleType.Fit,ResampleMode=Enum.ResamplerMode.Default,ImageContent=Content.fromObject(source)
  },parent)
 end
 function M.new(parent)
