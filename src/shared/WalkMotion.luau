@@ -180,7 +180,17 @@ function W:liveStep(character,s,dt)
  local targetRate=MotionStudio.speedFactor(config,state,movementSpeed)
  self.liveRate=if changed or self.liveRate==nil then targetRate else self.liveRate+(targetRate-self.liveRate)*(1-math.exp(-dt*12))
  self.liveTime+=dt*config.speed*self.liveRate
- if not self.peer and self:replicatedStep(hum,s,config,state,self.liveRate) then return end
+ if not self.peer and self:replicatedStep(hum,s,config,state,self.liveRate) then
+  -- Published clips remain untouched; the extra lift is a local visual overlay.
+  local root=self.motors.Root
+  if config.height>0 and root and root.Parent and (not root:IsA("AnimationConstraint") or (root.Enabled and root.IsKinematic)) then
+   local base=root.Transform
+   local result=MotionStudio.extraLift(root,base,config.height)
+   self.liveWrites[root]={base=base,applied=result}
+   root.Transform=result
+  end
+  return
+ end
  local targets
  if self.peer then
   self.peerPoseElapsed=(self.peerPoseElapsed or 0)+dt

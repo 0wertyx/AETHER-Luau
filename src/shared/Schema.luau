@@ -109,7 +109,7 @@ function S.peerPacket(raw)
    if ok and type(config)=="table" then
     local style=raw.walkStyle or S.defs.walkStyle.default
     local rate=peerNumber(type(config.packRates)=="table" and config.packRates[style],.25,2,peerNumber(config.speed,.25,2,1))
-    local clean={speed=rate,adaptive=config.adaptive~=false,origin=peerNumber(config.origin,0,150,100),props=config.props~=false,packRates={[style]=rate}}
+    local clean={speed=rate,adaptive=config.adaptive~=false,origin=peerNumber(config.origin,0,150,100),height=peerNumber(config.height,0,1.5,0),props=config.props~=false,packRates={[style]=rate}}
     packet.motionStudioConfig=game:GetService("HttpService"):JSONEncode(clean)
    end
   elseif k=="publishedMotion" then

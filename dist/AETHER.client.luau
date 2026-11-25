@@ -3255,7 +3255,7 @@ end
 -- Shared pose evaluator for the editor and authorized local avatar animation.
 function M.runtimeSettings(settings)
  local saved=readSaved(settings)
- return {style=saved.pack,speed=saved.speed,adaptive=saved.adaptive,origin=saved.origin/100,intensity=math.clamp(saved.intensity/100,0,1),props=saved.props}
+ return {style=saved.pack,speed=saved.speed,adaptive=saved.adaptive,origin=saved.origin/100,intensity=math.clamp(saved.intensity/100,0,1),props=saved.props,height=saved.height}
 end
 -- Speed scales cadence only, never WalkSpeed, velocity or movement physics.
 function M.speedFactor(config,state,velocity)
@@ -3313,6 +3313,13 @@ local function mapped(m,cf)
  local scale=if a then math.clamp(a.Size.Y/2,.5,1.7) else 1
  return basis:Inverse()*CFrame.new(cf.Position*scale)*cf.Rotation*basis
 end
+-- Translate in the root joint's parent-local vertical axis.
+function M.extraLift(root,transform,height)
+ local lift=math.clamp(height or 0,0,1.5)
+ if lift==0 then return transform end
+ local basis=c0(root).Rotation
+ return basis:Inverse()*CFrame.new(0,lift,0)*basis*transform
+end
 -- Shared by live procedural playback and the Studio animation exporter.
 function M.jointTargets(motors,config,t,state,airTime,rigType)
  local air=state=="Jump" or state=="Fall"
@@ -3352,6 +3359,11 @@ function M.jointTargets(motors,config,t,state,airTime,rigType)
   local correction=if floor<math.huge and low<math.huge then math.clamp(floor-low,-1.5,1.5) else 0
   local basis=c0(root).Rotation
   targets[root]=basis:Inverse()*CFrame.new(0,correction+hover,0)*basis*targets[root]
+ end
+ -- Extra levitation is independent of pack intensity and foot-contact correction.
+ -- Translate the animated torso joint only, never the root part or character physics.
+ if root and targets[root] then
+  targets[root]=M.extraLift(root,targets[root],config.height)
  end
  return targets
 end
@@ -3626,7 +3638,7 @@ function M.mount(ui,a)
  slider("Zoom",.65,1.5,.05,"zoom",decimal)
  slider("Origin Motion",0,150,5,"origin",percent)
  slider("Intensity",0,100,1,"intensity",percent,updateSelection)
- slider("Extra levitation",0,1.5,.02,"height",decimal)
+ slider("Extra levitation",0,1.5,.02,"height",function(v) return string.format("%.2f studs",v) end)
  ui:title("FULL BODY ROTATION")
  slider("Pitch / X",-360,360,1,"pitch",degrees)
  slider("Yaw / Y",-360,360,1,"yaw",degrees)
@@ -3652,7 +3664,7 @@ function M.mount(ui,a)
   s.packRates=rates;s.packRates[s.pack]=nil
   s.t=0;s.seek=0;s.paused=false;sync()
  end,1)
- ui:note("Confirm All saves the pack, intensity, animation speed and origins. Camera, manual rotation and extra levitation remain preview-only.",64)
+ ui:note("Confirm All applies extra levitation to the avatar's visual pose (Local and local overlay on Replicated). Camera and manual rotation remain preview-only. Collision and jump height are unchanged.",74)
  local function visible(b)
   local r=rigData
   if not r or b==r.root then return false end
@@ -5097,7 +5109,7 @@ function S.peerPacket(raw)
    if ok and type(config)=="table" then
     local style=raw.walkStyle or S.defs.walkStyle.default
     local rate=peerNumber(type(config.packRates)=="table" and config.packRates[style],.25,2,peerNumber(config.speed,.25,2,1))
-    local clean={speed=rate,adaptive=config.adaptive~=false,origin=peerNumber(config.origin,0,150,100),props=config.props~=false,packRates={[style]=rate}}
+    local clean={speed=rate,adaptive=config.adaptive~=false,origin=peerNumber(config.origin,0,150,100),height=peerNumber(config.height,0,1.5,0),props=config.props~=false,packRates={[style]=rate}}
     packet.motionStudioConfig=game:GetService("HttpService"):JSONEncode(clean)
    end
   elseif k=="publishedMotion" then
@@ -6605,7 +6617,17 @@ function W:liveStep(character,s,dt)
  local targetRate=MotionStudio.speedFactor(config,state,movementSpeed)
  self.liveRate=if changed or self.liveRate==nil then targetRate else self.liveRate+(targetRate-self.liveRate)*(1-math.exp(-dt*12))
  self.liveTime+=dt*config.speed*self.liveRate
- if not self.peer and self:replicatedStep(hum,s,config,state,self.liveRate) then return end
+ if not self.peer and self:replicatedStep(hum,s,config,state,self.liveRate) then
+  -- Published clips remain untouched; the extra lift is a local visual overlay.
+  local root=self.motors.Root
+  if config.height>0 and root and root.Parent and (not root:IsA("AnimationConstraint") or (root.Enabled and root.IsKinematic)) then
+   local base=root.Transform
+   local result=MotionStudio.extraLift(root,base,config.height)
+   self.liveWrites[root]={base=base,applied=result}
+   root.Transform=result
+  end
+  return
+ end
  local targets
  if self.peer then
   self.peerPoseElapsed=(self.peerPoseElapsed or 0)+dt
