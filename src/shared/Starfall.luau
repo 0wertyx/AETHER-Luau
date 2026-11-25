@@ -4,22 +4,42 @@ local Input=game:GetService("UserInputService")
 local F={};F.__index=F
 local RNG=Random.new()
 local MAX_STARS=16
-local VERTICES=10
-local outline={}
--- Trim the sharp tips and inner corners, then round joins with spherical caps.
-for i=0,VERTICES-1 do
- local a=math.pi/2+i*math.pi/5
- local r=if i%2==0 then 1 else .52
- outline[i+1]=Vector3.new(math.cos(a)*r,math.sin(a)*r,0)
+-- A softened five-point silhouette. Sample quadratic corner arcs once,
+-- rather than merely placing round caps at the original sharp tips.
+local raw={}
+for i=0,9 do
+ local angle=math.pi/2+i*math.pi/5
+ local radius=if i%2==0 then 1 else .58
+ raw[i+1]=Vector3.new(math.cos(angle)*radius,math.sin(angle)*radius,0)
 end
+local outline={}
+local maxRadius=0
+for i=1,10 do
+ local p=raw[i]
+ local a=p:Lerp(raw[(i-2)%10+1],.46)
+ local b=p:Lerp(raw[i%10+1],.46)
+ for _,t in {.18,.82} do
+  local q=a*(1-t)^2+p*(2*t*(1-t))+b*t^2
+  outline[#outline+1]=q
+  maxRadius=math.max(maxRadius,q.Magnitude)
+ end
+end
+for i,p in outline do outline[i]=p/maxRadius end
+local VERTICES=#outline
 local function part(parent,shape)
  return U.new("Part",{Name="StarRay",Shape=shape or Enum.PartType.Block,Anchored=true,CanCollide=false,CanTouch=false,CanQuery=false,CastShadow=false,Transparency=1,Size=Vector3.new(.1,.1,.1),Material=Enum.Material.Neon},parent)
 end
 local function segment(p,a,b,width)
  local d=b-a
  if d.Magnitude<.001 then p.Transparency=1;return false end
- p.Size=Vector3.new(width,width,d.Magnitude)
- p.CFrame=CFrame.lookAt((a+b)*.5,b,if math.abs(d.Unit.Y)>.98 then Vector3.xAxis else Vector3.yAxis)
+ local cf=CFrame.lookAt((a+b)*.5,b,if math.abs(d.Unit.Y)>.98 then Vector3.xAxis else Vector3.yAxis)
+ if p.Shape==Enum.PartType.Cylinder then
+  p.Size=Vector3.new(d.Magnitude,width,width)
+  p.CFrame=cf*CFrame.Angles(0,math.pi/2,0)
+ else
+  p.Size=Vector3.new(width,width,d.Magnitude)
+  p.CFrame=cf
+ end
  return true
 end
 function F.new() return setmetatable({pool={}},F) end
@@ -47,7 +67,7 @@ function F:step(s,now)
  if material==Enum.Material.Neon and s.starfallGlow==0 then material=Enum.Material.SmoothPlastic end
  while #self.pool<count do
   local star={rays={}}
-  for i=1,VERTICES do star.rays[i]=part(self.root) end
+  for i=1,VERTICES do star.rays[i]=part(self.root,Enum.PartType.Cylinder) end
   for i=1,VERTICES do star.rays[VERTICES+i]=part(self.root,Enum.PartType.Ball) end
   star.rays[VERTICES*2+1]=part(self.root)
   self:spawn(star,cam,true);self.pool[#self.pool+1]=star
@@ -61,7 +81,7 @@ function F:step(s,now)
   local opacity=s.starfallOpacity/100
   local tint=if s.starfallRainbow then Color3.fromHSV((now*.12+star.tint)%1,.55,1) else colorA:Lerp(colorB,star.tint)
   local cf=CFrame.new(star.pos)*cam.CFrame.Rotation*CFrame.Angles(0,0,star.phase+star.age*math.rad(s.starfallRotation)*star.spinDirection)
-  local width=math.max(.045,r*.23)
+  local width=math.max(.045,r*.29)
   for j=1,VERTICES do
    local a=cf:PointToWorldSpace(outline[j]*r)
    local b=cf:PointToWorldSpace(outline[j%VERTICES+1]*r)
