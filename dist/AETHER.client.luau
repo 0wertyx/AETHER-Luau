@@ -4048,6 +4048,7 @@ local function avatarPreview(ui,a,worldMode)
    dt=math.min(dt,.05)*speed
    previewState.effectTime=(previewState.effectTime or os.clock())+dt
    moving=false
+   previewState.airTiltDirection=nil
    if full and ui.opened then
     local x=(if keys[Enum.KeyCode.D] or keys[Enum.KeyCode.Right] then 1 else 0)-(if keys[Enum.KeyCode.A] or keys[Enum.KeyCode.Left] then 1 else 0)
     local z=(if keys[Enum.KeyCode.W] or keys[Enum.KeyCode.Up] then 1 else 0)-(if keys[Enum.KeyCode.S] or keys[Enum.KeyCode.Down] then 1 else 0)
@@ -4085,6 +4086,7 @@ local function avatarPreview(ui,a,worldMode)
     local facing=if shiftLock then forward elseif dir.Magnitude>.1 then dir else rootPart.CFrame.LookVector
     rootPart.CFrame=rootPart.CFrame:Lerp(CFrame.lookAt(nextPos,nextPos+facing),1-math.exp(-dt*20))
     rootPart.CFrame=CFrame.new(nextPos)*rootPart.CFrame.Rotation
+    if not grounded and settings.airControl and not settings.reduce then previewState.airTiltDirection=dir end
    end
    center=rootPart.Position+centerOffset;applyCamera()
   end
@@ -4108,6 +4110,7 @@ local function avatarPreview(ui,a,worldMode)
    end
    virtual.props=showProps
    motion:step(rig,demo,dt,virtual)
+   if worldMode then motion:applyAirTilt(rig,previewState.airTiltDirection,dt,settings.airTiltAngle,true) end
   else
    motion:bind(nil)
   end
@@ -4584,7 +4587,7 @@ function E.render(a,tab,ui)
   end
   ui:watch(function() peerStatus.Text=if a.peers then a.peers.status else "Peer relay unavailable" end)
   ui:title("AIR REDIRECTION")
-  ui:control("airControl");ui:control("airControlStrength");ui:control("airControlSpeed")
+  ui:control("airControl");ui:control("airControlStrength");ui:control("airControlSpeed");ui:control("airTiltAngle")
   local airStatus=ui:note("",44)
   ui:watch(function() airStatus.Text=if a.mode=="Simulator" then "Simulator: steer with movement controls. Horizontal momentum is preserved." else "Live: steer in midair. Jump height is unchanged; game physics may override local steering." end)
   local airDebug=ui:note("",64)
@@ -4633,7 +4636,7 @@ function E.render(a,tab,ui)
   ui:note("Practice display: tracks your jump and horizontal camera rotation. No automatic jumps or camera movement.",42)
   for _,k in {"wallhopHelper","wallhopX","wallhopY","wallhopScale","wallhopOpacity"} do ui:control(k) end
  elseif tab=="Fonts" then local text=ui:note(a.s.sample,62);text:SetAttribute("AETHERKeepFontColor",true);text.TextXAlignment=Enum.TextXAlignment.Center;local gradient=U.gradient(text,Color3.new(),Color3.new(),10);local glow=U.stroke(text,U.hex(a.s.fontB),.8);glow.ApplyStrokeMode=Enum.ApplyStrokeMode.Contextual;ui:watch(function() local s=a.s;text.Text=s.sample;text.FontFace=U.font(s);text.TextSize=s.fontSize*.23;text.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA);text.TextStrokeTransparency=1-s.fontOutline/100;gradient.Enabled=s.fontGradient;gradient.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB));glow.Color=U.hex(s.fontB);glow.Transparency=1-s.fontGlow*.008;glow.Thickness=1+s.fontGlow*.023 end);local query=ui:box("Search native typefaces",a.fontQuery or "",32,function(q) if q~=(a.fontQuery or "") then a.fontQuery=q;ui:open("Fonts") end end);local fonts={};for _,n in S.fonts do if n:lower():find((a.fontQuery or ""):lower(),1,true) then table.insert(fonts,n) end end;ui:chips(fonts,function(n) a:patch({font=n,fontAsset=""}) end,3,function() return a.s.font end);ui:group(tab,{font=true});preset(ui,a,tab)
- elseif tab=="Simulator" then preview(ui,a);ui:title("WORLD PREVIEW");ui:control("airControl");ui:control("airControlStrength");ui:control("airControlSpeed");avatarPreview(ui,a,true);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
+ elseif tab=="Simulator" then preview(ui,a);ui:title("WORLD PREVIEW");ui:control("airControl");ui:control("airControlStrength");ui:control("airControlSpeed");ui:control("airTiltAngle");avatarPreview(ui,a,true);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
  elseif tab=="Scripts" then scripts(ui,a)
  elseif tab=="Profiles" then configs(ui,a)
  elseif tab=="List" then
@@ -5063,7 +5066,7 @@ toggle("Neon","neon","Character outline",true);range("Neon","neonFill","Body tin
 toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA","High sky","282057");color("Ambient","skyB","Horizon","8C70C2");color("Ambient","skyC","Ground light","EAB6CD");range("Ambient","fog","Fog density %",35,0,90);range("Ambient","bloom","Legacy bloom (inactive)",0,0,100);range("Ambient","time","Time (tenths of an hour)",166,0,239);range("Ambient","light","Brightness %",105,25,180);range("Ambient","saturation","Saturation %",9,-85,85);range("Ambient","blur","Depth blur",0,0,16);range("Ambient","fade","Atmosphere fade (ms)",700,0,3500);range("Ambient","worldContrast","Contrast %",0,-80,80);range("Ambient","worldExposure","Exposure %",0,-100,100);range("Ambient","worldGlare","Atmospheric glare %",0,0,100);range("Ambient","worldRays","Sun rays %",0,0,100);range("Ambient","worldFocus","Depth of field %",0,0,100);range("Ambient","worldFocusDistance","Focus distance (studs)",60,8,250);range("Ambient","worldBloomSize","Bloom radius",26,0,56);toggle("Ambient","starfall","Falling shapes",false);choice("Ambient","starfallShape","Falling shape","Rounded Star",{"Mixed","Rounded Star","Soft Star","Sparkle","Long Sparkle","Six Point Star","Eight Point Star","Circle","Rounded Square","Diamond","Rounded Triangle","Rounded Hexagon","Rounded Pentagon","Heart"});range("Ambient","starfallRotation","Star rotation (degrees/sec)",8,0,25);choice("Ambient","starfallMaterial","Star material","Neon",{"Neon","Glass","SmoothPlastic","Metal"});range("Ambient","starfallCount","Star count",8,1,16);range("Ambient","starfallSpeed","Fall speed (studs/sec)",35,10,90);range("Ambient","starfallSize","Star size (tenths of stud)",18,5,40);range("Ambient","starfallOpacity","Star opacity %",85,10,100);range("Ambient","starfallGlow","Star neon glow %",80,0,100);toggle("Ambient","starfallTail","Star streaks",true);toggle("Ambient","starfallRainbow","Rainbow stars",false);color("Ambient","starfallA","Star color start","E5D1FF");color("Ambient","starfallB","Star color end","83CFFF")
 toggle("Indicators","indicators","Directional indicators",true);choice("Indicators","shape","Indicator shape","Soft Triangle",S.shapes);range("Indicators","size","Size (px)",31,14,72);range("Indicators","corners","Corner softness %",30,0,100);range("Indicators","edge","Distance from edges %",11,4,30);range("Indicators","turn","Rotation smoothing (ms)",180,0,800);range("Indicators","ink","Neon intensity %",60,0,100);range("Indicators","spread","Neon spread (px)",6,0,18);range("Indicators","arrowAlpha","Opacity %",95,10,100);range("Indicators","arrowSpeed","Animation speed %",100,40,220);color("Indicators","arrowA","Gradient start","BFA2FF");color("Indicators","arrowB","Gradient end","FF9ECE");toggle("Indicators","arrowRainbow","Rainbow gradient",false);toggle("Indicators","pulse","Pulsation",true);choice("Indicators","labels","Arrow labels","Both",{"Off","Name","Distance","Both"});toggle("Indicators","nearby","Nearby nameplates",false);range("Indicators","reach","Tracking range (studs)",800,50,2500)
 toggle("Cursor","cursor","Custom game pointer",false);choice("Cursor","cursorShape","Pointer shape","Rounded Triangle",{"Rounded Triangle","Soft Arrow","Diamond","Orbit","Spark","Chevron","Neon Pointer","Arrowhead","Split Arrow","Needle","Crystal","Spear","Star Pointer","Compass","Crosshair","Heart","Image"});range("Cursor","cursorSize","Pointer size",30,12,72);range("Cursor","cursorGlow","Pointer glow %",55,0,100);choice("Cursor","cursorPalette","Desktop AETHER palette","Aurora",{"Aurora","Sunset","Ocean","Rainbow","Mono","Custom"});range("Cursor","hotX","Hotspot X %",19,0,100);range("Cursor","hotY","Hotspot Y %",8,0,100);color("Cursor","cursorA","Gradient start","BA99FF");color("Cursor","cursorB","Gradient end","69D9FA");toggle("Cursor","cursorRainbow","Rainbow pointer",true);range("Cursor","cursorSpeed","Gradient speed %",65,10,200);choice("Cursor","cursorAnimation","Cursor animation","Sway",{"Off","Breathe","Sway","Spin","Pulse"});range("Cursor","cursorMotionSpeed","Animation speed %",100,20,200);toggle("Cursor","cursorTrail","Cursor motion trail",false);choice("Cursor","cursorTrailStyle","Trail style","Triple",{"Triple","Single","Dots"});range("Cursor","cursorTrailLength","Trail lifetime (ms)",220,80,450);range("Cursor","cursorTrailWidth","Trail width (tenths of px)",12,5,35);range("Cursor","cursorTrailSpread","Trail spacing (px)",6,2,16);range("Cursor","cursorTrailGlow","Trail glow %",65,0,100);color("Cursor","cursorTrailA","Trail start","F5E5FF");color("Cursor","cursorTrailB","Trail end","9B6BFF");range("Cursor","cursorOffsetX","Pointer offset X (px)",0,-120,120);range("Cursor","cursorOffsetY","Pointer offset Y (px)",0,-120,120);toggle("Cursor","cursorDebug","Show hotspot marker",false);def("Cursor","image","Roblox image asset ID","asset","")
-toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Interaction","lock","Custom camera lock",false);toggle("Interaction","airControl","Air Redirection",true);range("Interaction","airControlStrength","Air steering strength %",75,0,100);range("Interaction","airControlSpeed","Air movement speed %",125,100,200);toggle("Interaction","peerVisuals","Share and see AETHER cosmetics",false);choice("Interaction","peerQuality","Peer rendering quality","Balanced",{"Low","Balanced","High"});toggle("Interaction","blockShift","Block both Shift keys",true);S.lockKeys={};for _,key in Enum.KeyCode:GetEnumItems() do if key~=Enum.KeyCode.Unknown then table.insert(S.lockKeys,key.Name) end end;choice("Interaction","lockKey","Lock keybind","LeftAlt",S.lockKeys);choice("Interaction","lockReticle","Shift-lock reticle","Orbit",{"None","Dot","Ring","Orbit","Cross","Split Cross","Diamond","Triangle","Hexagon","Star","Corners","Compass","Double Ring","Petal"});range("Interaction","reticleSize","Reticle size (px)",28,12,64);range("Interaction","reticleStroke","Reticle thickness (px)",2,1,5);color("Interaction","reticleColor","Reticle color","C8A6FF");toggle("Interaction","reticleRainbow","Rainbow reticle",false);toggle("Interaction","reticleMotion","Reticle animation",true);range("Interaction","reticleSpeed","Reticle animation %",70,0,200);toggle("Interaction","reticleNeon","Neon reticle glow",true);range("Interaction","reticleGlow","Reticle glow intensity %",65,0,100);range("Interaction","reticleGlowRadius","Reticle glow radius (px)",4,1,8);toggle("Interaction","reticleGlowPulse","Pulsating glow",true)
+toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Interaction","lock","Custom camera lock",false);toggle("Interaction","airControl","Air Redirection",true);range("Interaction","airControlStrength","Air steering strength %",75,0,100);range("Interaction","airControlSpeed","Air movement speed %",125,100,200);range("Interaction","airTiltAngle","Air tilt angle (degrees)",18,0,35);toggle("Interaction","peerVisuals","Share and see AETHER cosmetics",false);choice("Interaction","peerQuality","Peer rendering quality","Balanced",{"Low","Balanced","High"});toggle("Interaction","blockShift","Block both Shift keys",true);S.lockKeys={};for _,key in Enum.KeyCode:GetEnumItems() do if key~=Enum.KeyCode.Unknown then table.insert(S.lockKeys,key.Name) end end;choice("Interaction","lockKey","Lock keybind","LeftAlt",S.lockKeys);choice("Interaction","lockReticle","Shift-lock reticle","Orbit",{"None","Dot","Ring","Orbit","Cross","Split Cross","Diamond","Triangle","Hexagon","Star","Corners","Compass","Double Ring","Petal"});range("Interaction","reticleSize","Reticle size (px)",28,12,64);range("Interaction","reticleStroke","Reticle thickness (px)",2,1,5);color("Interaction","reticleColor","Reticle color","C8A6FF");toggle("Interaction","reticleRainbow","Rainbow reticle",false);toggle("Interaction","reticleMotion","Reticle animation",true);range("Interaction","reticleSpeed","Reticle animation %",70,0,200);toggle("Interaction","reticleNeon","Neon reticle glow",true);range("Interaction","reticleGlow","Reticle glow intensity %",65,0,100);range("Interaction","reticleGlowRadius","Reticle glow radius (px)",4,1,8);toggle("Interaction","reticleGlowPulse","Pulsating glow",true)
 toggle("Interaction","inputOverlay","Show input overlay",false);toggle("Interaction","inputMouse","Show mouse buttons",true);range("Interaction","inputX","Input overlay X %",91,0,100);range("Interaction","inputY","Input overlay Y %",76,0,100);range("Interaction","inputScale","Input overlay size %",100,60,150);range("Interaction","inputOpacity","Input overlay opacity %",80,20,100);color("Interaction","inputColor","Pressed key color","BCA0FF");toggle("Interaction","wallhopHelper","Wallhop Helper",false);range("Interaction","wallhopX","Wallhop display X %",87,0,100);range("Interaction","wallhopY","Wallhop display Y %",42,0,100);range("Interaction","wallhopScale","Wallhop display size %",100,60,150);range("Interaction","wallhopOpacity","Wallhop display opacity %",90,20,100)
 choice("Fonts","font","Typeface","Gotham",S.fonts);choice("Fonts","weight","Weight","Bold",{"Regular","Medium","Bold","Heavy"});def("Fonts","fontAsset","Optional Roblox font family ID","asset","");text("Fonts","sample","Preview text","AETHER · Your interface",96);range("Fonts","fontSize","HUD type scale %",100,70,145);toggle("Fonts","fontGradient","Gradient lettering",true);range("Fonts","fontOutline","Text outline %",24,0,100);range("Fonts","fontGlow","Letter glow %",35,0,100);color("Fonts","fontA","Letter color","F1E6FF");color("Fonts","fontB","Letter gradient","CCA4FF")
 S.example='hud.widget("status", "Ready", 8, 38)\nfunction onHealthChanged(hp, maxHP)\n  hud.widget("status", hud.join("HP: ", hp), 8, 38)\n  if hp > 0 and hp <= maxHP * 0.3 then\n    hud.animate("status", "pulse")\n  else\n    hud.animate("status", "none")\n  end\nend'
@@ -6525,6 +6528,7 @@ function W:updatePhysicalLift(hum,config,allowed)
 end
 function W:bind(character)
  if self.character==character then return end
+ self.airTiltAngles=Vector2.zero
  self:releasePhysicalLift()
  self:restoreLive();self:stopReplicated();table.clear(self.livePose)
  self.liveTime=0;self.liveAir=0;self.liveWasAir=false;self.liveStyle=nil;self.liveState=nil;self.liveTransition=nil;self.liveRetry=0
@@ -7207,7 +7211,40 @@ function W:step(character,s,dt,preview)
   j.Root.Transform=j.Root.Transform*basis:Inverse()*CFrame.Angles(0,0,ph*.52)*basis
  end
 end
+-- Cosmetic directional lean layered on the current root-joint pose.
+-- Preserve translations (including levitation) and never write root-part physics.
+function W:applyAirTilt(character,direction,dt,degrees,preview)
+ if self.peer or not character or self.character~=character then return end
+ local joint=self.motors.Root
+ if not joint or not joint.Parent then return end
+ if joint:IsA("AnimationConstraint") and not preview and (not joint.Enabled or not joint.IsKinematic) then return end
+ local parent=part0(joint)
+ if not parent then return end
+ local target=Vector2.zero
+ if direction and direction.Magnitude>.01 and degrees>0 then
+  local localDir=parent.CFrame:VectorToObjectSpace(direction)
+  local planar=Vector2.new(localDir.X,localDir.Z)
+  if planar.Magnitude>1 then planar=planar.Unit end
+  local angle=math.rad(math.clamp(degrees,0,35))
+  target=Vector2.new(planar.Y*angle,-planar.X*angle)
+ end
+ local current=self.airTiltAngles or Vector2.zero
+ current=current:Lerp(target,1-math.exp(-math.clamp(dt,0,.1)*16))
+ if current.Magnitude<.0001 then current=Vector2.zero end
+ self.airTiltAngles=current
+ if current==Vector2.zero then return end
+ local base=joint.Transform
+ local basis=c0(joint).Rotation
+ local lean=basis:Inverse()*CFrame.Angles(current.X,0,current.Y)*basis
+ local result=CFrame.new(base.Position)*lean*base.Rotation
+ if not preview then
+  local entry=self.liveWrites[joint]
+  self.liveWrites[joint]={base=if entry then entry.base else base,applied=result}
+ end
+ joint.Transform=result
+end
 function W:destroy()
+ self.airTiltAngles=Vector2.zero
  self:releasePhysicalLift();self:stopReplicated();self:restoreLive();table.clear(self.livePose)
  self.character=nil
  table.clear(self.motors)
@@ -7903,6 +7940,7 @@ end)
 -- Does not create forces, alter gravity, increase WalkSpeed or change vertical velocity.
 local function stepAirControl(dt)
     app.airProbe = nil
+    app.airTiltDirection = nil
     if app.mode ~= "Game" then return "Simulator mode" end
     local character = player.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -7984,6 +8022,9 @@ local function stepAirControl(dt)
         end
     end
     app.airInputSource = inputSource
+    if not app.s.reduce and not UserInputService:GetFocusedTextBox() then
+        app.airTiltDirection = direction
+    end
     local horizontal = Vector3.new(v.X,0,v.Z)
     local speed = horizontal.Magnitude
     if direction.Magnitude < .01 then app.airDiagnostic = "Skipped: MoveDirection is zero";return app.airDiagnostic end
@@ -8073,6 +8114,11 @@ scope:on(RunService.PreSimulation, function(dt)
         app:log("Motion", tostring(err))
         warn("AETHER walk cycle:", err)
     elseif ok then app.walkError = false end
+    if ok then
+        local tiltOk, tiltError = pcall(walkMotion.applyAirTilt,walkMotion,characterToAnimate,app.airTiltDirection,dt,if app.s.reduce then 0 else app.s.airTiltAngle,false)
+        if not tiltOk and not app.airTiltError then app:log("Air Tilt",tostring(tiltError)) end
+        app.airTiltError=not tiltOk
+    end
     peers:animate(dt)
 end)
 

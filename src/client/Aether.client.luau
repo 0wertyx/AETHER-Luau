@@ -646,6 +646,7 @@ end)
 -- Does not create forces, alter gravity, increase WalkSpeed or change vertical velocity.
 local function stepAirControl(dt)
     app.airProbe = nil
+    app.airTiltDirection = nil
     if app.mode ~= "Game" then return "Simulator mode" end
     local character = player.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -727,6 +728,9 @@ local function stepAirControl(dt)
         end
     end
     app.airInputSource = inputSource
+    if not app.s.reduce and not UserInputService:GetFocusedTextBox() then
+        app.airTiltDirection = direction
+    end
     local horizontal = Vector3.new(v.X,0,v.Z)
     local speed = horizontal.Magnitude
     if direction.Magnitude < .01 then app.airDiagnostic = "Skipped: MoveDirection is zero";return app.airDiagnostic end
@@ -816,6 +820,11 @@ scope:on(RunService.PreSimulation, function(dt)
         app:log("Motion", tostring(err))
         warn("AETHER walk cycle:", err)
     elseif ok then app.walkError = false end
+    if ok then
+        local tiltOk, tiltError = pcall(walkMotion.applyAirTilt,walkMotion,characterToAnimate,app.airTiltDirection,dt,if app.s.reduce then 0 else app.s.airTiltAngle,false)
+        if not tiltOk and not app.airTiltError then app:log("Air Tilt",tostring(tiltError)) end
+        app.airTiltError=not tiltOk
+    end
     peers:animate(dt)
 end)
 

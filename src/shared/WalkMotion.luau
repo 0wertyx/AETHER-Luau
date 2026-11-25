@@ -75,6 +75,7 @@ function W:updatePhysicalLift(hum,config,allowed)
 end
 function W:bind(character)
  if self.character==character then return end
+ self.airTiltAngles=Vector2.zero
  self:releasePhysicalLift()
  self:restoreLive();self:stopReplicated();table.clear(self.livePose)
  self.liveTime=0;self.liveAir=0;self.liveWasAir=false;self.liveStyle=nil;self.liveState=nil;self.liveTransition=nil;self.liveRetry=0
@@ -757,7 +758,40 @@ function W:step(character,s,dt,preview)
   j.Root.Transform=j.Root.Transform*basis:Inverse()*CFrame.Angles(0,0,ph*.52)*basis
  end
 end
+-- Cosmetic directional lean layered on the current root-joint pose.
+-- Preserve translations (including levitation) and never write root-part physics.
+function W:applyAirTilt(character,direction,dt,degrees,preview)
+ if self.peer or not character or self.character~=character then return end
+ local joint=self.motors.Root
+ if not joint or not joint.Parent then return end
+ if joint:IsA("AnimationConstraint") and not preview and (not joint.Enabled or not joint.IsKinematic) then return end
+ local parent=part0(joint)
+ if not parent then return end
+ local target=Vector2.zero
+ if direction and direction.Magnitude>.01 and degrees>0 then
+  local localDir=parent.CFrame:VectorToObjectSpace(direction)
+  local planar=Vector2.new(localDir.X,localDir.Z)
+  if planar.Magnitude>1 then planar=planar.Unit end
+  local angle=math.rad(math.clamp(degrees,0,35))
+  target=Vector2.new(planar.Y*angle,-planar.X*angle)
+ end
+ local current=self.airTiltAngles or Vector2.zero
+ current=current:Lerp(target,1-math.exp(-math.clamp(dt,0,.1)*16))
+ if current.Magnitude<.0001 then current=Vector2.zero end
+ self.airTiltAngles=current
+ if current==Vector2.zero then return end
+ local base=joint.Transform
+ local basis=c0(joint).Rotation
+ local lean=basis:Inverse()*CFrame.Angles(current.X,0,current.Y)*basis
+ local result=CFrame.new(base.Position)*lean*base.Rotation
+ if not preview then
+  local entry=self.liveWrites[joint]
+  self.liveWrites[joint]={base=if entry then entry.base else base,applied=result}
+ end
+ joint.Transform=result
+end
 function W:destroy()
+ self.airTiltAngles=Vector2.zero
  self:releasePhysicalLift();self:stopReplicated();self:restoreLive();table.clear(self.livePose)
  self.character=nil
  table.clear(self.motors)
