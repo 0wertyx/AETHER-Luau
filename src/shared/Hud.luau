@@ -1,7 +1,7 @@
 local U=require(script.Parent.Util);local Symbol=require(script.Parent.Symbol);local Icons=require(script.Parent.Icons)
 local H={};H.__index=H
 local UIS=game:GetService("UserInputService")
-local sizes={hp=Vector2.new(264,94),clock=Vector2.new(116,58),profile=Vector2.new(124,58),dock=Vector2.new(285,49),cross=Vector2.new(18,18)}
+local sizes={hp=Vector2.new(264,94),clock=Vector2.new(116,58),profile=Vector2.new(124,58),dock=Vector2.new(239,49),cross=Vector2.new(18,18)}
 local heartPalettes={
  Aurora={"7DE3FF","B78AFF","FC82D6"},
  Amethyst={"7550E8","BB8CFF","F2B8FF"},
@@ -123,7 +123,7 @@ function H.new(scope,parent,preview,go,drag,close,showPanels)
    scope:on(button.Activated,function() close(key) end)
   end
  end
- for i,item in {{"HOME","Dashboard"},{"HUD","HUD"},{"FX","Character"},{"SKY","Ambient"},{"ASSETS","Workshop"},{"MORE","Profiles"}} do
+ for i,item in {{"HOME","Dashboard"},{"HUD","HUD"},{"FX","Character"},{"SKY","Ambient"},{"MORE","Profiles"}} do
   local b=U.button(dock,item[1])
   b.Name="Dock_"..item[2]
   b:SetAttribute("AETHERIconOnly",true)
@@ -200,7 +200,7 @@ function H:layoutPreview(s)
   local item=self.previewPanels[key]
   local panel=item.p
   local factor=math.clamp(math.min(vp.X/850,vp.Y/420),.35,.74)
-  local originalW=if key=="top" then 345 else 54
+  local originalW=if key=="top" then 136 else 54
   local originalH=if key=="top" then 38 else 176
   local w,height=originalW*factor,originalH*factor
   item.scale.Scale=factor
