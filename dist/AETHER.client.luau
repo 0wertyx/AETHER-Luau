@@ -660,11 +660,13 @@ __aether_factories["Constellation"] = function()
 -- Decorative menu-only background. No external assets or services.
 local U=__aether_require("Util")
 local Input=game:GetService("UserInputService")
+local Shapes=__aether_require("FxShapes")
 local FX={};FX.__index=FX
 local MAX_LINKS=100
 local MAX_NODES=24
 local RNG=Random.new()
-local kinds={"Rings","Squares","Crystals","Triangles","Hexagons","Stars","Dots"}
+local kinds=Shapes.names
+local aliases={Squares="Rounded Square",Crystals="Diamond",Triangles="Rounded Triangle",Hexagons="Rounded Hexagon",Stars="Rounded Star",Dots="Circle"}
 
 local function frame(parent,name)
  local f=U.frame(parent,name,nil,UDim2.fromOffset(1,1),Color3.new(1,1,1),1)
@@ -707,29 +709,24 @@ local function drawNode(n,kind,r,color,opacity)
  if n.key==key then return end
  n.key=key
  root.Size=UDim2.fromOffset(r*2,r*2)
- root.Rotation=if kind=="Crystals" then 45 else 0
- root.BackgroundColor3=color
- local simple=kind=="Dots" or kind=="Squares" or kind=="Crystals" or kind=="Rings"
- root.BackgroundTransparency=if simple and kind~="Rings" then 1-opacity else 1
- local corner=root:FindFirstChildOfClass("UICorner")
- if not corner then corner=U.corner(root,0) end
- corner.CornerRadius=if kind=="Rings" or kind=="Dots" then UDim.new(.5,0) else UDim.new(0,0)
+ root.Rotation=0
+ root.BackgroundTransparency=1
  local rim=root:FindFirstChildOfClass("UIStroke")
  if not rim then rim=Instance.new("UIStroke");rim.ApplyStrokeMode=Enum.ApplyStrokeMode.Border;rim.Parent=root end
- rim.Enabled=kind=="Rings";rim.Color=color;rim.Transparency=1-opacity;rim.Thickness=1
- local count=if simple then 0 elseif kind=="Triangles" then 3 elseif kind=="Hexagons" then 6 else 10
- local function vertex(i)
-  local a=-math.pi/2+i*math.pi*2/count
-  local radius=if kind=="Stars" and i%2==1 then r*.45 else r
-  return Vector2.new(r+math.cos(a)*radius,r+math.sin(a)*radius)
- end
- for j=1,count do
+ local ring=kind=="Rings"
+ rim.Enabled=ring;rim.Color=color;rim.Transparency=1-opacity;rim.Thickness=1
+ local corner=root:FindFirstChildOfClass("UICorner")
+ if not corner then corner=U.corner(root,0) end
+ corner.CornerRadius=if ring then UDim.new(.5,0) else UDim.new(0,0)
+ local spans=if ring then {} else Shapes.spans(aliases[kind] or kind)
+ for j,p in spans do
   local e=n.edges[j]
-  if not e then e=frame(root,"Edge");n.edges[j]=e end
-  segment(e,vertex(j-1),vertex(j%count),1)
+  if not e then e=frame(root,"Fill");e.AnchorPoint=Vector2.zero;n.edges[j]=e end
+  e.Position=UDim2.fromScale(p.x,p.y)
+  e.Size=UDim2.fromScale(p.w,p.h)
   e.BackgroundColor3=color;e.BackgroundTransparency=1-opacity;e.Visible=true
  end
- for j=count+1,#n.edges do n.edges[j].Visible=false end
+ for j=#spans+1,#n.edges do n.edges[j].Visible=false end
 end
 function FX:step(dt,s)
  -- Called once per Roblox RenderStepped via Controls:animateBackground.
@@ -1483,6 +1480,88 @@ return T
 
 end
 -- END MODULE CursorTrail
+
+
+-- BEGIN MODULE FxShapes
+__aether_factories["FxShapes"] = function()
+-- Shared, normalized, filled silhouettes for decorative effects.
+local M={}
+M.names={"Rounded Star","Soft Star","Sparkle","Long Sparkle","Six Point Star","Eight Point Star","Circle","Rounded Square","Diamond","Rounded Triangle","Rounded Hexagon","Rounded Pentagon","Heart"}
+local specs={
+ ["Rounded Star"]={5,.58,.46},["Soft Star"]={5,.73,.49},
+ ["Sparkle"]={4,.36,.38},["Long Sparkle"]={4,.28,.32, .67},
+ ["Six Point Star"]={6,.59,.42},["Eight Point Star"]={8,.66,.35},
+ ["Circle"]={20,1,0},["Rounded Square"]={4,1,.48,1,math.pi/4},
+ ["Diamond"]={4,1,.26},["Rounded Triangle"]={3,1,.43},
+ ["Rounded Hexagon"]={6,1,.38},["Rounded Pentagon"]={5,1,.4}
+}
+local cache={}
+function M.outline(name)
+ if cache[name] then return cache[name] end
+ local raw={}
+ local spec=specs[name] or specs["Rounded Star"]
+ if name=="Heart" then
+  for i=0,19 do
+   local t=i*math.pi/10
+   raw[#raw+1]=Vector3.new(16*math.sin(t)^3,13*math.cos(t)-5*math.cos(2*t)-2*math.cos(3*t)-math.cos(4*t)+2,0)/18
+  end
+  -- This parametric heart is clockwise; normalize the winding.
+  local ordered={}
+  for i=#raw,1,-1 do ordered[#ordered+1]=raw[i] end
+  raw=ordered
+ else
+  local n,inner,round,aspect,phase=spec[1],spec[2],spec[3],spec[4] or 1,spec[5] or math.pi/2
+  local star=inner<1
+  local count=if star then n*2 else n
+  for i=0,count-1 do
+   local a=phase+i*math.pi*2/count
+   local r=if star and i%2==1 then inner else 1
+   raw[#raw+1]=Vector3.new(math.cos(a)*r*aspect,math.sin(a)*r,0)
+  end
+  if round>0 then
+   local curved={}
+   for i,p in raw do
+    local a=p:Lerp(raw[(i-2)%#raw+1],round)
+    local b=p:Lerp(raw[i%#raw+1],round)
+    local samples=if #raw<=10 then {.18,.82} elseif #raw==12 and i%2==1 then {.18,.82} else {.5}
+    for _,t in samples do curved[#curved+1]=a*(1-t)^2+p*(2*t*(1-t))+b*t^2 end
+   end
+   raw=curved
+  end
+ end
+ local maxRadius=0
+ for _,p in raw do maxRadius=math.max(maxRadius,p.Magnitude) end
+ for i,p in raw do raw[i]=p/maxRadius end
+ cache[name]=raw
+ return raw
+end
+-- Cache scanline spans for filled UI shapes without needing uploaded images.
+local raster={}
+function M.spans(name)
+ if raster[name] then return raster[name] end
+ local outline=M.outline(name)
+ local result={}
+ local rows=24
+ for row=0,rows-1 do
+  local y=1-2*(row+.5)/rows
+  local hits={}
+  for i,a in outline do
+   local b=outline[i%#outline+1]
+   if (a.Y>y)~=(b.Y>y) then hits[#hits+1]=a.X+(b.X-a.X)*(y-a.Y)/(b.Y-a.Y) end
+  end
+  table.sort(hits)
+  for j=1,#hits-1,2 do
+   local left,right=hits[j],hits[j+1]
+   if right-left>.001 then result[#result+1]={x=(left+1)/2,y=row/rows,w=(right-left)/2,h=1/rows} end
+  end
+ end
+ raster[name]=result
+ return result
+end
+return M
+
+end
+-- END MODULE FxShapes
 
 
 -- BEGIN MODULE Hud
@@ -3090,7 +3169,7 @@ local function text(g,k,t,v,n) def(g,k,t,"text",v,0,n) end
 color("Theme","accent","Accent","A68AFF");color("Theme","secondary","Second neon","FF89C7");color("Theme","glassColor","Glass tint","211C35");color("Theme","uiFontColor","Studio text color","F1E6FF");color("Theme","uiMutedColor","Studio secondary text","ADA3C5");def("Theme","iconAtlas","Original icon atlas Roblox asset ID","asset","");choice("Theme","iconAtlasTile","Atlas tile size (pixels)","128",{"128","224"})
 range("Theme","glass","Glass opacity %",81,10,100);range("Theme","rim","Neon rim %",55,0,100);toggle("Theme","sparkles","Floating sparkles",true)
 toggle("Motion","reduce","Reduce motion",false);range("Motion","speed","Animation speed %",100,40,200);range("Motion","duration","Transition (ms)",380,80,1400);choice("Motion","ease","Interpolation","Smooth",{"Smooth","Linear","Sine"});choice("Motion","menuTransition","Menu transition","Glass",{"Glass","Slide","Fade","Off"});range("Motion","menuAnimStrength","Menu motion intensity %",75,0,100);toggle("Motion","tabTransition","Animated page transitions",true);toggle("Motion","navGlow","Animated navigation glow",true)
-toggle("Theme","menuGeometry","Animated geometric background",true);choice("Theme","menuShape","Background style","Mixed",{"Mixed","Rings","Crystals","Triangles","Hexagons","Squares","Stars","Dots"});range("Theme","menuDensity","Background density",14,4,24);range("Theme","menuMotion","Background speed %",65,0,180);range("Theme","menuOpacity","Background intensity %",55,0,100);
+toggle("Theme","menuGeometry","Animated geometric background",true);choice("Theme","menuShape","Background style","Mixed",{"Mixed","Rings","Crystals","Triangles","Hexagons","Squares","Stars","Dots","Rounded Star","Soft Star","Sparkle","Long Sparkle","Six Point Star","Eight Point Star","Circle","Rounded Square","Diamond","Rounded Triangle","Rounded Hexagon","Rounded Pentagon","Heart"});range("Theme","menuDensity","Background density",14,4,24);range("Theme","menuMotion","Background speed %",65,0,180);range("Theme","menuOpacity","Background intensity %",55,0,100);
 range("Theme","constellationLinks","Maximum connections",100,0,100);range("Theme","constellationDistance","Connection distance (px)",115,25,220);range("Theme","constellationThickness","Line width (tenths of px)",7,3,20);range("Theme","constellationSize","Figure size (px)",5,2,14);range("Theme","constellationAngle","Background gradient angle",45,0,360);color("Theme","constellationBgA","Background start","10091C");color("Theme","constellationBgB","Background end","35204D");color("Theme","constellationLineA","Line start","ECE0FF");color("Theme","constellationLineB","Line end","A66AFF");color("Theme","constellationNodeA","Figure start","FFFFFF");color("Theme","constellationNodeB","Figure end","BE8AFF");toggle("Theme","screenParticles","Menu screen particles",true);choice("Theme","screenParticleStyle","Screen particle style","Mixed",{"Mixed","Stars","Dust","Diamonds"});range("Theme","screenParticleCount","Screen particle count",24,8,48);range("Theme","screenParticleOpacity","Screen particle intensity %",55,0,100);toggle("Theme","robloxRail","Roblox shortcuts rail",true);toggle("Theme","topCapsule","Interactive top capsule",true)
 choice("Theme","menuDock","Menu docking side","Left",{"Left","Right","Top","Bottom","Floating"});range("Theme","menuWidth","Menu width (px)",438,280,1600);range("Theme","menuHeight","Menu height (px)",600,260,1200);toggle("Theme","menuDrag","Drag / snap menu",true);toggle("Theme","menuResize","Resize with corner grip",true);range("Theme","menuFloatX","Floating horizontal %",35,0,100);range("Theme","menuFloatY","Floating vertical %",40,0,100)
 toggle("HUD","locked","Lock widget positions",true);toggle("HUD","movePanels","Allow moving top and left panels",false);toggle("HUD","topCustom","Custom top panel position",false);range("HUD","topX","Top panel X %",50,0,100);range("HUD","topY","Top panel Y %",2,0,100);toggle("HUD","railCustom","Custom left panel position",false);range("HUD","railX","Left panel X %",1,0,100);range("HUD","railY","Left panel Y %",46,0,100);toggle("HUD","compact","Compact health panel",true);choice("HUD","layoutMode","HUD layout","Sketch",{"Sketch","Custom"});choice("HUD","hudMotion","Widget animation","Glass",{"Glass","Float","Pulse","Off"});range("HUD","hudMotionStrength","Widget motion intensity %",65,0,100);toggle("HUD","hudShine","Health bar shimmer",true);toggle("HUD","hudReaction","Damage and healing glow",true);range("HUD","hudSmoothness","HUD smoothing (ms)",320,100,900)
@@ -3120,7 +3199,7 @@ for index,style in S.haloV2Styles do
  range("Halos",k.."Tilt","Tilt degrees",0,-60,60)
 end
 toggle("Neon","neon","Character outline",true);range("Neon","neonFill","Body tint %",10,0,65);range("Neon","neonLight","Light intensity %",40,0,100);color("Neon","neonColor","Neon color","AB87FF");toggle("Neon","neonRainbow","Rainbow neon",false);choice("Neon","neonMotion","Neon animation","Breathe",{"Solid","Breathe","Aurora","Heartbeat","Flow","Reactive"});range("Neon","neonMotionSpeed","Neon animation speed %",90,0,180);range("Neon","neonMotionStrength","Neon animation intensity %",65,0,100);range("Neon","neonRange","Light radius (studs)",9,2,20);toggle("Neon","visualBloom","Real visual bloom",true);range("Neon","visualBloomStrength","Visual bloom strength %",70,0,100);range("Neon","visualBloomRadius","Visual bloom radius",28,8,56)
-toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA","High sky","282057");color("Ambient","skyB","Horizon","8C70C2");color("Ambient","skyC","Ground light","EAB6CD");range("Ambient","fog","Fog density %",35,0,90);range("Ambient","bloom","Bloom %",40,0,100);range("Ambient","time","Time (tenths of an hour)",166,0,239);range("Ambient","light","Brightness %",105,25,180);range("Ambient","saturation","Saturation %",9,-85,85);range("Ambient","blur","Depth blur",0,0,16);range("Ambient","fade","Atmosphere fade (ms)",700,0,3500);range("Ambient","worldContrast","Contrast %",0,-80,80);range("Ambient","worldExposure","Exposure %",0,-100,100);range("Ambient","worldGlare","Atmospheric glare %",0,0,100);range("Ambient","worldRays","Sun rays %",0,0,100);range("Ambient","worldFocus","Depth of field %",0,0,100);range("Ambient","worldFocusDistance","Focus distance (studs)",60,8,250);range("Ambient","worldBloomSize","Bloom radius",26,0,56);toggle("Ambient","starfall","Falling stars",false);range("Ambient","starfallRotation","Star rotation (degrees/sec)",8,0,25);choice("Ambient","starfallMaterial","Star material","Neon",{"Neon","Glass","SmoothPlastic","Metal"});range("Ambient","starfallCount","Star count",8,1,16);range("Ambient","starfallSpeed","Fall speed (studs/sec)",35,10,90);range("Ambient","starfallSize","Star size (tenths of stud)",18,5,40);range("Ambient","starfallOpacity","Star opacity %",85,10,100);range("Ambient","starfallGlow","Star neon glow %",80,0,100);toggle("Ambient","starfallTail","Star streaks",true);toggle("Ambient","starfallRainbow","Rainbow stars",false);color("Ambient","starfallA","Star color start","E5D1FF");color("Ambient","starfallB","Star color end","83CFFF")
+toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA","High sky","282057");color("Ambient","skyB","Horizon","8C70C2");color("Ambient","skyC","Ground light","EAB6CD");range("Ambient","fog","Fog density %",35,0,90);range("Ambient","bloom","Bloom %",40,0,100);range("Ambient","time","Time (tenths of an hour)",166,0,239);range("Ambient","light","Brightness %",105,25,180);range("Ambient","saturation","Saturation %",9,-85,85);range("Ambient","blur","Depth blur",0,0,16);range("Ambient","fade","Atmosphere fade (ms)",700,0,3500);range("Ambient","worldContrast","Contrast %",0,-80,80);range("Ambient","worldExposure","Exposure %",0,-100,100);range("Ambient","worldGlare","Atmospheric glare %",0,0,100);range("Ambient","worldRays","Sun rays %",0,0,100);range("Ambient","worldFocus","Depth of field %",0,0,100);range("Ambient","worldFocusDistance","Focus distance (studs)",60,8,250);range("Ambient","worldBloomSize","Bloom radius",26,0,56);toggle("Ambient","starfall","Falling shapes",false);choice("Ambient","starfallShape","Falling shape","Rounded Star",{"Mixed","Rounded Star","Soft Star","Sparkle","Long Sparkle","Six Point Star","Eight Point Star","Circle","Rounded Square","Diamond","Rounded Triangle","Rounded Hexagon","Rounded Pentagon","Heart"});range("Ambient","starfallRotation","Star rotation (degrees/sec)",8,0,25);choice("Ambient","starfallMaterial","Star material","Neon",{"Neon","Glass","SmoothPlastic","Metal"});range("Ambient","starfallCount","Star count",8,1,16);range("Ambient","starfallSpeed","Fall speed (studs/sec)",35,10,90);range("Ambient","starfallSize","Star size (tenths of stud)",18,5,40);range("Ambient","starfallOpacity","Star opacity %",85,10,100);range("Ambient","starfallGlow","Star neon glow %",80,0,100);toggle("Ambient","starfallTail","Star streaks",true);toggle("Ambient","starfallRainbow","Rainbow stars",false);color("Ambient","starfallA","Star color start","E5D1FF");color("Ambient","starfallB","Star color end","83CFFF")
 toggle("Indicators","indicators","Directional indicators",true);choice("Indicators","shape","Indicator shape","Soft Triangle",S.shapes);range("Indicators","size","Size (px)",31,14,72);range("Indicators","corners","Corner softness %",30,0,100);range("Indicators","edge","Distance from edges %",11,4,30);range("Indicators","turn","Rotation smoothing (ms)",180,0,800);range("Indicators","ink","Neon intensity %",60,0,100);range("Indicators","spread","Neon spread (px)",6,0,18);range("Indicators","arrowAlpha","Opacity %",95,10,100);range("Indicators","arrowSpeed","Animation speed %",100,40,220);color("Indicators","arrowA","Gradient start","BFA2FF");color("Indicators","arrowB","Gradient end","FF9ECE");toggle("Indicators","arrowRainbow","Rainbow gradient",false);toggle("Indicators","pulse","Pulsation",true);choice("Indicators","labels","Arrow labels","Both",{"Off","Name","Distance","Both"});toggle("Indicators","nearby","Nearby nameplates",false);range("Indicators","reach","Tracking range (studs)",800,50,2500)
 toggle("Cursor","cursor","Custom game pointer",false);choice("Cursor","cursorShape","Pointer shape","Rounded Triangle",{"Rounded Triangle","Soft Arrow","Diamond","Orbit","Spark","Chevron","Neon Pointer","Arrowhead","Split Arrow","Needle","Crystal","Spear","Star Pointer","Compass","Crosshair","Heart","Image"});range("Cursor","cursorSize","Pointer size",30,12,72);range("Cursor","cursorGlow","Pointer glow %",55,0,100);choice("Cursor","cursorPalette","Desktop AETHER palette","Aurora",{"Aurora","Sunset","Ocean","Rainbow","Mono","Custom"});range("Cursor","hotX","Hotspot X %",19,0,100);range("Cursor","hotY","Hotspot Y %",8,0,100);color("Cursor","cursorA","Gradient start","BA99FF");color("Cursor","cursorB","Gradient end","69D9FA");toggle("Cursor","cursorRainbow","Rainbow pointer",true);range("Cursor","cursorSpeed","Gradient speed %",65,10,200);choice("Cursor","cursorAnimation","Cursor animation","Sway",{"Off","Breathe","Sway","Spin","Pulse"});range("Cursor","cursorMotionSpeed","Animation speed %",100,20,200);toggle("Cursor","cursorTrail","Cursor motion trail",false);choice("Cursor","cursorTrailStyle","Trail style","Triple",{"Triple","Single","Dots"});range("Cursor","cursorTrailLength","Trail lifetime (ms)",220,80,450);range("Cursor","cursorTrailWidth","Trail width (tenths of px)",12,5,35);range("Cursor","cursorTrailSpread","Trail spacing (px)",6,2,16);range("Cursor","cursorTrailGlow","Trail glow %",65,0,100);color("Cursor","cursorTrailA","Trail start","F5E5FF");color("Cursor","cursorTrailB","Trail end","9B6BFF");range("Cursor","cursorOffsetX","Pointer offset X (px)",0,-120,120);range("Cursor","cursorOffsetY","Pointer offset Y (px)",0,-120,120);toggle("Cursor","cursorDebug","Show hotspot marker",false);def("Cursor","image","Roblox image asset ID","asset","")
 toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Interaction","lock","Shift-lock · LeftAlt",false);choice("Interaction","lockReticle","Shift-lock reticle","Orbit",{"None","Dot","Ring","Orbit","Cross","Split Cross","Diamond","Triangle","Hexagon","Star","Corners","Compass","Double Ring","Petal"});range("Interaction","reticleSize","Reticle size (px)",28,12,64);range("Interaction","reticleStroke","Reticle thickness (px)",2,1,5);color("Interaction","reticleColor","Reticle color","C8A6FF");toggle("Interaction","reticleRainbow","Rainbow reticle",false);toggle("Interaction","reticleMotion","Reticle animation",true);range("Interaction","reticleSpeed","Reticle animation %",70,0,200);toggle("Interaction","reticleNeon","Neon reticle glow",true);range("Interaction","reticleGlow","Reticle glow intensity %",65,0,100);range("Interaction","reticleGlowRadius","Reticle glow radius (px)",4,1,8);toggle("Interaction","reticleGlowPulse","Pulsating glow",true)
@@ -3214,34 +3293,12 @@ __aether_factories["Starfall"] = function()
 -- Local cosmetic falling stars; pooled, anchored, non-colliding geometry.
 local U=__aether_require("Util")
 local Input=game:GetService("UserInputService")
+local Shapes=__aether_require("FxShapes")
 local F={};F.__index=F
 local RNG=Random.new()
 local MAX_STARS=16
--- A softened five-point silhouette. Sample quadratic corner arcs once,
--- rather than merely placing round caps at the original sharp tips.
-local raw={}
-for i=0,9 do
- local angle=math.pi/2+i*math.pi/5
- local radius=if i%2==0 then 1 else .58
- raw[i+1]=Vector3.new(math.cos(angle)*radius,math.sin(angle)*radius,0)
-end
-local outline={}
-local maxRadius=0
-for i=1,10 do
- local p=raw[i]
- local a=p:Lerp(raw[(i-2)%10+1],.46)
- local b=p:Lerp(raw[i%10+1],.46)
- for _,t in {.18,.82} do
-  local q=a*(1-t)^2+p*(2*t*(1-t))+b*t^2
-  outline[#outline+1]=q
-  maxRadius=math.max(maxRadius,q.Magnitude)
- end
-end
-for i,p in outline do outline[i]=p/maxRadius end
--- Fill the rounded contour with a triangle fan. Each triangle is represented
--- by two right-triangle wedges, with their transforms computed once.
-local fill={}
-local function triangle(a,b,c)
+local fillCache={}
+local function triangle(fill,a,b,c)
  local ab,ac,bc=b-a,c-a,c-b
  local ab2,ac2,bc2=ab:Dot(ab),ac:Dot(ac),bc:Dot(bc)
  if ab2>ac2 and ab2>bc2 then c,a=a,c
@@ -3259,7 +3316,15 @@ local function triangle(a,b,c)
  add((a+b)*.5,right,up,back,math.abs(ab:Dot(back)))
  add((a+c)*.5,-right,up,-back,math.abs(ac:Dot(back)))
 end
-for i,p in outline do triangle(Vector3.zero,p,outline[i%#outline+1]) end
+local function geometry(name)
+ if fillCache[name] then return fillCache[name] end
+ local outline=Shapes.outline(name)
+ local fill={}
+ -- Heart is star-shaped about this interior point, with the notch above it.
+ for i,p in outline do triangle(fill,Vector3.zero,p,outline[i%#outline+1]) end
+ fillCache[name]=fill
+ return fill
+end
 local function fillPart(parent)
  return U.new("WedgePart",{Name="StarFill",Anchored=true,CanCollide=false,CanTouch=false,CanQuery=false,CastShadow=false,Transparency=1,Size=Vector3.new(.1,.1,.1),Material=Enum.Material.Neon},parent)
 end
@@ -3290,7 +3355,7 @@ function F:spawn(star,cam,initial)
  if forward.Magnitude<.01 then forward=Vector3.new(0,0,-1) else forward=forward.Unit end
  local right=Vector3.new(-forward.Z,0,forward.X)
  star.pos=origin+forward*RNG:NextNumber(15,85)+right*RNG:NextNumber(-65,65)+Vector3.new(0,if initial then RNG:NextNumber(-10,70) else RNG:NextNumber(45,80),0)
- star.age=0;star.scale=RNG:NextNumber(.65,1.3);star.speed=RNG:NextNumber(.7,1.35);star.phase=RNG:NextNumber(0,math.pi*2);star.tint=RNG:NextNumber();star.spinDirection=if RNG:NextNumber()<.5 then -1 else 1
+ star.age=0;star.scale=RNG:NextNumber(.65,1.3);star.speed=RNG:NextNumber(.7,1.35);star.phase=RNG:NextNumber(0,math.pi*2);star.tint=RNG:NextNumber();star.spinDirection=if RNG:NextNumber()<.5 then -1 else 1;star.kind=Shapes.names[RNG:NextInteger(1,#Shapes.names)]
 end
 function F:step(s,now)
  local cam=workspace.CurrentCamera
@@ -3304,23 +3369,27 @@ function F:step(s,now)
  if material==Enum.Material.Neon and s.starfallGlow==0 then material=Enum.Material.SmoothPlastic end
  while #self.pool<count do
   local star={rays={}}
-  for i=1,#fill do star.rays[i]=fillPart(self.root) end
-  star.rays[#fill+1]=part(self.root)
+  star.tail=part(self.root)
   self:spawn(star,cam,true);self.pool[#self.pool+1]=star
  end
  for i,star in self.pool do
-  if i>count then for _,p in star.rays do p.Transparency=1 end;continue end
+  if i>count then for _,p in star.rays do p.Transparency=1 end;star.tail.Transparency=1;continue end
   star.age+=dt
   star.pos+=Vector3.new(2*dt,-s.starfallSpeed*star.speed*dt,0)
   if star.pos.Y<cam.CFrame.Position.Y-25 or (star.pos-cam.CFrame.Position).Magnitude>150 or star.age>12 then self:spawn(star,cam,false) end
   local r=s.starfallSize/10*star.scale
   local opacity=s.starfallOpacity/100
   local tint=if s.starfallRainbow then Color3.fromHSV((now*.12+star.tint)%1,.55,1) else colorA:Lerp(colorB,star.tint)
-  local cf=CFrame.new(star.pos)*cam.CFrame.Rotation*CFrame.Angles(0,0,star.phase+star.age*math.rad(s.starfallRotation)*star.spinDirection)
+  star.phase=(star.phase+dt*math.rad(s.starfallRotation)*star.spinDirection)%(2*math.pi)
+  local cf=CFrame.new(star.pos)*cam.CFrame.Rotation*CFrame.Angles(0,0,star.phase)
+  local kind=if s.starfallShape=="Mixed" then star.kind else s.starfallShape
+  local fill=geometry(kind)
+  while #star.rays<#fill do star.rays[#star.rays+1]=fillPart(self.root) end
+  for j=#fill+1,#star.rays do star.rays[j].Transparency=1 end
   local thickness=math.max(.045,r*.22)
   for j,shape in fill do
    local p=star.rays[j]
-   if star.renderRadius~=r then
+   if star.renderRadius~=r or star.renderKind~=kind then
     p.Size=Vector3.new(thickness,shape.height*r,shape.length*r)
    end
    p.CFrame=cf*CFrame.new(shape.cf.Position*r)*shape.cf.Rotation
@@ -3328,8 +3397,8 @@ function F:step(s,now)
    if p.Material~=material then p.Material=material end
    if p.Transparency~=1-opacity then p.Transparency=1-opacity end
   end
-  star.renderRadius=r
-  local tail=star.rays[#fill+1]
+  star.renderRadius=r;star.renderKind=kind
+  local tail=star.tail
   if s.starfallTail then
    local len=math.min(10,s.starfallSpeed*.12)
    if segment(tail,star.pos+Vector3.new(0,r*.5,0),star.pos+Vector3.new(0,r+len,0),math.max(.04,r*.08)) then tail.Material=material;tail.Color=tint;tail.Transparency=1-opacity*.35 end
