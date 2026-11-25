@@ -8,6 +8,9 @@
       }
     },
     "ServerScriptService": {
+      "AetherCameraSettings": {
+        "$path": "src/server/CameraSettings.server.luau"
+      },
       "AetherProfiles": {
         "$path": "src/server/Profiles.server.luau",
         "Schema": {

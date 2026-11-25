@@ -365,7 +365,7 @@ local function avatarPreview(ui,a,worldMode)
   end
   full=true;fullGui.Enabled=true;view.Parent=fullHost
   if worldMode then
-   local controls={Enum.KeyCode.W,Enum.KeyCode.A,Enum.KeyCode.S,Enum.KeyCode.D,Enum.KeyCode.Up,Enum.KeyCode.Down,Enum.KeyCode.Left,Enum.KeyCode.Right,Enum.KeyCode.Space,Enum.KeyCode.LeftShift}
+   local controls={Enum.KeyCode.W,Enum.KeyCode.A,Enum.KeyCode.S,Enum.KeyCode.D,Enum.KeyCode.Up,Enum.KeyCode.Down,Enum.KeyCode.Left,Enum.KeyCode.Right,Enum.KeyCode.Space}
    local lockCode=Enum.KeyCode[a.s.lockKey]
    if lockCode and not table.find(controls,lockCode) then table.insert(controls,lockCode) end
    CAS:BindActionAtPriority(actionName,function(_,state,input)
@@ -374,6 +374,7 @@ local function avatarPreview(ui,a,worldMode)
      if input.KeyCode==Enum.KeyCode.Space then jumpRequested=true end
      if input.KeyCode.Name==a.s.lockKey then shiftLock=not shiftLock end
     elseif state==Enum.UserInputState.End or state==Enum.UserInputState.Cancel then keys[input.KeyCode]=nil end
+    if input.KeyCode==Enum.KeyCode.LeftShift or input.KeyCode==Enum.KeyCode.RightShift then return Enum.ContextActionResult.Pass end
     return Enum.ContextActionResult.Sink
    end,false,Enum.ContextActionPriority.High.Value+100,table.unpack(controls))
   end
@@ -742,10 +743,10 @@ function E.render(a,tab,ui)
   ui.page:add(function() a.bindingLockKey=false end)
   local lockStatus=ui:note("",45)
   ui:watch(function()
-   lockStatus.Text=if a.view:nativeLockAvailable() then "Native Shift Lock is still enabled in this place. Turn Shift Lock Switch off."
+   lockStatus.Text=if a.view:nativeLockAvailable() then "Native Shift Lock is controlled by the place. In Roblox Settings turn Shift Lock Switch off. Both Shift keys remain free."
     elseif not a.s.lock then "CUSTOM LOCK OFF · "..a.s.lockKey.." toggles; "..S.menuKey(a.s).." opens Studio."
     elseif a.s.cameraMode~="Follow" then "CUSTOM LOCK WAITING · Select Follow camera."
-    else "CUSTOM LOCK READY · "..a.s.lockKey.." toggles AETHER only. Native Shift Lock remains off."
+    else "CUSTOM LOCK READY · "..a.s.lockKey.." toggles AETHER only. Both Shift keys pass through."
   end)
   ui:title("SHIFT-LOCK / RETICLE")
   for _,k in {"cross","crossScale","crossAlpha"} do ui:control(k) end

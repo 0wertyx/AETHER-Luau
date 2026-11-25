@@ -3941,7 +3941,7 @@ local function avatarPreview(ui,a,worldMode)
   end
   full=true;fullGui.Enabled=true;view.Parent=fullHost
   if worldMode then
-   local controls={Enum.KeyCode.W,Enum.KeyCode.A,Enum.KeyCode.S,Enum.KeyCode.D,Enum.KeyCode.Up,Enum.KeyCode.Down,Enum.KeyCode.Left,Enum.KeyCode.Right,Enum.KeyCode.Space,Enum.KeyCode.LeftShift}
+   local controls={Enum.KeyCode.W,Enum.KeyCode.A,Enum.KeyCode.S,Enum.KeyCode.D,Enum.KeyCode.Up,Enum.KeyCode.Down,Enum.KeyCode.Left,Enum.KeyCode.Right,Enum.KeyCode.Space}
    local lockCode=Enum.KeyCode[a.s.lockKey]
    if lockCode and not table.find(controls,lockCode) then table.insert(controls,lockCode) end
    CAS:BindActionAtPriority(actionName,function(_,state,input)
@@ -3950,6 +3950,7 @@ local function avatarPreview(ui,a,worldMode)
      if input.KeyCode==Enum.KeyCode.Space then jumpRequested=true end
      if input.KeyCode.Name==a.s.lockKey then shiftLock=not shiftLock end
     elseif state==Enum.UserInputState.End or state==Enum.UserInputState.Cancel then keys[input.KeyCode]=nil end
+    if input.KeyCode==Enum.KeyCode.LeftShift or input.KeyCode==Enum.KeyCode.RightShift then return Enum.ContextActionResult.Pass end
     return Enum.ContextActionResult.Sink
    end,false,Enum.ContextActionPriority.High.Value+100,table.unpack(controls))
   end
@@ -4318,10 +4319,10 @@ function E.render(a,tab,ui)
   ui.page:add(function() a.bindingLockKey=false end)
   local lockStatus=ui:note("",45)
   ui:watch(function()
-   lockStatus.Text=if a.view:nativeLockAvailable() then "Native Shift Lock is still enabled in this place. Turn Shift Lock Switch off."
+   lockStatus.Text=if a.view:nativeLockAvailable() then "Native Shift Lock is controlled by the place. In Roblox Settings turn Shift Lock Switch off. Both Shift keys remain free."
     elseif not a.s.lock then "CUSTOM LOCK OFF · "..a.s.lockKey.." toggles; "..S.menuKey(a.s).." opens Studio."
     elseif a.s.cameraMode~="Follow" then "CUSTOM LOCK WAITING · Select Follow camera."
-    else "CUSTOM LOCK READY · "..a.s.lockKey.." toggles AETHER only. Native Shift Lock remains off."
+    else "CUSTOM LOCK READY · "..a.s.lockKey.." toggles AETHER only. Both Shift keys pass through."
   end)
   ui:title("SHIFT-LOCK / RETICLE")
   for _,k in {"cross","crossScale","crossAlpha"} do ui:control(k) end
@@ -5675,18 +5676,9 @@ function V:nativeLockAvailable()
  -- If the setting cannot be read, yield rather than fight the native controller.
  return not ok or available
 end
-function V.new(player,layer,nativeOwner,inheritedNative)
- local self=setmetatable({player=player,angle=0,clock=0,nativeOwner=nativeOwner},V)
- -- The standard Roblox property disables both native Shift bindings, without intercepting movement keys.
- local ok,before=pcall(function() return player.DevEnableMouseLock end)
- if ok then
-  self.nativeOriginal=if type(inheritedNative)=="boolean" then inheritedNative else before
-  local changed=pcall(function() player.DevEnableMouseLock=false end)
-  if changed and player.DevEnableMouseLock==false then
-   self.nativeSuppressed=true
-   if nativeOwner then nativeOwner:SetAttribute("AETHERNativeLockOriginal",self.nativeOriginal) end
-  end
- end
+function V.new(player,layer)
+ local self=setmetatable({player=player,angle=0,clock=0},V)
+ -- DevEnableMouseLock is server-controlled. Never swallow keyboard input to disable native lock.
  -- This anchor marks the exact click pixel. Animated skin always rotates AROUND it.
  self.pointer=U.frame(layer,"MouseHotspot",nil,UDim2.fromOffset(1,1),nil,1)
  self.pointer.Active=false;self.pointer.Interactable=false;self.pointer.Visible=false;self.pointer.ZIndex=10
@@ -5778,15 +5770,6 @@ end
 function V:destroy()
  self:releaseCamera()
  self:restoreCursor()
- if self.nativeSuppressed then
-  local pg=self.player:FindFirstChildOfClass("PlayerGui")
-  local current=pg and pg:FindFirstChild("AETHER_Studio")
-  if not current or current==self.nativeOwner then
-   pcall(function()
-    if self.player.DevEnableMouseLock==false then self.player.DevEnableMouseLock=self.nativeOriginal end
-   end)
-  end
- end
  if self.previewImage then self.previewImage:Destroy();self.previewImage=nil end
  self.glyph:destroy()
  self.motionTrail:destroy()
@@ -6657,7 +6640,6 @@ local Cues = module("Cues")
 -- Prevent multiple copies if the script is restarted in Studio.
 local pg = player:WaitForChild("PlayerGui")
 local prior = pg:FindFirstChild("AETHER_Studio")
-local inheritedNative = prior and prior:GetAttribute("AETHERNativeLockOriginal")
 if prior then prior:Destroy() end
 -- Reloads must not leave a previous high-order pointer behind.
 local priorPointer = pg:FindFirstChild("AETHER_Pointer")
@@ -6917,7 +6899,7 @@ local avatar = Avatar.new(workspace, false)
 local walkMotion = WalkMotion.new()
 local motionProps = PreviewProps.new(workspace, true)
 local world = World.new()
-local view = View.new(player, pointer, gui, inheritedNative)
+local view = View.new(player, pointer)
 app.view = view
 local ui = Controls.new(app, studioLayer, scope)
 app.ui = ui
@@ -7121,7 +7103,11 @@ scope:on(UserInputService.InputBegan, function(input, processed)
         end
         return
     end
-    if processed or UserInputService:GetFocusedTextBox() then return end
+    if UserInputService:GetFocusedTextBox() then return end
+    -- Observe an explicitly selected Shift even when a separate gameplay action also uses it.
+    -- This listener never sinks or synthesizes input.
+    local chosenShift=(input.KeyCode==Enum.KeyCode.LeftShift or input.KeyCode==Enum.KeyCode.RightShift) and input.KeyCode.Name==app.s.lockKey
+    if processed and not chosenShift then return end
     local menuKey=S.menuKey(app.s)
     if app.editingHUD then if input.KeyCode.Name==menuKey then app:editHUD(false) end;return end
     if input.KeyCode.Name == menuKey then
@@ -7130,7 +7116,7 @@ scope:on(UserInputService.InputBegan, function(input, processed)
         local enable=not app.s.lock
         if enable then
             app:patch({lock=true,cameraMode="Follow"})
-            if view:nativeLockAvailable() then ui:message("Alt Lock requested. Turn Roblox Settings > Shift Lock Switch OFF.") end
+            if view:nativeLockAvailable() then ui:message("Native Shift Lock is enabled. Turn Shift Lock Switch OFF in Roblox settings.") end
         else
             app:set("lock",false)
             view:releaseLock(view:nativeLockAvailable())

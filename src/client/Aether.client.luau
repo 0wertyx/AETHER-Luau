@@ -29,7 +29,6 @@ local Cues = module("Cues")
 -- Prevent multiple copies if the script is restarted in Studio.
 local pg = player:WaitForChild("PlayerGui")
 local prior = pg:FindFirstChild("AETHER_Studio")
-local inheritedNative = prior and prior:GetAttribute("AETHERNativeLockOriginal")
 if prior then prior:Destroy() end
 -- Reloads must not leave a previous high-order pointer behind.
 local priorPointer = pg:FindFirstChild("AETHER_Pointer")
@@ -289,7 +288,7 @@ local avatar = Avatar.new(workspace, false)
 local walkMotion = WalkMotion.new()
 local motionProps = PreviewProps.new(workspace, true)
 local world = World.new()
-local view = View.new(player, pointer, gui, inheritedNative)
+local view = View.new(player, pointer)
 app.view = view
 local ui = Controls.new(app, studioLayer, scope)
 app.ui = ui
@@ -493,7 +492,11 @@ scope:on(UserInputService.InputBegan, function(input, processed)
         end
         return
     end
-    if processed or UserInputService:GetFocusedTextBox() then return end
+    if UserInputService:GetFocusedTextBox() then return end
+    -- Observe an explicitly selected Shift even when a separate gameplay action also uses it.
+    -- This listener never sinks or synthesizes input.
+    local chosenShift=(input.KeyCode==Enum.KeyCode.LeftShift or input.KeyCode==Enum.KeyCode.RightShift) and input.KeyCode.Name==app.s.lockKey
+    if processed and not chosenShift then return end
     local menuKey=S.menuKey(app.s)
     if app.editingHUD then if input.KeyCode.Name==menuKey then app:editHUD(false) end;return end
     if input.KeyCode.Name == menuKey then
@@ -502,7 +505,7 @@ scope:on(UserInputService.InputBegan, function(input, processed)
         local enable=not app.s.lock
         if enable then
             app:patch({lock=true,cameraMode="Follow"})
-            if view:nativeLockAvailable() then ui:message("Alt Lock requested. Turn Roblox Settings > Shift Lock Switch OFF.") end
+            if view:nativeLockAvailable() then ui:message("Native Shift Lock is enabled. Turn Shift Lock Switch OFF in Roblox settings.") end
         else
             app:set("lock",false)
             view:releaseLock(view:nativeLockAvailable())
