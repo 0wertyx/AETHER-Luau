@@ -263,6 +263,7 @@ local function avatarPreview(ui,a,worldMode)
     local airborne=demoState=="Jump" or demoState=="Fall"
     virtual={movement=if demoState=="Idle" then 0 elseif demoState=="Walk" then .78 else 1,grounded=not airborne,jumping=demoState=="Jump",state=state,speed=if demoState=="Run" then 24 else 16,fullPose=true,originStrength=demoOrigin,loopAir=true}
    end
+   virtual.props=showProps
    motion:step(rig,demo,dt,virtual)
   else
    motion:bind(nil)
@@ -274,7 +275,7 @@ local function avatarPreview(ui,a,worldMode)
     if link.forward then e.p1.CFrame=e.p0.CFrame*offset else e.p0.CFrame=e.p1.CFrame*offset:Inverse() end
    end
   end
-  if showProps and not settings.reduce and motion.signatureActive then props:update(rig,settings.walkStyle,motion.phase,motion.airProgress) else props:clear() end
+  if showProps and not settings.reduce and motion.signatureActive then props:update(rig,settings.walkStyle,motion.phase,motion.previewState) else props:clear() end
  end
  local function refresh(char)
   generation+=1
