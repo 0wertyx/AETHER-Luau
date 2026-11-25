@@ -48,6 +48,7 @@ local function avatarPreview(ui,a,worldMode)
  local speed=1
  local demoState="Walk"
  local demoStrength=100
+ local demoOrigin=100
  local previewStatus=nil
  local stage=nil
  local floorOffset=2
@@ -257,7 +258,7 @@ local function avatarPreview(ui,a,worldMode)
      elseif demoState=="Climb" then Enum.HumanoidStateType.Climbing
      else Enum.HumanoidStateType.Running
     local airborne=demoState=="Jump" or demoState=="Fall"
-    virtual={movement=if demoState=="Idle" then 0 elseif demoState=="Walk" then .78 else 1,grounded=not airborne,jumping=demoState=="Jump",state=state,speed=if demoState=="Run" then 24 else 16,fullPose=true}
+    virtual={movement=if demoState=="Idle" then 0 elseif demoState=="Walk" then .78 else 1,grounded=not airborne,jumping=demoState=="Jump",state=state,speed=if demoState=="Run" then 24 else 16,fullPose=true,originStrength=demoOrigin}
    end
    motion:step(rig,demo,dt,virtual)
   else
@@ -422,10 +423,16 @@ local function avatarPreview(ui,a,worldMode)
   end,4,function() return demoState end)
   ui:chips({"0.5x","1x","1.5x","2x"},function(n) speed=tonumber(n:sub(1,-2)) or 1;ui:sync() end,4,function() return tostring(speed).."x" end)
   ui:chips({"50%","75%","100%"},function(n) demoStrength=tonumber(n:sub(1,-2)) or 100;ui:sync() end,3,function() return tostring(demoStrength).."%" end)
+  ui:title("R6 · LIMB ORIGIN MOTION")
+  ui:note("Animate shoulder and hip positions as well as rotation. Compare the original rotation-only preview with the stylized offsets.",42)
+  ui:chips({"Origin off","Origin 50%","Origin 100%"},function(n)
+   demoOrigin=if n=="Origin off" then 0 elseif n=="Origin 50%" then 50 else 100
+   ui:sync()
+  end,3,function() return if demoOrigin==0 then "Origin off" else "Origin "..tostring(demoOrigin).."%" end)
   ui:chips({"Pause","Play"},function(n) paused=n=="Pause";ui:sync() end,2,function() return if paused then "Pause" else "Play" end)
   previewStatus=ui:note("",28)
   ui:watch(function()
-   previewStatus.Text=(a.s.walkStyle or "Natural").." / "..demoState.." · "..tostring(demoStrength).."%"
+   previewStatus.Text=(a.s.walkStyle or "Natural").." / "..demoState.." · "..tostring(demoStrength).."% · Origin "..tostring(demoOrigin).."%"
   end)
  end
  if worldMode then
