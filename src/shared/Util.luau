@@ -18,13 +18,13 @@ function U.button(p,text) local b=U.new("TextButton",{Text=text,Font=Enum.Font.G
 -- Shared original panel components. Runtime attaches actions; HUD preview attaches
 -- movement handles to the same components without executing game actions.
 function U.topPanel(parent)
- local panel=U.frame(parent,"TopCapsule",nil,UDim2.fromOffset(345,38),Color3.fromRGB(19,16,32),.12)
+ local panel=U.frame(parent,"TopCapsule",nil,UDim2.fromOffset(136,38),Color3.fromRGB(19,16,32),.12)
  panel.AnchorPoint=Vector2.new(.5,0);U.corner(panel,18)
  local rim=U.stroke(panel,Color3.fromRGB(166,138,255),.42)
  local buttons={}
- for index,label in {"AI · OFFLINE","AETHER","ARCHIVIUM"} do
+ for index,label in {"AETHER"} do
   local button=U.button(panel,label);button.BackgroundTransparency=.42;button.TextSize=11
-  button.Position=UDim2.new((index-1)/3,4,0,4);button.Size=UDim2.new(1/3,-8,1,-8)
+  button.Position=UDim2.fromOffset(4,4);button.Size=UDim2.new(1,-8,1,-8)
   buttons[index]=button
  end
  return panel,rim,buttons
