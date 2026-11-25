@@ -54,9 +54,7 @@ function UI.new(app,gui,scope)
  self.updateChip.BackgroundTransparency=.15
  self.updateRim=U.stroke(self.updateChip,Color3.fromRGB(166,138,255),.45)
  scope:on(self.updateChip.Activated,function() self:open("Updates") end)
- for index,action in {"Scripts","Toggle","Workshop"} do
-  scope:on(self.topButtons[index].Activated,function() if action=="Toggle" then self:show(not self.opened) else self:open(action) end end)
- end
+ scope:on(self.topButtons[1].Activated,function() self:show(not self.opened) end)
  self.rail,self.railRim,self.railButtons,self.railCollapse=U.railPanel(self.stage)
  local coreOriginal,coreApplied={},{}
  local chatOriginal,chatApplied,chatConfig=nil,nil,nil
@@ -104,17 +102,10 @@ function UI.new(app,gui,scope)
  end)
  self.grip=U.button(self.panel,"◢");self.grip.Name="ResizeGrip";self.grip.Size=UDim2.fromOffset(26,26);self.grip.TextSize=18;self.grip.ZIndex=6;self.grip.BackgroundTransparency=.42
  self.tag.Size=UDim2.new(1,-231,0,40)
- self.quick=U.frame(self.panel,"QuickEffects",nil,nil,nil,1)
- self.quickButtons={}
- for index,item in {{"HALO","halo"},{"WINGS","wings"},{"PARTICLES","aura"}} do
-  local button=U.button(self.quick,item[1]);button.TextSize=11;button.Position=UDim2.new((index-1)/3,2,0,0);button.Size=UDim2.new(1/3,-4,1,0)
-  self.quickButtons[item[2]]={button=button,label=item[1]}
-  scope:on(button.Activated,function() self.app:set(item[2],not self.app.s[item[2]]) end)
- end
  self.place=U.label(self.panel,"PLACE  /  "..tostring(game.PlaceId),10,nil,nil);self.place.TextColor3=dim
  self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
  self.pageBox=U.new("Frame",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
- self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Interaction","Fonts","Simulator","Scripts","Workshop","Profiles","Updates","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
+ self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Interaction","Fonts","Simulator","Scripts","Profiles","Updates","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
  function self:layout()
   local sz=self.stage.AbsoluteSize
   if sz.X<2 or sz.Y<2 then return end
@@ -152,7 +143,7 @@ function UI.new(app,gui,scope)
   self.grip.Text=if side=="Right" then "◣" elseif side=="Bottom" then "◤" else "◢"
   self.brand.Position=UDim2.fromOffset(if side=="Bottom" and s.menuResize then 34 else 16,2)
   self.brand.Size=UDim2.fromOffset(if side=="Bottom" and s.menuResize then 111 else 135,40)
-  self.top.Size=UDim2.fromOffset(math.min(345,math.max(156,sz.X-(if narrow then 120 else 510))),38)
+  self.top.Size=UDim2.fromOffset(math.min(136,math.max(90,sz.X-24)),38)
   self.top.Position=UDim2.new(.5,0,0,if narrow then 48 else 12)
   self.rail.Position=UDim2.new(0,12,.46,0)
   self.rail.Size=UDim2.fromOffset(54,if self.railCollapsed then 44 else 176)
@@ -168,13 +159,12 @@ function UI.new(app,gui,scope)
   end
   self.railCollapse.Position=UDim2.fromOffset(5,if self.railCollapsed then 5 else 136)
   self.railCollapse.Text=if self.railCollapsed then "›" else "‹"
-  self.quick.Position=UDim2.fromOffset(10,47);self.quick.Size=UDim2.new(1,-20,0,34)
-  self.place.Position=UDim2.fromOffset(12,83);self.place.Size=UDim2.new(1,-24,0,17)
-  self.nav.Position=UDim2.fromOffset(10,104);self.nav.Size=UDim2.new(1,-20,0,37)
+  self.place.Position=UDim2.fromOffset(12,48);self.place.Size=UDim2.new(1,-24,0,17)
+  self.nav.Position=UDim2.fromOffset(10,69);self.nav.Size=UDim2.new(1,-20,0,37)
   self.navList.FillDirection=Enum.FillDirection.Horizontal
   self.nav.AutomaticCanvasSize=Enum.AutomaticSize.X;self.nav.ScrollingDirection=Enum.ScrollingDirection.X
   for _,b in self.buttons do b.Size=UDim2.fromOffset(106,32) end
-  self.pageBox.Position=UDim2.fromOffset(10,149);self.pageBox.Size=UDim2.new(1,-20,1,-180)
+  self.pageBox.Position=UDim2.fromOffset(10,114);self.pageBox.Size=UDim2.new(1,-20,1,-145)
   self.layoutKey=table.concat({s.menuDock,s.menuWidth,s.menuHeight,s.menuFloatX,s.menuFloatY,tostring(s.menuResize),tostring(s.robloxRail),tostring(s.topCustom),s.topX,s.topY,tostring(s.railCustom),s.railX,s.railY},":")
  end
  function self:finishMenuDrag(point,resize)
@@ -285,7 +275,7 @@ function UI:animateBackground(t)
   self.updateRim.Transparency=if unread then .15 else .55
  end
  self.topRim.Color=accent;self.railRim.Color=accent
- self.topButtons[2].BackgroundColor3=if self.opened then accent:Lerp(bg,.55) else soft
+ self.topButtons[1].BackgroundColor3=if self.opened then accent:Lerp(bg,.55) else soft
  local visible=s.screenParticles and q>.001
  self.screenFX.Visible=visible
  if visible then
@@ -354,7 +344,7 @@ function UI:show(on)
 end
 function UI:message(s) self.status.Text=s end
 function UI:open(tab)
- if not self.buttons[tab] then return end;self:show(true);self.drag=nil;if self.page then self.page:clear() end;self.app.preview=nil;self.page=U.scope();self.syncs={};self.seq=0;self.tab=tab
+ if not self.buttons[tab] then return end;self:show(true);self.drag=nil;if self.page then self.page:clear() end;self.app.preview=nil;self.page=U.scope();self.syncs={};self.controlKeys={};self.colorKeys={};self.seq=0;self.tab=tab
  self.pageProgress=if self.app.s.reduce or not self.app.s.tabTransition or self.app.s.menuTransition=="Off" then 1 else 0
  transition(self.pageBox,U.ease(self.pageProgress,self.app.s.ease))
  local sc=self.page:add(U.new("ScrollingFrame",{Name="Page_"..tab,Size=UDim2.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=4,ScrollBarImageColor3=dim,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y},self.pageBox));U.new("UIListLayout",{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder},sc);self.sc=sc
@@ -378,7 +368,6 @@ function UI:sync()
  self.tag.Text=self.app.mode.." / "..(self.app.liveUpdate and self.app.liveUpdate.version or "LIVE 1.0")
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
- for key,item in self.quickButtons do item.button.Text=item.label..(if st[key] then "  ON" else "  OFF");item.button.BackgroundColor3=if st[key] then U.hex(st.accent):Lerp(bg,.52) else soft end
  for _,asset in self.icons do asset:sync(st.iconAtlas,st.iconAtlasTile) end
  for _,f in self.syncs do f() end
  -- Only recolor editor controls, not HUD/3D previews or their own palette.
@@ -417,6 +406,9 @@ function UI:box(label,initial,h,commit)
  self:title(label);local r=self:row(h or 34,"Field");local t=U.new("TextBox",{Name=label,Size=UDim2.new(1,-12,1,-4),Position=UDim2.fromOffset(6,2),ClearTextOnFocus=false,MultiLine=(h or 0)>45,TextWrapped=(h or 0)>45,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=if (h or 0)>45 then Enum.TextYAlignment.Top else Enum.TextYAlignment.Center,BackgroundTransparency=1,Text=initial or "",PlaceholderText=label,Font=Enum.Font.Code,TextSize=13,TextColor3=Color3.fromRGB(232,222,255)},r);if commit then self.page:on(t.FocusLost,function() self:action(function() commit(t.Text) end) end) end;return t
 end
 function UI:control(k)
+ self.controlKeys=self.controlKeys or {}
+ if self.controlKeys[k] then return end
+ self.controlKeys[k]=true
  local d=S.defs[k];local app=self.app;local a=d.kind;if a=="players" then return end
  if a=="text" or a=="asset" then local box=self:box(d.label,tostring(app.s[k]),32,function(v) app:set(k,v) end);self:watch(function() if not box:IsFocused() then box.Text=tostring(app.s[k]) end end);return end
  local row=self:row(if a=="number" then 48 else 34,k);local label=U.label(row,d.label,12,UDim2.fromOffset(9,0),UDim2.new(.57,0,0,30));label.TextColor3=Color3.fromRGB(219,210,234)
@@ -429,6 +421,9 @@ function UI:control(k)
  self:watch(function() if not box:IsFocused() then box.Text=tostring(app.s[k]) end;fill.Size=UDim2.fromScale((app.s[k]-d.min)/(d.max-d.min),1);fill.BackgroundColor3=U.hex(app.s.accent) end)
 end
 function UI:colorPicker(k)
+ self.colorKeys=self.colorKeys or {}
+ if self.colorKeys[k] then return end
+ self.colorKeys[k]=true
  local app=self.app
  self:control(k)
  local row=self:row(188,"SquareColorPicker")
