@@ -180,6 +180,11 @@ local function blend(a,b,u)
  local r={};for i,j in a do r[i]={q=qslerp(j.q,b[i].q,u),v=j.v:Lerp(b[i].v,u)} end;return r
 end
 local neutral=convert(P(J(),J(),J(),J(),J(),J()))
+local retro={}
+for i,p in clips.Zombie do
+ local copy={};for n,j in p do copy[n]=J(j[1]*.78,j[2]*.78,j[3]*.78,j[4],j[5],j[6]) end;retro[i]=copy
+end
+clips["Retro Zombie"]=retro
 local keys={}
 for name,poses in clips do
  local c={};for i,p in poses do c[i]=convert(p) end
@@ -217,16 +222,96 @@ local function harpy(t)
  else return blend(prep,ground,ease((x-2.35)/.45)),-360,0,"LAND" end
 end
 local extra={
- Natural={cadence=7.5,stride=.29,arms=.30,rest=0,spread=.08,lean=.08,roll=.04,bob=.04},
- Heroic={cadence=7.8,stride=.34,arms=.34,rest=.1,spread=.14,lean=.15,roll=.08,bob=.06},
- Bouncy={cadence=8.6,stride=.23,arms=.37,rest=.1,spread=.16,lean=.06,roll=.1,bob=.15},
- Floating={cadence=3.5,stride=.06,arms=.1,rest=-.15,spread=.25,lean=-.03,roll=.04,bob=.04,hover=.21},
- Glide={cadence=4,stride=.08,arms=.08,rest=-.25,spread=.16,lean=.15,roll=.03,bob=.02,hover=.07},
- Ethereal={cadence=3.2,stride=.06,arms=.12,rest=-.1,spread=.37,lean=-.05,roll=.05,bob=.04,hover=.25}
+ ["Natural"]={cadence=7.5,stride=.29,arms=.30,rest=0,spread=.08,lean=.08,roll=.04,bob=.04,hover=0},
+ ["Bouncy"]={cadence=8.6,stride=.23,arms=.37,rest=.10,spread=.16,lean=.06,roll=.1,bob=.15,hover=0},
+ ["Floating"]={cadence=3.5,stride=.06,arms=.10,rest=-.15,spread=.25,lean=-.03,roll=.04,bob=.04,hover=.21},
+ ["Glide"]={cadence=4,stride=.08,arms=.08,rest=-.25,spread=.16,lean=.15,roll=.03,bob=.02,hover=.07},
+ ["Ethereal"]={cadence=3.2,stride=.06,arms=.12,rest=-.10,spread=.37,lean=-.05,roll=.05,bob=.04,hover=.25},
+ ["Toy"]={cadence=7.6,stride=.25,arms=.31,rest=.07,spread=.04,lean=-.015,roll=.025,bob=.042,hover=0},
+ ["Robot"]={cadence=6.4,stride=.19,arms=.27,rest=-.14,spread=.02,lean=.04,roll=0,bob=.018,hover=0},
+ ["Ninja"]={cadence=10.2,stride=.31,arms=.12,rest=-.38,spread=.10,lean=.18,roll=.035,bob=.024,hover=0},
+ ["Bubbly"]={cadence=7.4,stride=.20,arms=.34,rest=.08,spread=.16,lean=-.05,roll=.13,bob=.115,hover=0},
+ ["Stylish"]={cadence=6.1,stride=.21,arms=.23,rest=-.025,spread=.065,lean=-.055,roll=.10,bob=.055,hover=0},
+ ["Mage"]={cadence=4.3,stride=.10,arms=.13,rest=-.16,spread=.34,lean=-.055,roll=.06,bob=.045,hover=.13},
+ ["Levitation"]={cadence=3.5,stride=.08,arms=.09,rest=-.20,spread=.40,lean=.065,roll=.06,bob=.04,hover=.21},
+ ["Oldschool"]={cadence=7.3,stride=.30,arms=.31,rest=0,spread=0,lean=0,roll=0,bob=.024,hover=0},
+ ["Vampire"]={cadence=5.8,stride=.19,arms=.17,rest=-.06,spread=.20,lean=-.085,roll=.03,bob=.033,hover=0},
+ ["Astronaut"]={cadence=4.4,stride=.16,arms=.17,rest=-.06,spread=.15,lean=.028,roll=.07,bob=.045,hover=.09},
+ ["Cartoony"]={cadence=8.8,stride=.29,arms=.38,rest=.055,spread=.12,lean=.02,roll=.13,bob=.13,hover=0},
+ ["Angel Glide"]={cadence=3.6,stride=.09,arms=.08,rest=-.24,spread=.47,lean=-.045,roll=.06,bob=.045,hover=.21},
+ ["Bat Swoop"]={cadence=4.9,stride=.11,arms=.2,rest=-.33,spread=.61,lean=.15,roll=.18,bob=.03,hover=.17},
+ ["Mermaid Drift"]={cadence=3.1,stride=.045,arms=.16,rest=-.03,spread=.3,lean=.06,roll=.11,bob=.015,hover=.14},
+ ["Serpent Slither"]={cadence=5.1,stride=.10,arms=.07,rest=-.14,spread=.1,lean=.11,roll=.18,bob=.016,hover=0},
+ ["Cartwheel Flow"]={cadence=6.2,stride=.19,arms=.35,rest=-.1,spread=.45,lean=.02,roll=.1,bob=.06,hover=0},
+ ["Rubberhose"]={cadence=7.9,stride=.3,arms=.42,rest=.08,spread=.22,lean=.09,roll=.16,bob=.15,hover=0},
+ ["Dream Sleep"]={cadence=2.4,stride=.04,arms=.035,rest=-.3,spread=.15,lean=-.13,roll=.15,bob=.016,hover=.25},
+ ["Plushie"]={cadence=6.5,stride=.11,arms=.14,rest=.25,spread=.1,lean=-.045,roll=.06,bob=.07,hover=0},
+ ["Cat Paws"]={cadence=7.4,stride=.17,arms=.16,rest=.40,spread=.19,lean=-.085,roll=.12,bob=.06,hover=0},
+ ["Shy Kawaii"]={cadence=6.1,stride=.13,arms=.08,rest=.35,spread=.08,lean=-.09,roll=.10,bob=.04,hover=0},
+ ["Gymnast"]={cadence=6.6,stride=.27,arms=.37,rest=-.1,spread=.32,lean=-.02,roll=.08,bob=.09,hover=0},
+ ["Skip Hop"]={cadence=8.3,stride=.24,arms=.37,rest=.04,spread=.30,lean=.02,roll=.17,bob=.15,hover=0},
+ ["Reindeer Prance"]={cadence=8.1,stride=.21,arms=.26,rest=.18,spread=.17,lean=-.04,roll=.09,bob=.15,hover=0},
+ ["Floating Head"]={cadence=3.2,stride=.02,arms=.05,rest=-.25,spread=.19,lean=.02,roll=.12,bob=.02,hover=.31},
+ ["Dark Aura"]={cadence=3.8,stride=.07,arms=.07,rest=-.33,spread=.30,lean=.035,roll=.08,bob=.025,hover=.22},
+ ["Headless Float"]={cadence=3.7,stride=.035,arms=.06,rest=-.33,spread=.24,lean=.015,roll=.12,bob=.02,hover=.29},
+ ["Godly Aura"]={cadence=3.2,stride=.06,arms=.07,rest=-.23,spread=.41,lean=-.06,roll=.085,bob=.025,hover=.18},
+ ["Harpy Glide"]={cadence=4.7,stride=.09,arms=.15,rest=-.22,spread=.59,lean=.09,roll=.15,bob=.045,hover=0},
+ ["Skater"]={cadence=4.9,stride=.18,arms=.22,rest=-.14,spread=.18,lean=.14,roll=.13,bob=.025,hover=0},
+ ["Fighter"]={cadence=8.2,stride=.26,arms=.21,rest=.41,spread=.17,lean=.15,roll=.04,bob=.036,hover=0},
+ ["Heroic"]={cadence=7.8,stride=.34,arms=.34,rest=.1,spread=.14,lean=.15,roll=.08,bob=.06,hover=0},
+ ["Anime Hero"]={cadence=9.2,stride=.35,arms=.24,rest=-.22,spread=.17,lean=.19,roll=.09,bob=.045,hover=0},
+ ["Zombie"]={cadence=5.1,stride=.19,arms=.08,rest=.28,spread=.08,lean=.21,roll=.11,bob=.035,hover=0},
+ ["Retro Zombie"]={cadence=4.2,stride=.15,arms=.06,rest=.39,spread=.1,lean=.23,roll=.13,bob=.02,hover=0},
+ ["Tsundere"]={cadence=6.6,stride=.17,arms=.12,rest=.23,spread=.04,lean=-.08,roll=.12,bob=.05,hover=0},
+ ["Little Duck"]={cadence=7.4,stride=.13,arms=.21,rest=.06,spread=.36,lean=-.06,roll=.19,bob=.1,hover=0},
+ ["Doll Walk"]={cadence=5.6,stride=.14,arms=.16,rest=.11,spread=.075,lean=-.055,roll=.13,bob=.055,hover=0},
+ ["Wavy Expressive"]={cadence=6.8,stride=.22,arms=.31,rest=-.01,spread=.2,lean=-.04,roll=.18,bob=.075,hover=0},
 }
 local families={
- Toy="stiff",Robot="stiff",Ninja="stride",Bubbly="hop",Stylish="strut",Mage="float",Levitation="float",Vampire="strut",Astronaut="slow",Cartoony="hop",
- ["Angel Glide"]="wing",["Bat Swoop"]="wing",["Mermaid Drift"]="paired",["Serpent Slither"]="sweep",["Cartwheel Flow"]="cartwheel",Rubberhose="hop",["Dream Sleep"]="sleep",Plushie="stiff",["Cat Paws"]="prance",["Shy Kawaii"]="shy",Gymnast="gym",["Skip Hop"]="skip",["Reindeer Prance"]="prance",["Floating Head"]="float",["Dark Aura"]="float",["Headless Float"]="float",Bouncy="hop",Floating="float",Glide="float",Ethereal="float"
+ ["Natural"]="step",
+ ["Bouncy"]="hop",
+ ["Floating"]="float",
+ ["Glide"]="float",
+ ["Ethereal"]="float",
+ ["Toy"]="stiff",
+ ["Robot"]="stiff",
+ ["Ninja"]="stride",
+ ["Bubbly"]="hop",
+ ["Stylish"]="strut",
+ ["Mage"]="float",
+ ["Levitation"]="float",
+ ["Oldschool"]="step",
+ ["Vampire"]="strut",
+ ["Astronaut"]="slow",
+ ["Cartoony"]="hop",
+ ["Angel Glide"]="wing",
+ ["Bat Swoop"]="wing",
+ ["Mermaid Drift"]="paired",
+ ["Serpent Slither"]="sweep",
+ ["Cartwheel Flow"]="cartwheel",
+ ["Rubberhose"]="hop",
+ ["Dream Sleep"]="sleep",
+ ["Plushie"]="stiff",
+ ["Cat Paws"]="prance",
+ ["Shy Kawaii"]="shy",
+ ["Gymnast"]="gym",
+ ["Skip Hop"]="skip",
+ ["Reindeer Prance"]="prance",
+ ["Floating Head"]="float",
+ ["Dark Aura"]="float",
+ ["Headless Float"]="float",
+ ["Godly Aura"]="signature",
+ ["Harpy Glide"]="signature",
+ ["Skater"]="signature",
+ ["Fighter"]="signature",
+ ["Heroic"]="signature",
+ ["Anime Hero"]="signature",
+ ["Zombie"]="signature",
+ ["Retro Zombie"]="signature",
+ ["Tsundere"]="signature",
+ ["Little Duck"]="signature",
+ ["Doll Walk"]="signature",
+ ["Wavy Expressive"]="signature",
 }
 local function profile(name) return extra[name] or Packs.get(name) or extra.Natural end
 local function procedural(name,t,state)
@@ -331,10 +416,10 @@ function M.mount(ui,a)
  local caption=U.label(frame,"",12,UDim2.fromOffset(12,8),UDim2.new(1,-108,0,22))
  local fpsLabel=U.label(frame,"-- FPS",11,UDim2.new(1,-85,0,8),UDim2.fromOffset(74,22));fpsLabel.TextXAlignment=Enum.TextXAlignment.Right
  local status=U.label(frame,"",11,UDim2.fromOffset(12,32),UDim2.new(1,-24,0,18));status.TextColor3=violet
- local s={pack="Harpy Glide",state="Jump",t=0,auto=false,paused=false,speed=1,origin=100,intensity=100,pitch=0,yaw=0,roll=0,cam=65,zoom=1,height=0,props=true,grid=true,joints=false}
+ local s={pack="Harpy Glide",state="Jump",t=0,seek=0,auto=false,paused=false,speed=1,origin=100,intensity=100,pitch=0,yaw=0,roll=0,cam=65,zoom=1,height=0,props=true,grid=true,joints=false}
  local dirty=true;local updates={};local sliding=nil;local oldScroll=nil
  local function mark() dirty=true end
- local function sync() dirty=true;for _,f in updates do f() end;ui:sync() end
+ local function sync() dirty=true;s.seek=s.t%2.8;for _,f in updates do f() end;ui:sync() end
  local function stopSlide()
   sliding=nil
   if oldScroll~=nil and ui.sc and ui.sc.Parent then ui.sc.ScrollingEnabled=oldScroll end
@@ -373,9 +458,9 @@ function M.mount(ui,a)
  local function degrees(v) return string.format("%d°",math.floor(v+.5)) end
  local function decimal(v) return string.format("%.2f",v) end
  ui:title("TIMELINE · 60 FPS TARGET")
- local timeline=slider("Time",0,2.8,.001,"t",function(v) return string.format("%.2f / 2.80 s",v) end,function() s.paused=true end)
+ local timeline=slider("Time",0,2.8,.001,"seek",function(v) return string.format("%.2f / 2.80 s",v) end,function() s.paused=true;s.t=math.min(s.seek,2.8-.000001) end)
  ui:chips({"Play","Pause","Replay","+1 frame"},function(n)
-  if n=="Play" then s.paused=false elseif n=="Pause" then s.paused=true elseif n=="Replay" then s.t=0;s.paused=false else s.paused=true;s.t=(s.t+1/60)%2.8 end;sync()
+  if n=="Play" then s.paused=false elseif n=="Pause" then s.paused=true elseif n=="Replay" then s.t=0;s.paused=false else s.paused=true;s.t+=1/60 end;sync()
  end,4,function() return if s.paused then "Pause" else "Play" end)
  ui:chips({"Idle","Walk","Run","Jump","Fall"},function(n) s.state=n;s.auto=false;s.t=0;sync() end,5,function() return s.state end)
  ui:chips({"Jump / Fall / Land","Manual"},function(n) s.auto=n~="Manual";s.t=0;sync() end,2,function() return if s.auto then "Jump / Fall / Land" else "Manual" end)
@@ -456,11 +541,11 @@ function M.mount(ui,a)
  scope:on(view:GetPropertyChangedSignal("AbsoluteSize"),mark)
  scope:on(Run.RenderStepped,function(dt)
   if scope.dead or not ui.opened or ui.tab~="Character" then return end
-  frames+=1;elapsed+=dt
-  if elapsed>=.75 then fpsLabel.Text=string.format("%.0f FPS",frames/elapsed);frames=0;elapsed=0 end
-  if not s.paused then s.t=(s.t+math.min(dt,.1)*s.speed)%2.8;dirty=true end
-  if dirty then render() end
-  previous+=dt;if previous>=1/20 then timeline();previous=0 end
+  elapsed+=dt
+  if not s.paused then s.t+=math.min(dt,.1)*s.speed;dirty=true end
+  if dirty then render();frames+=1 end
+  if elapsed>=.75 then fpsLabel.Text=if s.paused then "PAUSED" else string.format("%.0f FPS",frames/elapsed);frames=0;elapsed=0 end
+  previous+=dt;if previous>=1/20 then s.seek=s.t%2.8;timeline();previous=0 end
  end)
  scope:add(function() props:clear() end)
  render()
