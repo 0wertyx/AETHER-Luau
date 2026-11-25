@@ -641,9 +641,144 @@ end
 -- END MODULE Avatar
 
 
+-- BEGIN MODULE Constellation
+__aether_factories["Constellation"] = function()
+-- Decorative menu-only background. No external assets or services.
+local U=__aether_require("Util")
+local Input=game:GetService("UserInputService")
+local FX={};FX.__index=FX
+local MAX_LINKS=100
+local MAX_NODES=24
+local RNG=Random.new()
+local kinds={"Rings","Squares","Crystals","Triangles","Hexagons","Stars","Dots"}
+
+local function frame(parent,name)
+ local f=U.frame(parent,name,nil,UDim2.fromOffset(1,1),Color3.new(1,1,1),1)
+ f.AnchorPoint=Vector2.new(.5,.5);f.Active=false;f.Interactable=false;f.Visible=false
+ return f
+end
+local function segment(f,a,b,width)
+ local d=b-a
+ f.Position=UDim2.fromOffset((a.X+b.X)/2,(a.Y+b.Y)/2)
+ f.Size=UDim2.fromOffset(d.Magnitude,width)
+ f.Rotation=math.deg(math.atan2(d.Y,d.X))
+end
+function FX.new(parent)
+ parent.Interactable=false
+ local links=U.frame(parent,"Connections",nil,nil,nil,1)
+ links.Active=false;links.Interactable=false
+ local nodes=U.frame(parent,"Figures",nil,nil,nil,1)
+ nodes.Active=false;nodes.Interactable=false
+ return setmetatable({parent=parent,linkLayer=links,nodeLayer=nodes,nodes={},links={},elapsed=0,w=0,h=0},FX)
+end
+function FX:addNode(w,h)
+ local root=frame(self.nodeLayer,"Figure")
+ root.BackgroundTransparency=1
+ local a=RNG:NextNumber(0,math.pi*2)
+ local speed=RNG:NextNumber(10,27)
+ local n={root=root,x=RNG:NextNumber(0,w),y=RNG:NextNumber(0,h),vx=math.cos(a)*speed,vy=math.sin(a)*speed,t=RNG:NextNumber(),scale=RNG:NextNumber(.7,1.25),kind=kinds[RNG:NextInteger(1,#kinds)],edges={},key=nil}
+ self.nodes[#self.nodes+1]=n
+ return n
+end
+function FX:addLink()
+ local f=frame(self.linkLayer,"Connection")
+ local g=U.gradient(f,Color3.new(1,1,1),Color3.new(1,1,1),0)
+ local l={frame=f,gradient=g}
+ self.links[#self.links+1]=l
+ return l
+end
+local function drawNode(n,kind,r,color,opacity)
+ local root=n.root
+ local key=kind..":"..tostring(r)..":"..color:ToHex()..":"..tostring(opacity)
+ if n.key==key then return end
+ n.key=key
+ root.Size=UDim2.fromOffset(r*2,r*2)
+ root.Rotation=if kind=="Crystals" then 45 else 0
+ root.BackgroundColor3=color
+ local simple=kind=="Dots" or kind=="Squares" or kind=="Crystals" or kind=="Rings"
+ root.BackgroundTransparency=if simple and kind~="Rings" then 1-opacity else 1
+ local corner=root:FindFirstChildOfClass("UICorner")
+ if not corner then corner=U.corner(root,0) end
+ corner.CornerRadius=if kind=="Rings" or kind=="Dots" then UDim.new(.5,0) else UDim.new(0,0)
+ local rim=root:FindFirstChildOfClass("UIStroke")
+ if not rim then rim=Instance.new("UIStroke");rim.ApplyStrokeMode=Enum.ApplyStrokeMode.Border;rim.Parent=root end
+ rim.Enabled=kind=="Rings";rim.Color=color;rim.Transparency=1-opacity;rim.Thickness=1
+ local count=if simple then 0 elseif kind=="Triangles" then 3 elseif kind=="Hexagons" then 6 else 10
+ local function vertex(i)
+  local a=-math.pi/2+i*math.pi*2/count
+  local radius=if kind=="Stars" and i%2==1 then r*.45 else r
+  return Vector2.new(r+math.cos(a)*radius,r+math.sin(a)*radius)
+ end
+ for j=1,count do
+  local e=n.edges[j]
+  if not e then e=frame(root,"Edge");n.edges[j]=e end
+  segment(e,vertex(j-1),vertex(j%count),1)
+  e.BackgroundColor3=color;e.BackgroundTransparency=1-opacity;e.Visible=true
+ end
+ for j=count+1,#n.edges do n.edges[j].Visible=false end
+end
+function FX:step(dt,s)
+ self.elapsed+=dt
+ if self.elapsed<1/30 then return end
+ local step=math.min(self.elapsed,.1);self.elapsed=0
+ local size=self.parent.AbsoluteSize
+ local w,h=size.X,size.Y
+ if w<2 or h<2 then return end
+ if self.w>0 and self.h>0 and (w~=self.w or h~=self.h) then
+  for _,n in self.nodes do n.x=n.x*w/self.w;n.y=n.y*h/self.h end
+ end
+ self.w=w;self.h=h
+ local mobile=Input.TouchEnabled and not Input.KeyboardEnabled
+ local count=math.clamp(math.floor(s.menuDensity),0,if mobile then 16 else MAX_NODES)
+ local cap=math.clamp(math.floor(s.constellationLinks),0,MAX_LINKS)
+ local radius=s.constellationDistance
+ local opacity=s.menuOpacity/100
+ local speed=if s.reduce then 0 else s.menuMotion/100
+ local na,nb=U.hex(s.constellationNodeA),U.hex(s.constellationNodeB)
+ local la,lb=U.hex(s.constellationLineA),U.hex(s.constellationLineB)
+ while #self.nodes<count do self:addNode(w,h) end
+ for i,n in self.nodes do
+  n.root.Visible=i<=count
+  if i>count then continue end
+  n.x+=n.vx*step*speed;n.y+=n.vy*step*speed
+  if n.x<0 or n.x>w then n.x=math.clamp(n.x,0,w);n.vx=-n.vx end
+  if n.y<0 or n.y>h then n.y=math.clamp(n.y,0,h);n.vy=-n.vy end
+  n.root.Position=UDim2.fromOffset(n.x,n.y)
+  drawNode(n,if s.menuShape=="Mixed" then n.kind else s.menuShape,s.constellationSize*n.scale,na:Lerp(nb,n.t),opacity)
+ end
+ local pairs={}
+ if cap>0 and opacity>0 then
+  for i=1,count-1 do
+   local a=self.nodes[i]
+   for j=i+1,count do
+    local b=self.nodes[j];local x,y=b.x-a.x,b.y-a.y;local d=x*x+y*y
+    if d<radius*radius and d>.01 then pairs[#pairs+1]={i=i,j=j,d=d} end
+   end
+  end
+ end
+ table.sort(pairs,function(a,b) if a.d==b.d then if a.i==b.i then return a.j<b.j end;return a.i<b.i end;return a.d<b.d end)
+ local used=math.min(#pairs,cap)
+ for k=1,used do
+  local pair=pairs[k];local a,b=self.nodes[pair.i],self.nodes[pair.j]
+  local line=self.links[k] or self:addLink()
+  local f=line.frame
+  segment(f,Vector2.new(a.x,a.y),Vector2.new(b.x,b.y),s.constellationThickness/10)
+  f.BackgroundTransparency=1-opacity*(1-math.sqrt(pair.d)/radius)
+  line.gradient.Color=ColorSequence.new(la:Lerp(lb,a.t),la:Lerp(lb,b.t))
+  f.Visible=true
+ end
+ for k=used+1,#self.links do self.links[k].frame.Visible=false end
+end
+return FX
+
+end
+-- END MODULE Constellation
+
+
 -- BEGIN MODULE Controls
 __aether_factories["Controls"] = function()
 local StarterGui=game:GetService("StarterGui");local Chat=game:GetService("TextChatService");local Input=game:GetService("UserInputService");local Tween=game:GetService("TweenService");local U=__aether_require("Util");local S=__aether_require("Schema");local Icons=__aether_require("Icons")
+local Constellation=__aether_require("Constellation")
 local UI={};UI.__index=UI
 local bg=Color3.fromRGB(19,16,32);local dim=Color3.fromRGB(173,163,197);local soft=Color3.fromRGB(43,35,60)
 function UI.new(app,gui,scope)
@@ -715,20 +850,10 @@ function UI.new(app,gui,scope)
  scope:on(self.railCollapse.Activated,function() self.railCollapsed=not self.railCollapsed;self:layout() end)
  self.panel=U.new("CanvasGroup",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=.035,BorderSizePixel=0,Size=UDim2.fromScale(1,1),GroupTransparency=1,Visible=false,Active=true},self.stage);U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3);self.panel.BackgroundTransparency=1;self.panel.GroupColor3=Color3.new(1,1,1)
  self.panelBackground=U.frame(self.panel,"GlassBackground",nil,nil,Color3.new(1,1,1),.035);self.panelBackground.Active=false;self.panelBackground.Interactable=false;self.panelBackground.ZIndex=1;U.corner(self.panelBackground,17)
- U.gradient(self.panelBackground,bg,Color3.fromRGB(39,30,58),82)
+ self.backgroundGradient=U.gradient(self.panelBackground,bg,Color3.fromRGB(39,30,58),82)
  self.geoLayer=U.frame(self.panel,"GeometryBackground",UDim2.fromOffset(3,3),UDim2.new(1,-6,1,-6),nil,1)
  self.geoLayer.ClipsDescendants=true;self.geoLayer.Active=false;self.geoLayer.ZIndex=1
- self.geo={}
- for i=1,20 do
-  local root=U.frame(self.geoLayer,"FloatingShape"..i,nil,UDim2.fromOffset(48,48),nil,1)
-  root.AnchorPoint=Vector2.new(.5,.5);root.Active=false
-  local edges={}
-  for j=1,12 do
-   local edge=U.frame(root,"Edge",nil,UDim2.fromOffset(1,1),Color3.new(1,1,1),1)
-   edge.AnchorPoint=Vector2.new(.5,.5);edge.Active=false;U.corner(edge,3);edges[j]=edge
-  end
-  table.insert(self.geo,{root=root,edges=edges})
- end
+ self.constellation=Constellation.new(self.geoLayer)
  self.header=U.frame(self.panel,"Titlebar",nil,UDim2.new(1,0,0,46),nil,1);self.header.Active=true;self.brand=U.label(self.header,"A E T H E R",18,UDim2.fromOffset(16,2),UDim2.fromOffset(135,40));self.tag=U.label(self.header,"",10,UDim2.fromOffset(147,3),UDim2.new(1,-190,0,40));self.tag.TextColor3=dim
  self.close=U.button(self.header,"×");self.close.Modal=true;self.close.Size=UDim2.fromOffset(33,29);self.close.Position=UDim2.new(1,-43,0,8);scope:on(self.close.Activated,function() self:show(false) end)
  self.dockPicker=U.button(self.header,"←");self.dockPicker.Size=UDim2.fromOffset(32,29);self.dockPicker.Position=UDim2.new(1,-79,0,8);self.dockPicker.TextSize=18
@@ -969,40 +1094,7 @@ function UI:animateBackground(t)
   b.BackgroundColor3=soft:Lerp(accent:Lerp(bg,.42),amount)
  end
  self.geoLayer.Visible=s.menuGeometry and self.panel.Visible
- if not self.geoLayer.Visible then return end
- local tm=if s.reduce then 0 else t*s.menuMotion/100
- local key=s.menuShape..":"..s.accent..":"..s.secondary..":"..s.menuOpacity..":"..s.menuDensity
- if self.geoLast==tm and self.geoSettings==key then return end
- self.geoLast=tm;self.geoSettings=key
- local a,b=U.hex(s.accent),U.hex(s.secondary)
- local mixed={3,4,6,12}
- for i,g in self.geo do
-  g.root.Visible=i<=s.menuDensity
-  if i>s.menuDensity then continue end
-  local count=if s.menuShape=="Rings" then 12 elseif s.menuShape=="Crystals" then 4 elseif s.menuShape=="Triangles" then 3 elseif s.menuShape=="Hexagons" then 6 else mixed[i%4+1]
-  local size=(34+(i*19)%73)*(1+.05*math.sin(tm*.4+i))
-  g.root.Size=UDim2.fromOffset(size,size)
-  g.root.Position=UDim2.fromScale(.08+((i*.618)%1)*.84+math.sin(tm*.17+i)*.035,.08+((i*.381)%1)*.84+math.cos(tm*.21+i)*.045)
-  g.root.Rotation=i*31+tm*(if i%2==0 then 11 else -8)
-  if g.key~=key then
-   g.key=key
-   for j,p in g.edges do
-    p.Visible=j<=count
-    if j<=count then
-     local q0=(j-1)/count*math.pi*2
-     local q1=j/count*math.pi*2
-     local u=Vector2.new(math.cos(q0),math.sin(q0))*.44
-     local v=Vector2.new(math.cos(q1),math.sin(q1))*.44
-     local d=v-u
-     p.Position=UDim2.fromScale(.5+(u.X+v.X)*.5,.5+(u.Y+v.Y)*.5)
-     p.Size=UDim2.new(d.Magnitude,0,0,1.5)
-     p.Rotation=math.deg(math.atan2(d.Y,d.X))
-     p.BackgroundColor3=a:Lerp(b,(i%7)/6)
-     p.BackgroundTransparency=1-s.menuOpacity/100*.42
-    end
-   end
-  end
- end
+ if self.geoLayer.Visible then self.constellation:step(dt,s) end
 end
 function UI:begin(i,fn,origin) if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end;local v=Vector2.new(i.Position.X,i.Position.Y);self.drag={i=i,start=v,fn=fn,origin=origin};fn(v,v,origin) end
 function UI:show(on)
@@ -1033,6 +1125,8 @@ function UI:watch(fn) table.insert(self.syncs,fn);fn() end
 function UI:sync()
  if not self.panel.Parent then return end
  local st=self.app.s
+ self.backgroundGradient.Color=ColorSequence.new(U.hex(st.constellationBgA),U.hex(st.constellationBgB))
+ self.backgroundGradient.Rotation=st.constellationAngle
  local layoutKey=table.concat({st.menuDock,st.menuWidth,st.menuHeight,st.menuFloatX,st.menuFloatY,tostring(st.menuResize),tostring(st.robloxRail),tostring(st.topCustom),st.topX,st.topY,tostring(st.railCustom),st.railX,st.railY},":")
  if self.layoutKey~=layoutKey and not self.menuDraft then self:layout() end
  local primary=U.hex(st.uiFontColor or "F1E6FF")
@@ -2698,7 +2792,7 @@ local function scripts(ui,a)
  ui:chips({"Save / browse script assets"},function() a.libraryKind="Scripts";a.selection=nil;ui:open("Workshop") end,1)
 end
 function E.render(a,tab,ui)
- if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. F8 opens Studio. RightShift opens it only when native Shift-Lock is disabled. LeftAlt controls AETHER shoulder lock.",43);ui:chips({"Game","Simulator"},function(n) a:modeSet(n) end,2,function() return a.mode end);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme");ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
+ if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. F8 opens Studio. RightShift opens it only when native Shift-Lock is disabled. LeftAlt controls AETHER shoulder lock.",43);ui:chips({"Game","Simulator"},function(n) a:modeSet(n) end,2,function() return a.mode end);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme",{constellationBgA=true,constellationBgB=true,constellationLineA=true,constellationLineB=true,constellationNodeA=true,constellationNodeB=true});ui:title("CONSTELLATION COLORS");for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end;ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
  elseif tab=="HUD" then preview(ui,a,true);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);ui:chips({"Unlock widget preview","Move top / left panels"},function(n) if n=="Unlock widget preview" then a:set("locked",not a.s.locked) else a:set("movePanels",not a.s.movePanels) end end,2);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:control("compact");ui:title("TOP / LEFT PANELS");for _,v in {"topCapsule","robloxRail","movePanels"} do ui:control(v) end;ui:note("Enable moving panels to drag AI / AETHER / ARCHIVIUM and CHAT / BAG / LIST directly in the preview or live editor.",38);ui:chips({"Reset panel positions"},function() a:patch({topCustom=false,railCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartPalette","heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);ui:chips({"hp","clock","profile","dock","cross","input","wallhop","top","rail"},function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
   if k=="top" or k=="rail" then for _,v in {if k=="top" then "topCapsule" else "robloxRail","movePanels",k.."Custom",k.."X",k.."Y"} do ui:control(v) end
   elseif k=="input" then for _,v in {"inputOverlay","inputMouse","inputX","inputY","inputScale","inputOpacity","inputColor"} do ui:control(v) end
@@ -2895,7 +2989,8 @@ local function text(g,k,t,v,n) def(g,k,t,"text",v,0,n) end
 color("Theme","accent","Accent","A68AFF");color("Theme","secondary","Second neon","FF89C7");color("Theme","glassColor","Glass tint","211C35");color("Theme","uiFontColor","Studio text color","F1E6FF");color("Theme","uiMutedColor","Studio secondary text","ADA3C5");def("Theme","iconAtlas","Original icon atlas Roblox asset ID","asset","");choice("Theme","iconAtlasTile","Atlas tile size (pixels)","128",{"128","224"})
 range("Theme","glass","Glass opacity %",81,10,100);range("Theme","rim","Neon rim %",55,0,100);toggle("Theme","sparkles","Floating sparkles",true)
 toggle("Motion","reduce","Reduce motion",false);range("Motion","speed","Animation speed %",100,40,200);range("Motion","duration","Transition (ms)",380,80,1400);choice("Motion","ease","Interpolation","Smooth",{"Smooth","Linear","Sine"});choice("Motion","menuTransition","Menu transition","Glass",{"Glass","Slide","Fade","Off"});range("Motion","menuAnimStrength","Menu motion intensity %",75,0,100);toggle("Motion","tabTransition","Animated page transitions",true);toggle("Motion","navGlow","Animated navigation glow",true)
-toggle("Theme","menuGeometry","Animated geometric background",true);choice("Theme","menuShape","Background style","Mixed",{"Mixed","Rings","Crystals","Triangles","Hexagons"});range("Theme","menuDensity","Background density",12,4,20);range("Theme","menuMotion","Background speed %",65,0,180);range("Theme","menuOpacity","Background intensity %",55,0,100);toggle("Theme","screenParticles","Menu screen particles",true);choice("Theme","screenParticleStyle","Screen particle style","Mixed",{"Mixed","Stars","Dust","Diamonds"});range("Theme","screenParticleCount","Screen particle count",24,8,48);range("Theme","screenParticleOpacity","Screen particle intensity %",55,0,100);toggle("Theme","robloxRail","Roblox shortcuts rail",true);toggle("Theme","topCapsule","Interactive top capsule",true)
+toggle("Theme","menuGeometry","Animated geometric background",true);choice("Theme","menuShape","Background style","Mixed",{"Mixed","Rings","Crystals","Triangles","Hexagons","Squares","Stars","Dots"});range("Theme","menuDensity","Background density",14,4,24);range("Theme","menuMotion","Background speed %",65,0,180);range("Theme","menuOpacity","Background intensity %",55,0,100);
+range("Theme","constellationLinks","Maximum connections",100,0,100);range("Theme","constellationDistance","Connection distance (px)",115,25,220);range("Theme","constellationThickness","Line width (tenths of px)",7,3,20);range("Theme","constellationSize","Figure size (px)",5,2,14);range("Theme","constellationAngle","Background gradient angle",45,0,360);color("Theme","constellationBgA","Background start","10091C");color("Theme","constellationBgB","Background end","35204D");color("Theme","constellationLineA","Line start","ECE0FF");color("Theme","constellationLineB","Line end","A66AFF");color("Theme","constellationNodeA","Figure start","FFFFFF");color("Theme","constellationNodeB","Figure end","BE8AFF");toggle("Theme","screenParticles","Menu screen particles",true);choice("Theme","screenParticleStyle","Screen particle style","Mixed",{"Mixed","Stars","Dust","Diamonds"});range("Theme","screenParticleCount","Screen particle count",24,8,48);range("Theme","screenParticleOpacity","Screen particle intensity %",55,0,100);toggle("Theme","robloxRail","Roblox shortcuts rail",true);toggle("Theme","topCapsule","Interactive top capsule",true)
 choice("Theme","menuDock","Menu docking side","Left",{"Left","Right","Top","Bottom","Floating"});range("Theme","menuWidth","Menu width (px)",438,280,1600);range("Theme","menuHeight","Menu height (px)",600,260,1200);toggle("Theme","menuDrag","Drag / snap menu",true);toggle("Theme","menuResize","Resize with corner grip",true);range("Theme","menuFloatX","Floating horizontal %",35,0,100);range("Theme","menuFloatY","Floating vertical %",40,0,100)
 toggle("HUD","locked","Lock widget positions",true);toggle("HUD","movePanels","Allow moving top and left panels",false);toggle("HUD","topCustom","Custom top panel position",false);range("HUD","topX","Top panel X %",50,0,100);range("HUD","topY","Top panel Y %",2,0,100);toggle("HUD","railCustom","Custom left panel position",false);range("HUD","railX","Left panel X %",1,0,100);range("HUD","railY","Left panel Y %",46,0,100);toggle("HUD","compact","Compact health panel",true);choice("HUD","layoutMode","HUD layout","Sketch",{"Sketch","Custom"});choice("HUD","hudMotion","Widget animation","Glass",{"Glass","Float","Pulse","Off"});range("HUD","hudMotionStrength","Widget motion intensity %",65,0,100);toggle("HUD","hudShine","Health bar shimmer",true);toggle("HUD","hudReaction","Damage and healing glow",true);range("HUD","hudSmoothness","HUD smoothing (ms)",320,100,900)
 choice("HUD","heartPalette","Heart gradient","Adaptive",{"Adaptive","Aurora","Amethyst","Ocean","Sakura","Sunset","Ember","Mint","Ice","Galaxy","Rainbow","Custom"});choice("HUD","heartDirection","Heart gradient direction","Vertical",{"Vertical","Horizontal","Diagonal","Reverse","Orbit"});range("HUD","heartGradientSpeed","Heart gradient speed %",60,0,150);color("HUD","heartA","Heart custom start","BA99FF");color("HUD","heartMid","Heart custom middle","F8CCFF");color("HUD","heartB","Heart custom end","69D9FA");range("HUD","heartGlow","Heart glow %",65,0,100)
