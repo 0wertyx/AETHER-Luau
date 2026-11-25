@@ -180,14 +180,15 @@ local function avatarPreview(ui,a,worldMode)
    table.insert(adjacency[part],edge)
   end
   for _,joint in rig:GetDescendants() do
-   if joint:IsA("Motor6D") or joint:IsA("Weld") or joint:IsA("ManualWeld") then
-    local p0,p1=joint.Part0,joint.Part1
+   if MotionStudio.isJoint(joint) or joint:IsA("Weld") or joint:IsA("ManualWeld") or joint:IsA("WeldConstraint") then
+    local p0,p1,c0,c1=MotionStudio.jointFrames(joint)
     if p0 and p1 and p0:IsDescendantOf(rig) and p1:IsDescendantOf(rig) then
-     local edge={joint=joint,p0=p0,p1=p1,motor=joint:IsA("Motor6D")}
+     local edge={joint=joint,p0=p0,p1=p1,c0=c0,c1=c1,motor=MotionStudio.isJoint(joint)}
      attach(p0,edge);attach(p1,edge)
      if edge.motor then table.insert(motors,joint) end
     end
    end
+   if joint:IsA("Constraint") or joint:IsA("JointInstance") or joint:IsA("WeldConstraint") then pcall(function() joint.Enabled=false end) end
   end
   local queue={rootPart};local seen={[rootPart]=true};local index=1
   while index<=#queue do
@@ -272,7 +273,7 @@ local function avatarPreview(ui,a,worldMode)
   for _,link in joints do
    local e=link.edge;local j=e.joint
    if j.Parent and e.p0.Parent and e.p1.Parent then
-    local offset=j.C0*(if e.motor then j.Transform else CFrame.identity)*j.C1:Inverse()
+    local offset=e.c0*(if e.motor then j.Transform else CFrame.identity)*e.c1:Inverse()
     if link.forward then e.p1.CFrame=e.p0.CFrame*offset else e.p0.CFrame=e.p1.CFrame*offset:Inverse() end
    end
   end
@@ -319,7 +320,7 @@ local function avatarPreview(ui,a,worldMode)
   label.Text="Loading avatar...";label.Visible=true
   if not char then return end
   local function appearanceChanged(obj)
-   if obj:IsA("Accessory") or obj:IsA("Clothing") or obj:IsA("ShirtGraphic") or obj:IsA("BodyColors") or obj:IsA("BasePart") or obj:IsA("Humanoid") or obj:IsA("Decal") or obj:IsA("CharacterMesh") or obj:IsA("SurfaceAppearance") then refresh(char) end
+   if obj:IsA("Accessory") or obj:IsA("Clothing") or obj:IsA("ShirtGraphic") or obj:IsA("BodyColors") or obj:IsA("BasePart") or obj:IsA("Humanoid") or obj:IsA("Decal") or obj:IsA("CharacterMesh") or obj:IsA("SurfaceAppearance") or MotionStudio.isJoint(obj) then refresh(char) end
   end
   characterScope:on(char.DescendantAdded,appearanceChanged)
   characterScope:on(char.DescendantRemoving,appearanceChanged)
@@ -652,7 +653,7 @@ function E.render(a,tab,ui)
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
   if tab=="Character" then
-   ui:title("AETHER MOTION STUDIO V12.13")
+   ui:title("AETHER MOTION STUDIO V12.14")
    MotionStudio.mount(ui,a)
   else avatarPreview(ui,a) end
   if tab=="Halos" then

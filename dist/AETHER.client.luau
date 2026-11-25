@@ -3027,11 +3027,79 @@ local function pose(name,t,state)
  return p
 end
 -- Pose the user's own cloned R6/R15 rig with its real joints and limb lengths.
-local channelFor={
- RootJoint=1,Root=1,RightShoulder=2,["Right Shoulder"]=2,
- LeftShoulder=3,["Left Shoulder"]=3,RightHip=4,["Right Hip"]=4,
- LeftHip=5,["Left Hip"]=5,Neck=6
-}
+-- Support legacy Motor6D and upgraded R15 AnimationConstraint joints.
+local allChannels={"Root","RightShoulder","LeftShoulder","RightHip","LeftHip","Neck","Waist","RightElbow","LeftElbow","RightKnee","LeftKnee","RightAnkle","LeftAnkle","RightWrist","LeftWrist"}
+M.channels=allChannels
+local childChannels={LowerTorso="Root",UpperTorso="Waist",Head="Neck",RightUpperArm="RightShoulder",LeftUpperArm="LeftShoulder",RightLowerArm="RightElbow",LeftLowerArm="LeftElbow",RightHand="RightWrist",LeftHand="LeftWrist",RightUpperLeg="RightHip",LeftUpperLeg="LeftHip",RightLowerLeg="RightKnee",LeftLowerLeg="LeftKnee",RightFoot="RightAnkle",LeftFoot="LeftAnkle"}
+function M.isJoint(j) return j:IsA("Motor6D") or j:IsA("AnimationConstraint") end
+function M.jointFrames(j)
+ if j:IsA("AnimationConstraint") then
+  local a,b=j.Attachment0,j.Attachment1
+  if a and b and a.Parent and b.Parent and a.Parent:IsA("BasePart") and b.Parent:IsA("BasePart") then return a.Parent,b.Parent,a.CFrame,b.CFrame end
+ elseif j:IsA("WeldConstraint") then
+  local a,b=j.Part0,j.Part1
+  return a,b,if a and b then a.CFrame:ToObjectSpace(b.CFrame) else CFrame.identity,CFrame.identity
+ elseif j:IsA("JointInstance") then return j.Part0,j.Part1,j.C0,j.C1 end
+ return nil,nil,CFrame.identity,CFrame.identity
+end
+function M.jointName(j)
+ if not M.isJoint(j) then return nil end
+ local name=j.Name:gsub(" ","")
+ if name=="RootJoint" then name="Root" end
+ if table.find(allChannels,name) then return name end
+ local _,b=M.jointFrames(j)
+ return b and childChannels[b.Name]
+end
+function M.findJoint(rig,name)
+ for _,j in rig:GetDescendants() do
+  if M.isJoint(j) and M.jointName(j)==name then
+   local a,b=M.jointFrames(j)
+   if a and b and a:IsDescendantOf(rig) and b:IsDescendantOf(rig) then return j end
+  end
+ end
+end
+-- Keep articulated limb sockets together and add secondary joint motion.
+function M.retargetR15(result,name,t,state,intensity)
+ intensity=math.clamp(intensity or 1,0,1)
+ name=name or "Natural"
+ local p=profile(name)
+ local family=families[name] or "step"
+ local moving=state=="Walk" or state=="Run"
+ local float=family=="float" or family=="wing" or family=="sleep" or family=="paired"
+ local phase=t*p.cadence*(if state=="Run" then 1.3 else .9)
+ local function rot(x,y,z) return angle(x*intensity,y*intensity,z*intensity) end
+ local rx,ry,rz=(result.Root or CFrame.identity):ToOrientation()
+ result.Waist=CFrame.Angles(rx*.14,ry*.22,rz*.25)
+ for _,side in {"Right","Left"} do
+  local dir=if side=="Right" then 1 else -1
+  local hip=result[side.."Hip"] or CFrame.identity
+  local shoulder=result[side.."Shoulder"] or CFrame.identity
+  local stride=math.sin(phase+(if dir==1 then 0 else math.pi))
+  local hx=select(1,hip:ToOrientation())
+  local sx=select(1,shoulder:ToOrientation())
+  local knee,elbow,ankle=0,0,0
+  if moving then
+   local swing=math.max(0,-stride)
+   knee=if state=="Run" then 12+56*swing else 5+38*swing
+   elbow=if state=="Run" then 48+24*math.max(0,stride) else 12+18*math.max(0,stride)
+   if family=="stiff" then knee*=.4;elbow*=.45 end
+   if float then knee=8+10*math.abs(stride);elbow=10+7*stride end
+   ankle=math.clamp(knee*.36-math.deg(hx)*.35,-20,25)
+  elseif state=="Jump" or state=="Fall" then
+   knee=if state=="Jump" then 38+16*dir else 15+8*dir
+   elbow=if state=="Jump" then 32 else 19;ankle=knee*.22
+  elseif state=="Climb" then knee=23+20*math.max(0,-stride);elbow=38+30*math.max(0,stride);ankle=8
+  elseif state=="Swim" then knee=12+17*math.max(0,stride);elbow=28+25*math.max(0,-stride);ankle=-15
+  else knee=if float then 8 else 2;elbow=if family=="shy" then 32 else 5 end
+  result[side.."Hip"]=hip.Rotation
+  result[side.."Shoulder"]=shoulder.Rotation
+  result[side.."Knee"]=rot(-knee,0,0)
+  result[side.."Elbow"]=rot(elbow,0,0)
+  result[side.."Ankle"]=rot(ankle,0,0)
+  result[side.."Wrist"]=CFrame.Angles(-sx*.10,0,math.rad(dir*3*stride*intensity))
+ end
+ return result
+end
 local bodyNames={
  Torso=true,Head=true,["Right Arm"]=true,["Left Arm"]=true,["Right Leg"]=true,["Left Leg"]=true,
  UpperTorso=true,LowerTorso=true,RightUpperArm=true,RightLowerArm=true,RightHand=true,
@@ -3068,15 +3136,16 @@ local function cloneRig(char)
  local adjacency={}
  local function attach(p,e) adjacency[p]=adjacency[p] or {};table.insert(adjacency[p],e) end
  for _,j in model:GetDescendants() do
-  if j:IsA("Motor6D") or j:IsA("Weld") or j:IsA("ManualWeld") or j:IsA("WeldConstraint") then
-   local a,b=j.Part0,j.Part1
+  if M.isJoint(j) or j:IsA("Weld") or j:IsA("ManualWeld") or j:IsA("WeldConstraint") then
+   local a,b,c0,c1=M.jointFrames(j)
    if a and b and localCF[a] and localCF[b] then
-    local constraint=j:IsA("WeldConstraint")
-    local e={p0=a,p1=b,joint=j,c0=if constraint then a.CFrame:ToObjectSpace(b.CFrame) else j.C0,c1=if constraint then CFrame.identity else j.C1,channel=if j:IsA("Motor6D") then channelFor[j.Name] else nil}
-    if j:IsA("Motor6D") then j.Transform=CFrame.identity end
+    local e={p0=a,p1=b,joint=j,c0=c0,c1=c1,channel=M.jointName(j)}
+    if M.isJoint(j) then j.Transform=CFrame.identity end
     attach(a,e);attach(b,e)
    end
   end
+  -- Disable solver only on the isolated cloned rig, never on the live avatar.
+  if j:IsA("Constraint") or j:IsA("JointInstance") or j:IsA("WeldConstraint") then pcall(function() j.Enabled=false end) end
  end
  local queue={root};local seen={[root]=true};local owner={[root]=root};local links={};local index=1
  while index<=#queue do
@@ -3115,23 +3184,24 @@ local function cloneRig(char)
  model.Name="MotionStudioAvatar"
  return {model=model,root=root,kind=kind,parts=parts,body=body,original=original,links=links,detached=detached,owner=owner,followers=followers,decals=decals}
 end
-local function avatarPose(r,p,O,intensity)
+local function avatarPose(r,p,O,intensity,name,t,state)
  local cf={[r.root]=CFrame.identity};local pivots={}
  local jointsCF={}
- for i=1,6 do jointsCF[i]=CFrame.new(p[i].v*O*intensity)*qframe(qslerp(ident,p[i].q,intensity)) end
+ for i,key in joints do jointsCF[key]=CFrame.new(p[i].v*O*intensity)*qframe(qslerp(ident,p[i].q,intensity)) end
+ if r.kind=="R15" and name then M.retargetR15(jointsCF,name,t or 0,state,intensity) end
  for _,link in r.links do
   local e=link.edge;local motion=CFrame.identity
   if e.channel then
    local basis=e.c0.Rotation
    local scale=math.clamp(e.p0.Size.Y/2,.5,1.7)
-   local poseCF=jointsCF[e.channel]
+   local poseCF=jointsCF[e.channel] or CFrame.identity
    motion=basis:Inverse()*CFrame.new(poseCF.Position*scale)*poseCF.Rotation*basis
   end
   local offset=e.c0*motion*e.c1:Inverse()
   cf[link.to]=cf[link.from]*(if link.forward then offset else offset:Inverse())
   if e.channel then
    local parentCF=cf[e.p0]
-   if parentCF then pivots[e.channel]=(parentCF*e.c0*motion).Position end
+   if parentCF then local index=table.find(allChannels,e.channel);if index then pivots[index]=(parentCF*e.c0*motion).Position end end
   end
  end
  for _,v in r.detached do cf[v.part]=(cf[v.parent] or CFrame.identity)*v.offset end
@@ -3195,7 +3265,7 @@ function M.speedFactor(config,state,velocity)
  local low=if state=="Swim" then .28 elseif state=="Climb" then 0 else .12
  return math.clamp(math.max(0,velocity or reference)/reference,low,3)
 end
-function M.runtimePose(config,t,state,airTime)
+function M.runtimePose(config,t,state,airTime,rigType)
  local name=config.style
  local p,spin=pose(name,t,state),0
  local airborne=state=="Jump" or state=="Fall"
@@ -3220,6 +3290,7 @@ function M.runtimePose(config,t,state,airTime)
  if (state=="Walk" or state=="Run") and families[name]=="hop" then
   hover+=profile(name).bob*math.abs(math.sin(t*profile(name).cadence))
  end
+ if rigType==Enum.HumanoidRigType.R15 then M.retargetR15(result,name,t,state,config.intensity) end
  return result,hover*config.intensity
 end
 local function differences(draft,saved)
@@ -3259,7 +3330,7 @@ function M.mount(ui,a)
   table.insert(lines,part(world,"Grid",V(.018,.012,14),Color3.fromRGB(69,67,82)));lines[#lines].CFrame=CFrame.new(i,.006,0)
   table.insert(lines,part(world,"Grid",V(14,.012,.018),Color3.fromRGB(69,67,82)));lines[#lines].CFrame=CFrame.new(0,.006,i)
  end
- local markers={};for i=2,6 do local p=part(world,"Origin",V(.14,.14,.14),violet);p.Shape=Enum.PartType.Ball;p.Material=Enum.Material.Neon;p.Transparency=1;markers[i]=p end
+ local markers={};for i=2,#allChannels do local p=part(world,"Origin",V(.14,.14,.14),violet);p.Shape=Enum.PartType.Ball;p.Material=Enum.Material.Neon;p.Transparency=1;markers[i]=p end
  local props=Props.new(world)
  local fxDots,fxTrail={},{}
  for i=1,20 do
@@ -3288,7 +3359,7 @@ function M.mount(ui,a)
    row.confirm.BackgroundColor3=if ready and n>0 then Color3.fromRGB(106,74,158) else Color3.fromRGB(49,43,62)
    row.cancel.Text=if n>0 then "CANCEL" else "NO CHANGES";row.cancel.Active=n>0;row.cancel.AutoButtonColor=n>0
   end
-  selection.Text="Preview: "..s.pack.." / Saved: "..saved.pack.." · "..(if n==0 then "All settings saved" else tostring(n).." unsaved changes")..(if rigData and rigData.kind=="R15" then " · R15 adapted poses" else "")
+  selection.Text="Preview: "..s.pack.." / Saved: "..saved.pack.." · "..(if n==0 then "All settings saved" else tostring(n).." unsaved changes")..(if rigData and rigData.kind=="R15" then " · R15 articulated poses" else "")
  end
  local function confirmAll()
   if not rigData or differences(s,readSaved(a.s))==0 then return end
@@ -3430,7 +3501,7 @@ function M.mount(ui,a)
    for _,b in markers do b.Transparency=1 end
    caption.Text="YOUR AVATAR";status.Text=avatarStatus;dirty=false;return
   end
-  local cf,pivots=avatarPose(r,p,O,I)
+  local cf,pivots=avatarPose(r,p,O,I,name,lt,state)
   for _,b in r.parts do
    b.CFrame=cf[b] or CFrame.identity
    b.Transparency=if visible(b) then r.original[b] else 1
@@ -3540,7 +3611,7 @@ function M.mount(ui,a)
   if not char then return end
   charScope=U.scope()
   local function appearance(obj)
-   if obj:IsA("Accessory") or obj:IsA("Clothing") or obj:IsA("ShirtGraphic") or obj:IsA("BodyColors") or obj:IsA("BasePart") or obj:IsA("Humanoid") or obj:IsA("Decal") or obj:IsA("CharacterMesh") or obj:IsA("SurfaceAppearance") or obj:IsA("Motor6D") then refresh(char) end
+   if obj:IsA("Accessory") or obj:IsA("Clothing") or obj:IsA("ShirtGraphic") or obj:IsA("BodyColors") or obj:IsA("BasePart") or obj:IsA("Humanoid") or obj:IsA("Decal") or obj:IsA("CharacterMesh") or obj:IsA("SurfaceAppearance") or M.isJoint(obj) then refresh(char) end
   end
   charScope:on(char.DescendantAdded,appearance);charScope:on(char.DescendantRemoving,appearance)
   refresh(char)
@@ -3756,14 +3827,15 @@ local function avatarPreview(ui,a,worldMode)
    table.insert(adjacency[part],edge)
   end
   for _,joint in rig:GetDescendants() do
-   if joint:IsA("Motor6D") or joint:IsA("Weld") or joint:IsA("ManualWeld") then
-    local p0,p1=joint.Part0,joint.Part1
+   if MotionStudio.isJoint(joint) or joint:IsA("Weld") or joint:IsA("ManualWeld") or joint:IsA("WeldConstraint") then
+    local p0,p1,c0,c1=MotionStudio.jointFrames(joint)
     if p0 and p1 and p0:IsDescendantOf(rig) and p1:IsDescendantOf(rig) then
-     local edge={joint=joint,p0=p0,p1=p1,motor=joint:IsA("Motor6D")}
+     local edge={joint=joint,p0=p0,p1=p1,c0=c0,c1=c1,motor=MotionStudio.isJoint(joint)}
      attach(p0,edge);attach(p1,edge)
      if edge.motor then table.insert(motors,joint) end
     end
    end
+   if joint:IsA("Constraint") or joint:IsA("JointInstance") or joint:IsA("WeldConstraint") then pcall(function() joint.Enabled=false end) end
   end
   local queue={rootPart};local seen={[rootPart]=true};local index=1
   while index<=#queue do
@@ -3848,7 +3920,7 @@ local function avatarPreview(ui,a,worldMode)
   for _,link in joints do
    local e=link.edge;local j=e.joint
    if j.Parent and e.p0.Parent and e.p1.Parent then
-    local offset=j.C0*(if e.motor then j.Transform else CFrame.identity)*j.C1:Inverse()
+    local offset=e.c0*(if e.motor then j.Transform else CFrame.identity)*e.c1:Inverse()
     if link.forward then e.p1.CFrame=e.p0.CFrame*offset else e.p0.CFrame=e.p1.CFrame*offset:Inverse() end
    end
   end
@@ -3895,7 +3967,7 @@ local function avatarPreview(ui,a,worldMode)
   label.Text="Loading avatar...";label.Visible=true
   if not char then return end
   local function appearanceChanged(obj)
-   if obj:IsA("Accessory") or obj:IsA("Clothing") or obj:IsA("ShirtGraphic") or obj:IsA("BodyColors") or obj:IsA("BasePart") or obj:IsA("Humanoid") or obj:IsA("Decal") or obj:IsA("CharacterMesh") or obj:IsA("SurfaceAppearance") then refresh(char) end
+   if obj:IsA("Accessory") or obj:IsA("Clothing") or obj:IsA("ShirtGraphic") or obj:IsA("BodyColors") or obj:IsA("BasePart") or obj:IsA("Humanoid") or obj:IsA("Decal") or obj:IsA("CharacterMesh") or obj:IsA("SurfaceAppearance") or MotionStudio.isJoint(obj) then refresh(char) end
   end
   characterScope:on(char.DescendantAdded,appearanceChanged)
   characterScope:on(char.DescendantRemoving,appearanceChanged)
@@ -4228,7 +4300,7 @@ function E.render(a,tab,ui)
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
   if tab=="Character" then
-   ui:title("AETHER MOTION STUDIO V12.13")
+   ui:title("AETHER MOTION STUDIO V12.14")
    MotionStudio.mount(ui,a)
   else avatarPreview(ui,a) end
   if tab=="Halos" then
@@ -5923,11 +5995,17 @@ local W={}
 W.__index=W
 local function motor(rig,...)
  for _,name in {...} do
-  local m=rig:FindFirstChild(name,true)
-  if m and m:IsA("Motor6D") then return m end
+  name=name:gsub(" ","")
+  if name=="RootJoint" then name="Root" end
+  local m=MotionStudio.findJoint(rig,name)
+  if m then return m end
  end
  return nil
 end
+local function part0(m) return select(1,MotionStudio.jointFrames(m)) end
+local function part1(m) return select(2,MotionStudio.jointFrames(m)) end
+local function c0(m) return select(3,MotionStudio.jointFrames(m)) end
+local function c1(m) return select(4,MotionStudio.jointFrames(m)) end
 function W.new()
  return setmetatable({character=nil,motors={},phase=0,blend=0,hover=0,liveWrites={},livePose={},liveTime=0,liveAir=0,liveRetry=0},W)
 end
@@ -5949,6 +6027,8 @@ function W:bind(character)
  j.LeftHip=motor(character,"LeftHip","Left Hip")
  j.RightShoulder=motor(character,"RightShoulder","Right Shoulder")
  j.LeftShoulder=motor(character,"LeftShoulder","Left Shoulder")
+ j.RightWrist=motor(character,"RightWrist")
+ j.LeftWrist=motor(character,"LeftWrist")
  j.RightElbow=motor(character,"RightElbow")
  j.LeftElbow=motor(character,"LeftElbow")
  j.RightKnee=motor(character,"RightKnee")
@@ -5989,10 +6069,10 @@ local tracks={
  waddle={z={.55,.3,-.3,-.55,-.3,.3},y={0,0,.12,.2,.7,.6}},
 }
 local runtimeNames={"Root","RightShoulder","LeftShoulder","RightHip","LeftHip","Neck"}
-local secondaryNames={"Waist","RightElbow","LeftElbow","RightKnee","LeftKnee","RightAnkle","LeftAnkle"}
+local secondaryNames={"Waist","RightElbow","LeftElbow","RightKnee","LeftKnee","RightAnkle","LeftAnkle","RightWrist","LeftWrist"}
 local function mapped(m,cf)
- local basis=m.C0.Rotation
- local scale=if m.Part0 then math.clamp(m.Part0.Size.Y/2,.5,1.7) else 1
+ local basis=c0(m).Rotation
+ local scale=if part0(m) then math.clamp(part0(m).Size.Y/2,.5,1.7) else 1
  return basis:Inverse()*CFrame.new(cf.Position*scale)*cf.Rotation*basis
 end
 function W:liveStep(character,s,dt)
@@ -6041,7 +6121,7 @@ function W:liveStep(character,s,dt)
  local targetRate=MotionStudio.speedFactor(config,state,movementSpeed)
  self.liveRate=if changed or self.liveRate==nil then targetRate else self.liveRate+(targetRate-self.liveRate)*(1-math.exp(-dt*12))
  self.liveTime+=dt*config.speed*self.liveRate
- local authored,hover=MotionStudio.runtimePose(config,self.liveTime,state,self.liveAir)
+ local authored,hover=MotionStudio.runtimePose(config,self.liveTime,state,self.liveAir,hum.RigType)
  local targets={}
  for _,name in runtimeNames do
   local m=self.motors[name]
@@ -6049,33 +6129,39 @@ function W:liveStep(character,s,dt)
  end
  for _,name in secondaryNames do
   local m=self.motors[name]
-  if m and m.Parent then targets[m]=CFrame.identity end
+  if m and m.Parent then targets[m]=mapped(m,authored[name] or CFrame.identity) end
  end
  local root=self.motors.Root
  -- Match grounded foot contact on R6 without changing HumanoidRootPart position.
- if root and targets[root] and root.Part1 and not air and state~="Climb" and state~="Swim" then
-  local neutral=root.C0*root.C1:Inverse()
-  local posed=root.C0*targets[root]*root.C1:Inverse()
+ if root and targets[root] and part1(root) and not air and state~="Climb" and state~="Swim" then
+  local neutral=c0(root)*c1(root):Inverse()
+  local posed=c0(root)*targets[root]*c1(root):Inverse()
   local floor,low=math.huge,math.huge
-  if hum.RigType==Enum.HumanoidRigType.R6 then
-   for _,m in {self.motors.RightHip,self.motors.LeftHip} do
-    if m and targets[m] and m.Part1 then
-     local sz=m.Part1.Size/2
-     local function bottom(cf)
-      return cf.Position.Y-math.abs(cf.RightVector.Y)*sz.X-math.abs(cf.UpVector.Y)*sz.Y-math.abs(cf.LookVector.Y)*sz.Z
-     end
-     floor=math.min(floor,bottom(neutral*m.C0*m.C1:Inverse()))
-     low=math.min(low,bottom(posed*m.C0*targets[m]*m.C1:Inverse()))
-    end
+  for _,side in {"Right","Left"} do
+   local restCF,poseCF=neutral,posed
+   local foot=nil
+   local names=if hum.RigType==Enum.HumanoidRigType.R15 then {side.."Hip",side.."Knee",side.."Ankle"} else {side.."Hip"}
+   for _,name in names do
+    local m=self.motors[name]
+    if not m or not part1(m) or not targets[m] then break end
+    restCF=restCF*c0(m)*c1(m):Inverse()
+    poseCF=poseCF*c0(m)*targets[m]*c1(m):Inverse()
+    foot=part1(m)
+   end
+   if foot then
+    local sz=foot.Size/2
+    local function bottom(cf) return cf.Position.Y-math.abs(cf.RightVector.Y)*sz.X-math.abs(cf.UpVector.Y)*sz.Y-math.abs(cf.LookVector.Y)*sz.Z end
+    floor=math.min(floor,bottom(restCF));low=math.min(low,bottom(poseCF))
    end
   end
   local correction=if floor<math.huge and low<math.huge then math.clamp(floor-low,-1.5,1.5) else 0
-  local basis=root.C0.Rotation
+  local basis=c0(root).Rotation
   targets[root]=basis:Inverse()*CFrame.new(0,correction+hover,0)*basis*targets[root]
  end
  self.liveTransition=math.min(1,(self.liveTransition or 0)+dt/.14)
  local k=self.liveTransition*self.liveTransition*(3-2*self.liveTransition)
  for m,target in targets do
+  if m:IsA("AnimationConstraint") and (not m.Enabled or not m.IsKinematic) then continue end
   local base=m.Transform
   local old=self.liveFrom and self.liveFrom[m] or base
   local result=if k<1 then old:Lerp(target,k) else target
@@ -6144,8 +6230,8 @@ function W:step(character,s,dt,preview)
    local strength=math.clamp((virtual.originStrength or 100)/100,0,1)
    local function apply(m,v)
     if not m or not m.Parent then return end
-    local scale=if m.Part0 then math.clamp(m.Part0.Size.Y/2,.65,1.6) else 1
-    local basis=m.C0.Rotation
+    local scale=if part0(m) then math.clamp(part0(m).Size.Y/2,.65,1.6) else 1
+    local basis=c0(m).Rotation
     local body=CFrame.new(Vector3.new(v[4],v[5],v[6])*weight*strength*scale)
       *CFrame.Angles(math.rad(v[1])*weight,math.rad(v[2])*weight,math.rad(v[3])*weight)
     m.Transform=basis:Inverse()*body*basis
@@ -6153,16 +6239,16 @@ function W:step(character,s,dt,preview)
    for name,v in signature do apply(j[name],v) end
    -- Root-local foot contact for the anchored viewport rig.
    local root=j.Root
-   if root and j.RightHip and j.LeftHip and root.Part1 then
+   if root and j.RightHip and j.LeftHip and part1(root) then
     local function legCF(m,torso,animated)
-     return torso*m.C0*(if animated then m.Transform else CFrame.identity)*m.C1:Inverse()
+     return torso*c0(m)*(if animated then m.Transform else CFrame.identity)*c1(m):Inverse()
     end
     local function bottom(m,cf)
-     local sz=m.Part1.Size/2
+     local sz=part1(m).Size/2
      return cf.Position.Y-math.abs(cf.RightVector.Y)*sz.X-math.abs(cf.UpVector.Y)*sz.Y-math.abs(cf.LookVector.Y)*sz.Z
     end
-    local neutral=root.C0*root.C1:Inverse()
-    local posed=root.C0*root.Transform*root.C1:Inverse()
+    local neutral=c0(root)*c1(root):Inverse()
+    local posed=c0(root)*root.Transform*c1(root):Inverse()
     local r,l=j.RightHip,j.LeftHip
     local board=style=="Skater" and not falling and virtual.props~=false
     local rlow=bottom(r,legCF(r,posed,true))
@@ -6172,7 +6258,7 @@ function W:step(character,s,dt,preview)
      for _,m in {r,l} do
       local d=low-bottom(m,legCF(m,posed,true))
       local localDelta=posed:VectorToObjectSpace(Vector3.new(0,d,0))
-      m.Transform=m.C0.Rotation:Inverse()*CFrame.new(localDelta)*m.C0.Rotation*m.Transform
+      m.Transform=c0(m).Rotation:Inverse()*CFrame.new(localDelta)*c0(m).Rotation*m.Transform
      end
      rlow=bottom(r,legCF(r,posed,true));llow=bottom(l,legCF(l,posed,true))
     end
@@ -6189,7 +6275,7 @@ function W:step(character,s,dt,preview)
     else
      dy=hover*weight
     end
-    root.Transform=root.C0.Rotation:Inverse()*CFrame.new(0,dy,0)*root.C0.Rotation*root.Transform
+    root.Transform=c0(root).Rotation:Inverse()*CFrame.new(0,dy,0)*c0(root).Rotation*root.Transform
    end
    self.signatureActive=true;self.airProgress=airProgress
    return
@@ -6240,7 +6326,7 @@ function W:step(character,s,dt,preview)
    sz=origin[7]*.12
   end
   -- Scale with R6 body dimensions; never change the base C0 or Part sizes.
-  local rigScale=if m.Part0 then math.clamp(m.Part0.Size.Y/2,.65,1.6) else 1
+  local rigScale=if part0(m) then math.clamp(part0(m).Size.Y/2,.65,1.6) else 1
   return Vector3.new(sx,sy,sz)*originAmount*rigScale
  end
  -- In the isolated viewport, author full poses in body-part axes. R6 uses
@@ -6260,7 +6346,7 @@ function W:step(character,s,dt,preview)
   local rx=math.clamp(x*gain,-1.7,1.7)
   local ry=math.clamp(y*gain,-1.2,1.2)
   local rz=math.clamp(z*gain,-1.5,1.5)
-  local basis=m.C0.Rotation
+  local basis=c0(m).Rotation
   local body=CFrame.new(cf.Position*(if m==j.Root then 2 else 1.4)+originOffset(m))*CFrame.fromOrientation(rx,ry,rz)
   m.Transform=m.Transform*basis:Inverse()*body*basis
  end
@@ -6575,7 +6661,7 @@ function W:step(character,s,dt,preview)
  end
  if fullPreview and style=="Cartwheel Flow" and moving>.08 and j.Root then
   -- Full cartwheel roll is confined to the isolated GUI rig.
-  local basis=j.Root.C0.Rotation
+  local basis=c0(j.Root).Rotation
   j.Root.Transform=j.Root.Transform*basis:Inverse()*CFrame.Angles(0,0,ph*.52)*basis
  end
 end

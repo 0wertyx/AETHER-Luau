@@ -8,11 +8,17 @@ local W={}
 W.__index=W
 local function motor(rig,...)
  for _,name in {...} do
-  local m=rig:FindFirstChild(name,true)
-  if m and m:IsA("Motor6D") then return m end
+  name=name:gsub(" ","")
+  if name=="RootJoint" then name="Root" end
+  local m=MotionStudio.findJoint(rig,name)
+  if m then return m end
  end
  return nil
 end
+local function part0(m) return select(1,MotionStudio.jointFrames(m)) end
+local function part1(m) return select(2,MotionStudio.jointFrames(m)) end
+local function c0(m) return select(3,MotionStudio.jointFrames(m)) end
+local function c1(m) return select(4,MotionStudio.jointFrames(m)) end
 function W.new()
  return setmetatable({character=nil,motors={},phase=0,blend=0,hover=0,liveWrites={},livePose={},liveTime=0,liveAir=0,liveRetry=0},W)
 end
@@ -34,6 +40,8 @@ function W:bind(character)
  j.LeftHip=motor(character,"LeftHip","Left Hip")
  j.RightShoulder=motor(character,"RightShoulder","Right Shoulder")
  j.LeftShoulder=motor(character,"LeftShoulder","Left Shoulder")
+ j.RightWrist=motor(character,"RightWrist")
+ j.LeftWrist=motor(character,"LeftWrist")
  j.RightElbow=motor(character,"RightElbow")
  j.LeftElbow=motor(character,"LeftElbow")
  j.RightKnee=motor(character,"RightKnee")
@@ -74,10 +82,10 @@ local tracks={
  waddle={z={.55,.3,-.3,-.55,-.3,.3},y={0,0,.12,.2,.7,.6}},
 }
 local runtimeNames={"Root","RightShoulder","LeftShoulder","RightHip","LeftHip","Neck"}
-local secondaryNames={"Waist","RightElbow","LeftElbow","RightKnee","LeftKnee","RightAnkle","LeftAnkle"}
+local secondaryNames={"Waist","RightElbow","LeftElbow","RightKnee","LeftKnee","RightAnkle","LeftAnkle","RightWrist","LeftWrist"}
 local function mapped(m,cf)
- local basis=m.C0.Rotation
- local scale=if m.Part0 then math.clamp(m.Part0.Size.Y/2,.5,1.7) else 1
+ local basis=c0(m).Rotation
+ local scale=if part0(m) then math.clamp(part0(m).Size.Y/2,.5,1.7) else 1
  return basis:Inverse()*CFrame.new(cf.Position*scale)*cf.Rotation*basis
 end
 function W:liveStep(character,s,dt)
@@ -126,7 +134,7 @@ function W:liveStep(character,s,dt)
  local targetRate=MotionStudio.speedFactor(config,state,movementSpeed)
  self.liveRate=if changed or self.liveRate==nil then targetRate else self.liveRate+(targetRate-self.liveRate)*(1-math.exp(-dt*12))
  self.liveTime+=dt*config.speed*self.liveRate
- local authored,hover=MotionStudio.runtimePose(config,self.liveTime,state,self.liveAir)
+ local authored,hover=MotionStudio.runtimePose(config,self.liveTime,state,self.liveAir,hum.RigType)
  local targets={}
  for _,name in runtimeNames do
   local m=self.motors[name]
@@ -134,33 +142,39 @@ function W:liveStep(character,s,dt)
  end
  for _,name in secondaryNames do
   local m=self.motors[name]
-  if m and m.Parent then targets[m]=CFrame.identity end
+  if m and m.Parent then targets[m]=mapped(m,authored[name] or CFrame.identity) end
  end
  local root=self.motors.Root
  -- Match grounded foot contact on R6 without changing HumanoidRootPart position.
- if root and targets[root] and root.Part1 and not air and state~="Climb" and state~="Swim" then
-  local neutral=root.C0*root.C1:Inverse()
-  local posed=root.C0*targets[root]*root.C1:Inverse()
+ if root and targets[root] and part1(root) and not air and state~="Climb" and state~="Swim" then
+  local neutral=c0(root)*c1(root):Inverse()
+  local posed=c0(root)*targets[root]*c1(root):Inverse()
   local floor,low=math.huge,math.huge
-  if hum.RigType==Enum.HumanoidRigType.R6 then
-   for _,m in {self.motors.RightHip,self.motors.LeftHip} do
-    if m and targets[m] and m.Part1 then
-     local sz=m.Part1.Size/2
-     local function bottom(cf)
-      return cf.Position.Y-math.abs(cf.RightVector.Y)*sz.X-math.abs(cf.UpVector.Y)*sz.Y-math.abs(cf.LookVector.Y)*sz.Z
-     end
-     floor=math.min(floor,bottom(neutral*m.C0*m.C1:Inverse()))
-     low=math.min(low,bottom(posed*m.C0*targets[m]*m.C1:Inverse()))
-    end
+  for _,side in {"Right","Left"} do
+   local restCF,poseCF=neutral,posed
+   local foot=nil
+   local names=if hum.RigType==Enum.HumanoidRigType.R15 then {side.."Hip",side.."Knee",side.."Ankle"} else {side.."Hip"}
+   for _,name in names do
+    local m=self.motors[name]
+    if not m or not part1(m) or not targets[m] then break end
+    restCF=restCF*c0(m)*c1(m):Inverse()
+    poseCF=poseCF*c0(m)*targets[m]*c1(m):Inverse()
+    foot=part1(m)
+   end
+   if foot then
+    local sz=foot.Size/2
+    local function bottom(cf) return cf.Position.Y-math.abs(cf.RightVector.Y)*sz.X-math.abs(cf.UpVector.Y)*sz.Y-math.abs(cf.LookVector.Y)*sz.Z end
+    floor=math.min(floor,bottom(restCF));low=math.min(low,bottom(poseCF))
    end
   end
   local correction=if floor<math.huge and low<math.huge then math.clamp(floor-low,-1.5,1.5) else 0
-  local basis=root.C0.Rotation
+  local basis=c0(root).Rotation
   targets[root]=basis:Inverse()*CFrame.new(0,correction+hover,0)*basis*targets[root]
  end
  self.liveTransition=math.min(1,(self.liveTransition or 0)+dt/.14)
  local k=self.liveTransition*self.liveTransition*(3-2*self.liveTransition)
  for m,target in targets do
+  if m:IsA("AnimationConstraint") and (not m.Enabled or not m.IsKinematic) then continue end
   local base=m.Transform
   local old=self.liveFrom and self.liveFrom[m] or base
   local result=if k<1 then old:Lerp(target,k) else target
@@ -229,8 +243,8 @@ function W:step(character,s,dt,preview)
    local strength=math.clamp((virtual.originStrength or 100)/100,0,1)
    local function apply(m,v)
     if not m or not m.Parent then return end
-    local scale=if m.Part0 then math.clamp(m.Part0.Size.Y/2,.65,1.6) else 1
-    local basis=m.C0.Rotation
+    local scale=if part0(m) then math.clamp(part0(m).Size.Y/2,.65,1.6) else 1
+    local basis=c0(m).Rotation
     local body=CFrame.new(Vector3.new(v[4],v[5],v[6])*weight*strength*scale)
       *CFrame.Angles(math.rad(v[1])*weight,math.rad(v[2])*weight,math.rad(v[3])*weight)
     m.Transform=basis:Inverse()*body*basis
@@ -238,16 +252,16 @@ function W:step(character,s,dt,preview)
    for name,v in signature do apply(j[name],v) end
    -- Root-local foot contact for the anchored viewport rig.
    local root=j.Root
-   if root and j.RightHip and j.LeftHip and root.Part1 then
+   if root and j.RightHip and j.LeftHip and part1(root) then
     local function legCF(m,torso,animated)
-     return torso*m.C0*(if animated then m.Transform else CFrame.identity)*m.C1:Inverse()
+     return torso*c0(m)*(if animated then m.Transform else CFrame.identity)*c1(m):Inverse()
     end
     local function bottom(m,cf)
-     local sz=m.Part1.Size/2
+     local sz=part1(m).Size/2
      return cf.Position.Y-math.abs(cf.RightVector.Y)*sz.X-math.abs(cf.UpVector.Y)*sz.Y-math.abs(cf.LookVector.Y)*sz.Z
     end
-    local neutral=root.C0*root.C1:Inverse()
-    local posed=root.C0*root.Transform*root.C1:Inverse()
+    local neutral=c0(root)*c1(root):Inverse()
+    local posed=c0(root)*root.Transform*c1(root):Inverse()
     local r,l=j.RightHip,j.LeftHip
     local board=style=="Skater" and not falling and virtual.props~=false
     local rlow=bottom(r,legCF(r,posed,true))
@@ -257,7 +271,7 @@ function W:step(character,s,dt,preview)
      for _,m in {r,l} do
       local d=low-bottom(m,legCF(m,posed,true))
       local localDelta=posed:VectorToObjectSpace(Vector3.new(0,d,0))
-      m.Transform=m.C0.Rotation:Inverse()*CFrame.new(localDelta)*m.C0.Rotation*m.Transform
+      m.Transform=c0(m).Rotation:Inverse()*CFrame.new(localDelta)*c0(m).Rotation*m.Transform
      end
      rlow=bottom(r,legCF(r,posed,true));llow=bottom(l,legCF(l,posed,true))
     end
@@ -274,7 +288,7 @@ function W:step(character,s,dt,preview)
     else
      dy=hover*weight
     end
-    root.Transform=root.C0.Rotation:Inverse()*CFrame.new(0,dy,0)*root.C0.Rotation*root.Transform
+    root.Transform=c0(root).Rotation:Inverse()*CFrame.new(0,dy,0)*c0(root).Rotation*root.Transform
    end
    self.signatureActive=true;self.airProgress=airProgress
    return
@@ -325,7 +339,7 @@ function W:step(character,s,dt,preview)
    sz=origin[7]*.12
   end
   -- Scale with R6 body dimensions; never change the base C0 or Part sizes.
-  local rigScale=if m.Part0 then math.clamp(m.Part0.Size.Y/2,.65,1.6) else 1
+  local rigScale=if part0(m) then math.clamp(part0(m).Size.Y/2,.65,1.6) else 1
   return Vector3.new(sx,sy,sz)*originAmount*rigScale
  end
  -- In the isolated viewport, author full poses in body-part axes. R6 uses
@@ -345,7 +359,7 @@ function W:step(character,s,dt,preview)
   local rx=math.clamp(x*gain,-1.7,1.7)
   local ry=math.clamp(y*gain,-1.2,1.2)
   local rz=math.clamp(z*gain,-1.5,1.5)
-  local basis=m.C0.Rotation
+  local basis=c0(m).Rotation
   local body=CFrame.new(cf.Position*(if m==j.Root then 2 else 1.4)+originOffset(m))*CFrame.fromOrientation(rx,ry,rz)
   m.Transform=m.Transform*basis:Inverse()*body*basis
  end
@@ -660,7 +674,7 @@ function W:step(character,s,dt,preview)
  end
  if fullPreview and style=="Cartwheel Flow" and moving>.08 and j.Root then
   -- Full cartwheel roll is confined to the isolated GUI rig.
-  local basis=j.Root.C0.Rotation
+  local basis=c0(j.Root).Rotation
   j.Root.Transform=j.Root.Transform*basis:Inverse()*CFrame.Angles(0,0,ph*.52)*basis
  end
 end
