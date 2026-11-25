@@ -3,6 +3,7 @@
 -- Evaluated at PreSimulation after Animator's own animation tracks.
 local MotionPacks=require(script.Parent.MotionPacks)
 local Signature=require(script.Parent.SignatureR6)
+local MotionStudio=require(script.Parent.MotionStudio)
 local W={}
 W.__index=W
 local function motor(rig,...)
@@ -13,10 +14,18 @@ local function motor(rig,...)
  return nil
 end
 function W.new()
- return setmetatable({character=nil,motors={},phase=0,blend=0,hover=0},W)
+ return setmetatable({character=nil,motors={},phase=0,blend=0,hover=0,liveWrites={},livePose={},liveTime=0,liveAir=0,liveRetry=0},W)
+end
+function W:restoreLive()
+ for m,entry in self.liveWrites do
+  if m.Parent and m.Transform==entry.applied then m.Transform=entry.base end
+ end
+ table.clear(self.liveWrites)
 end
 function W:bind(character)
  if self.character==character then return end
+ self:restoreLive();table.clear(self.livePose)
+ self.liveTime=0;self.liveAir=0;self.liveWasAir=false;self.liveStyle=nil;self.liveState=nil;self.liveTransition=nil;self.liveRetry=0
  self.character=character;self.phase=0;self.blend=0;self.hover=0;self.airTime=0;self.wasAir=false;self.signatureActive=false;self.airProgress=0
  table.clear(self.motors)
  if not character then return end
@@ -64,7 +73,91 @@ local tracks={
  skate={z={.35,.15,-.25,-.72,-.48,.12},y={0,0,0,.12,.55,.4}},
  waddle={z={.55,.3,-.3,-.55,-.3,.3},y={0,0,.12,.2,.7,.6}},
 }
+local runtimeNames={"Root","RightShoulder","LeftShoulder","RightHip","LeftHip","Neck"}
+local secondaryNames={"Waist","RightElbow","LeftElbow","RightKnee","LeftKnee","RightAnkle","LeftAnkle"}
+local function mapped(m,cf)
+ local basis=m.C0.Rotation
+ local scale=if m.Part0 then math.clamp(m.Part0.Size.Y/2,.5,1.7) else 1
+ return basis:Inverse()*CFrame.new(cf.Position*scale)*cf.Rotation*basis
+end
+function W:liveStep(character,s,dt)
+ self:restoreLive()
+ self:bind(character)
+ if not character then return end
+ local hum=character:FindFirstChildOfClass("Humanoid")
+ if not hum or hum.Health<=0 or hum.Sit or s.reduce or not s.walkAnimation or (s.walkIntensity or 0)<=0 then
+  table.clear(self.livePose);self.liveStyle=nil;self.liveState=nil;self.liveWasAir=false;self.liveTime=0;self.liveTransition=nil
+  return
+ end
+ local hs=hum:GetState()
+ if hs==Enum.HumanoidStateType.Seated or hs==Enum.HumanoidStateType.Dead or hs==Enum.HumanoidStateType.Swimming or hs==Enum.HumanoidStateType.Climbing or hs==Enum.HumanoidStateType.Physics or hs==Enum.HumanoidStateType.Ragdoll or hs==Enum.HumanoidStateType.FallingDown or hs==Enum.HumanoidStateType.PlatformStanding or hs==Enum.HumanoidStateType.GettingUp then
+  table.clear(self.livePose);self.liveStyle=nil;self.liveState=nil;self.liveWasAir=false;self.liveTransition=nil;return
+ end
+ dt=math.clamp(dt,0,.1)
+ self.liveRetry+=dt
+ if self.liveRetry>=.35 and (not self.motors.Root or not self.motors.Root.Parent or not self.motors.RightHip or not self.motors.RightHip.Parent or not self.motors.LeftHip or not self.motors.LeftHip.Parent) then
+  self:bind(nil);self:bind(character)
+ end
+ local state=if hs==Enum.HumanoidStateType.Jumping then "Jump" elseif hs==Enum.HumanoidStateType.Freefall then "Fall" elseif hum.MoveDirection.Magnitude<.08 then "Idle" elseif hum.WalkSpeed>19 then "Run" else "Walk"
+ local air=state=="Jump" or state=="Fall"
+ if self.liveSettings~=s then self.liveSettings=s;self.liveConfig=MotionStudio.runtimeSettings(s) end
+ local config=self.liveConfig
+ local styleChanged=self.liveStyle~=config.style
+ local changed=styleChanged or self.liveState~=state
+ if styleChanged then self.liveTime=0;self.liveAir=0 end
+ if air then
+  self.liveAir=if self.liveWasAir and not styleChanged then self.liveAir+dt*config.speed else 0
+ else self.liveAir=0 end
+ self.liveWasAir=air
+ if changed then
+  self.liveFrom=table.clone(self.livePose);self.liveTransition=0
+ end
+ self.liveStyle=config.style;self.liveState=state
+ self.liveTime+=dt*config.speed
+ local authored,hover=MotionStudio.runtimePose(config,self.liveTime,state,self.liveAir)
+ local targets={}
+ for _,name in runtimeNames do
+  local m=self.motors[name]
+  if m and m.Parent then targets[m]=mapped(m,authored[name]) end
+ end
+ for _,name in secondaryNames do
+  local m=self.motors[name]
+  if m and m.Parent then targets[m]=CFrame.identity end
+ end
+ local root=self.motors.Root
+ -- Match grounded foot contact on R6 without changing HumanoidRootPart position.
+ if root and targets[root] and root.Part1 and not air then
+  local neutral=root.C0*root.C1:Inverse()
+  local posed=root.C0*targets[root]*root.C1:Inverse()
+  local floor,low=math.huge,math.huge
+  if hum.RigType==Enum.HumanoidRigType.R6 then
+   for _,m in {self.motors.RightHip,self.motors.LeftHip} do
+    if m and targets[m] and m.Part1 then
+     local sz=m.Part1.Size/2
+     local function bottom(cf)
+      return cf.Position.Y-math.abs(cf.RightVector.Y)*sz.X-math.abs(cf.UpVector.Y)*sz.Y-math.abs(cf.LookVector.Y)*sz.Z
+     end
+     floor=math.min(floor,bottom(neutral*m.C0*m.C1:Inverse()))
+     low=math.min(low,bottom(posed*m.C0*targets[m]*m.C1:Inverse()))
+    end
+   end
+  end
+  local correction=if floor<math.huge and low<math.huge then math.clamp(floor-low,-1.5,1.5) else 0
+  local basis=root.C0.Rotation
+  targets[root]=basis:Inverse()*CFrame.new(0,correction+hover,0)*basis*targets[root]
+ end
+ self.liveTransition=math.min(1,(self.liveTransition or 0)+dt/.14)
+ local k=self.liveTransition*self.liveTransition*(3-2*self.liveTransition)
+ for m,target in targets do
+  local base=m.Transform
+  local old=self.liveFrom and self.liveFrom[m] or base
+  local result=if k<1 then old:Lerp(target,k) else target
+  self.liveWrites[m]={base=base,applied=result};self.livePose[m]=result
+  m.Transform=result
+ end
+end
 function W:step(character,s,dt,preview)
+ if not preview then self:liveStep(character,s,dt);return end
  self:bind(character)
  if not character then return end
  local hum=character:FindFirstChildOfClass("Humanoid")
@@ -560,6 +653,7 @@ function W:step(character,s,dt,preview)
  end
 end
 function W:destroy()
+ self:restoreLive();table.clear(self.livePose)
  self.character=nil
  table.clear(self.motors)
 end
