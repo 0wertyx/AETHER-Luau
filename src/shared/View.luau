@@ -10,8 +10,18 @@ function V:nativeLockAvailable()
  -- If the setting cannot be read, yield rather than fight the native controller.
  return not ok or available
 end
-function V.new(player,layer)
- local self=setmetatable({player=player,angle=0,clock=0},V)
+function V.new(player,layer,nativeOwner,inheritedNative)
+ local self=setmetatable({player=player,angle=0,clock=0,nativeOwner=nativeOwner},V)
+ -- The standard Roblox property disables both native Shift bindings, without intercepting movement keys.
+ local ok,before=pcall(function() return player.DevEnableMouseLock end)
+ if ok then
+  self.nativeOriginal=if type(inheritedNative)=="boolean" then inheritedNative else before
+  local changed=pcall(function() player.DevEnableMouseLock=false end)
+  if changed and player.DevEnableMouseLock==false then
+   self.nativeSuppressed=true
+   if nativeOwner then nativeOwner:SetAttribute("AETHERNativeLockOriginal",self.nativeOriginal) end
+  end
+ end
  -- This anchor marks the exact click pixel. Animated skin always rotates AROUND it.
  self.pointer=U.frame(layer,"MouseHotspot",nil,UDim2.fromOffset(1,1),nil,1)
  self.pointer.Active=false;self.pointer.Interactable=false;self.pointer.Visible=false;self.pointer.ZIndex=10
@@ -103,6 +113,15 @@ end
 function V:destroy()
  self:releaseCamera()
  self:restoreCursor()
+ if self.nativeSuppressed then
+  local pg=self.player:FindFirstChildOfClass("PlayerGui")
+  local current=pg and pg:FindFirstChild("AETHER_Studio")
+  if not current or current==self.nativeOwner then
+   pcall(function()
+    if self.player.DevEnableMouseLock==false then self.player.DevEnableMouseLock=self.nativeOriginal end
+   end)
+  end
+ end
  if self.previewImage then self.previewImage:Destroy();self.previewImage=nil end
  self.glyph:destroy()
  self.motionTrail:destroy()
@@ -117,7 +136,7 @@ function V:cursorStep(s)
  local camera=workspace.CurrentCamera
  local thirdPerson=camera and (camera.CFrame.Position-camera.Focus.Position).Magnitude>1.1
  local ownsLock=self.mouse~=nil and self.lockHum~=nil
- local locked=thirdPerson and (ownsLock or (not s.lock and self:nativeLockAvailable())) and Input.MouseBehavior==Enum.MouseBehavior.LockCenter and Input.MouseEnabled and not Gui.MenuIsOpen and not self.menuOpen and not Input:GetFocusedTextBox() and Input:GetLastInputType()~=Enum.UserInputType.Touch
+ local locked=thirdPerson and ownsLock and Input.MouseBehavior==Enum.MouseBehavior.LockCenter and Input.MouseEnabled and not Gui.MenuIsOpen and not self.menuOpen and not Input:GetFocusedTextBox() and Input:GetLastInputType()~=Enum.UserInputType.Touch
  self.shiftReticleActive=locked==true
  local show=s.cursor and not locked and Input.MouseEnabled and not Gui.MenuIsOpen
   and (not image or s.image~="") and Input:GetLastInputType()~=Enum.UserInputType.Touch
@@ -192,7 +211,7 @@ function V:step(s,hum,menu,dt,t)
  local camera=workspace.CurrentCamera
  local hrp=hum and hum.Parent and hum.Parent:FindFirstChild("HumanoidRootPart")
  local native=self:nativeLockAvailable()
- local nativeOwnsFollow=native and s.cameraMode=="Follow"
+ local nativeOwnsFollow=native and s.lock and s.cameraMode=="Follow"
  local requested=s.lock and s.cameraMode=="Follow" and not native
  local enabled=(s.camera or requested) and hrp and hum.Health>0 and camera and not nativeOwnsFollow
  self.lockOwner=if s.lock and nativeOwnsFollow then "Waiting for Roblox Shift Lock off" elseif nativeOwnsFollow then "Roblox" elseif requested then "AETHER" else "None"

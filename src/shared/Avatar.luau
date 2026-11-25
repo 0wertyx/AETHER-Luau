@@ -237,8 +237,12 @@ function A:bind(char,body,head,s)
  for index in S.haloV2Styles do
   local k="haloV2"..index
   if s[k.."Enabled"] then
-   local layer={index=index,paths={}}
+   local layer={index=index,paths={},vertical=0,horizontal=0}
    for _,points in haloV2Paths(index,s[k.."Count"]) do
+    for _,p in points do
+     layer.vertical=math.max(layer.vertical,math.abs(p.Y))
+     layer.horizontal=math.max(layer.horizontal,Vector2.new(p.X,p.Z).Magnitude)
+    end
     local edges={}
     for i=1,#points-1 do edges[i]=self:add(part(self.root,"HaloV2Outline",Vector3.one,Enum.PartType.Block,true)) end
     table.insert(layer.paths,{points=points,edges=edges})
@@ -444,12 +448,17 @@ function A:step(char,s,t)
  local haloY=s.haloHeight/100+.07
   +math.sin(time*1.8)*.045
   +bob*.11
+ local stackTop=head.Size.Y*.5+.12
+ if s.halo then stackTop=math.max(stackTop,haloY+1.4*s.haloRadius/100+.55) end
  for _,layer in self.haloV2 do
   local k="haloV2"..layer.index
   local radius=s[k.."Radius"]/100
   local phase=time*s[k.."Spin"]*.012
-  local height=s[k.."Height"]/100+(layer.index-1)*.08+math.sin(time*1.8+layer.index)*.035
-  local basis=head.CFrame*CFrame.new(0,height,0)*CFrame.Angles(math.rad(s[k.."Tilt"]),phase,0)
+  local tilt=math.rad(s[k.."Tilt"])
+  local extent=radius*(layer.vertical+layer.horizontal*math.abs(math.sin(tilt)))+.045*s[k.."Thickness"]/100
+  local height=math.max(s[k.."Height"]/100+math.sin(time*1.8)*.035,stackTop+.12+extent)
+  stackTop=height+extent
+  local basis=head.CFrame*CFrame.new(0,height,0)*CFrame.Angles(tilt,phase,0)
   local primary,secondary=U.hex(s[k.."Color"]),U.hex(s[k.."Secondary"])
   local opacity=s[k.."Opacity"]/100
   local glow=s[k.."Glow"]/100
@@ -599,7 +608,7 @@ function A:step(char,s,t)
   if self.light then
    self.light.Color=color
    self.light.Range=s.neonRange
-   self.light.Brightness=s.neonLight*.035*(1+energy*.45)
+   self.light.Brightness=s.neonLight*.012*(1+energy*.25)
   end
  end
 end

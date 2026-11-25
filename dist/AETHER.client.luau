@@ -261,8 +261,12 @@ function A:bind(char,body,head,s)
  for index in S.haloV2Styles do
   local k="haloV2"..index
   if s[k.."Enabled"] then
-   local layer={index=index,paths={}}
+   local layer={index=index,paths={},vertical=0,horizontal=0}
    for _,points in haloV2Paths(index,s[k.."Count"]) do
+    for _,p in points do
+     layer.vertical=math.max(layer.vertical,math.abs(p.Y))
+     layer.horizontal=math.max(layer.horizontal,Vector2.new(p.X,p.Z).Magnitude)
+    end
     local edges={}
     for i=1,#points-1 do edges[i]=self:add(part(self.root,"HaloV2Outline",Vector3.one,Enum.PartType.Block,true)) end
     table.insert(layer.paths,{points=points,edges=edges})
@@ -468,12 +472,17 @@ function A:step(char,s,t)
  local haloY=s.haloHeight/100+.07
   +math.sin(time*1.8)*.045
   +bob*.11
+ local stackTop=head.Size.Y*.5+.12
+ if s.halo then stackTop=math.max(stackTop,haloY+1.4*s.haloRadius/100+.55) end
  for _,layer in self.haloV2 do
   local k="haloV2"..layer.index
   local radius=s[k.."Radius"]/100
   local phase=time*s[k.."Spin"]*.012
-  local height=s[k.."Height"]/100+(layer.index-1)*.08+math.sin(time*1.8+layer.index)*.035
-  local basis=head.CFrame*CFrame.new(0,height,0)*CFrame.Angles(math.rad(s[k.."Tilt"]),phase,0)
+  local tilt=math.rad(s[k.."Tilt"])
+  local extent=radius*(layer.vertical+layer.horizontal*math.abs(math.sin(tilt)))+.045*s[k.."Thickness"]/100
+  local height=math.max(s[k.."Height"]/100+math.sin(time*1.8)*.035,stackTop+.12+extent)
+  stackTop=height+extent
+  local basis=head.CFrame*CFrame.new(0,height,0)*CFrame.Angles(tilt,phase,0)
   local primary,secondary=U.hex(s[k.."Color"]),U.hex(s[k.."Secondary"])
   local opacity=s[k.."Opacity"]/100
   local glow=s[k.."Glow"]/100
@@ -623,7 +632,7 @@ function A:step(char,s,t)
   if self.light then
    self.light.Color=color
    self.light.Range=s.neonRange
-   self.light.Brightness=s.neonLight*.035*(1+energy*.45)
+   self.light.Brightness=s.neonLight*.012*(1+energy*.25)
   end
  end
 end
@@ -951,7 +960,7 @@ function UI.new(app,gui,scope)
  self.place=U.label(self.panel,"PLACE  /  "..tostring(game.PlaceId),10,nil,nil);self.place.TextColor3=dim
  self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
  self.pageBox=U.new("Frame",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
- self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Camera","Interaction","Fonts","Simulator","Scripts","Profiles","Updates","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
+ self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Interaction","Fonts","Simulator","Scripts","Profiles","Updates","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
  function self:layout()
   local sz=self.stage.AbsoluteSize
   if sz.X<2 or sz.Y<2 then return end
@@ -1190,6 +1199,8 @@ function UI:show(on)
 end
 function UI:message(s) self.status.Text=s end
 function UI:open(tab)
+ if tab=="Camera" then tab="Interaction" end
+ self.app.bindingLockKey=false
  if not self.buttons[tab] then return end;self:show(true);self.drag=nil;if self.page then self.page:clear() end;self.app.preview=nil;self.page=U.scope();self.syncs={};self.controlKeys={};self.colorKeys={};self.seq=0;self.tab=tab
  self.pageProgress=if self.app.s.reduce or not self.app.s.tabTransition or self.app.s.menuTransition=="Off" then 1 else 0
  transition(self.pageBox,U.ease(self.pageProgress,self.app.s.ease))
@@ -3934,7 +3945,7 @@ local function avatarPreview(ui,a,worldMode)
     if state==Enum.UserInputState.Begin then
      keys[input.KeyCode]=true
      if input.KeyCode==Enum.KeyCode.Space then jumpRequested=true end
-     if input.KeyCode==Enum.KeyCode.LeftAlt then shiftLock=not shiftLock end
+     if input.KeyCode.Name==a.s.lockKey then shiftLock=not shiftLock end
     elseif state==Enum.UserInputState.End or state==Enum.UserInputState.Cancel then keys[input.KeyCode]=nil end
     return Enum.ContextActionResult.Sink
    end,false,Enum.ContextActionPriority.High.Value+100,Enum.KeyCode.W,Enum.KeyCode.A,Enum.KeyCode.S,Enum.KeyCode.D,Enum.KeyCode.Up,Enum.KeyCode.Down,Enum.KeyCode.Left,Enum.KeyCode.Right,Enum.KeyCode.Space,Enum.KeyCode.LeftShift)
@@ -4031,6 +4042,97 @@ end
 local function gallery(ui,a)
  ui:title("24 DIRECTION STYLES · HD");for i=1,#S.shapes,4 do local r=ui:row(72,"ShapeGallery");for j=0,3 do local n=S.shapes[i+j];local b=U.button(r,"");b.Name=n;b.Position=UDim2.fromScale(j/4,0);b.Size=UDim2.new(.25,-3,1,0);local g=Symbol.gallery(b,n,30);g.root.Position=UDim2.fromScale(.5,.37);g.root.Size=UDim2.fromOffset(47,47);local l=U.label(b,n,10,UDim2.fromScale(0,.65),UDim2.fromScale(1,.3));l.TextXAlignment=Enum.TextXAlignment.Center;ui.page:on(b.Activated,function() a:set("shape",n) end);ui:watch(function() b.BackgroundColor3=if a.s.shape==n then U.hex("624785") else U.hex("30273E");g:paint(U.hex(a.s.arrowA),U.hex(a.s.arrowB),a.s.ink,a.s.spread) end) end end
 end
+-- A static low-detail 3D thumbnail uses the same halo/wing renderer as the full preview.
+local function effectThumbnail(ui,card,a,item,kind)
+ local host=U.frame(card,"EffectThumbnail",UDim2.fromOffset(4,4),UDim2.new(1,-8,0,66),Color3.fromRGB(27,22,43),0)
+ host.ClipsDescendants=true;U.corner(host,7)
+ if kind=="Ambient" then
+  local row=item.sky
+  U.gradient(host,U.hex(row[2]),U.hex(row[4]),90)
+  local sun=U.frame(host,"Sun",UDim2.fromScale(.67,.28),UDim2.fromOffset(16,16),Color3.fromRGB(255,241,211),.1);U.corner(sun,99)
+  return
+ end
+ if kind=="Neon" then
+  local shade=U.hex(a.s.neonColor)
+  local symbol=U.label(host,item.icon or "✦",35)
+  symbol.TextXAlignment=Enum.TextXAlignment.Center;symbol.TextColor3=shade;symbol:SetAttribute("AETHERKeepFontColor",true)
+  U.gradient(host,Color3.fromRGB(39,30,66),Color3.fromRGB(17,14,32),45)
+  return
+ end
+ local vp=U.new("ViewportFrame",{Name="Effect3D",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Ambient=Color3.fromRGB(165,145,200),LightColor=Color3.fromRGB(245,230,255)},host)
+ local wm=U.new("WorldModel",{},vp)
+ local cam=U.new("Camera",{FieldOfView=40},vp);vp.CurrentCamera=cam
+ local rig=Avatar.mannequin(wm)
+ local fx=Avatar.new(wm,true)
+ ui.page:add(function() fx:clear() end)
+ local s=S.defaults();s.wings=false;s.halo=false;s.neon=false;s.reduce=true;s.wingDetail="Balanced";s.haloDetail="Balanced"
+ if kind=="Halos" then
+  if item.classic then s.halo=true;s.haloStyle=item.name
+  else s[item.key.."Enabled"]=true;s[item.key.."Count"]=5 end
+ else s.wings=true;s.wingStyle=item.name end
+ local ok,err=pcall(function() fx:step(rig,s,0) end)
+ if not ok then
+  fx:clear();vp:Destroy()
+  local fallback=U.label(host,"Preview unavailable",10);fallback.TextWrapped=true;fallback.TextXAlignment=Enum.TextXAlignment.Center
+  return
+ end
+ local focus=if kind=="Halos" then Vector3.new(0,4.1,0) else Vector3.new(0,1.8,.5)
+ local direction=if kind=="Halos" then Vector3.new(2,3,5).Unit else Vector3.new(0,1,7).Unit
+ local radius=if kind=="Halos" then 2.0 else 4.1
+ local function fit()
+  local size=vp.AbsoluteSize
+  if size.X<2 or size.Y<2 then return end
+  local halfV=math.rad(cam.FieldOfView*.5)
+  local halfH=math.atan(math.tan(halfV)*size.X/size.Y)
+  local distance=radius/math.sin(math.min(halfH,halfV))*1.02
+  cam.CFrame=CFrame.lookAt(focus+direction*distance,focus)
+ end
+ fit();ui.page:on(vp:GetPropertyChangedSignal("AbsoluteSize"),fit)
+end
+local function catalog(ui,a,kind,items,selected,active,toggle,selectItem)
+ a.catalogPages=a.catalogPages or {}
+ local maxPage=math.max(1,math.ceil(#items/9))
+ local page=math.clamp(a.catalogPages[kind] or 1,1,maxPage)
+ a.catalogPages[kind]=page
+ local first=(page-1)*9+1
+ for start=first,math.min(first+8,#items),3 do
+  local row=ui:row(126,"EffectGallery");row.BackgroundTransparency=1
+  for j=0,2 do
+   local item=items[start+j]
+   if not item or start+j>first+8 then break end
+   local card=U.frame(row,"EffectCard",UDim2.fromScale(j/3,0),UDim2.new(1/3,-4,1,0),Color3.fromRGB(38,31,57),.05)
+   U.corner(card,9);local rim=U.stroke(card,Color3.fromRGB(115,92,157),.5,1)
+   effectThumbnail(ui,card,a,item,kind)
+   local name=U.label(card,item.name,11,UDim2.fromOffset(4,71),UDim2.new(1,-8,0,24))
+   name.TextWrapped=true;name.TextTruncate=Enum.TextTruncate.None;name.TextXAlignment=Enum.TextXAlignment.Center
+   local state=U.button(card,"");state.Position=UDim2.new(0,4,1,-27);state.Size=UDim2.new(if selectItem then .55 else 1,-6,0,23);state.TextSize=9
+   ui.page:on(state.Activated,function() ui:action(function() toggle(item) end) end)
+   local edit
+   if selectItem then
+    edit=U.button(card,"EDIT");edit.Position=UDim2.new(.55,2,1,-27);edit.Size=UDim2.new(.45,-6,0,23);edit.TextSize=9
+    ui.page:on(edit.Activated,function() ui:action(function() selectItem(item) end) end)
+   end
+   ui:watch(function()
+    local on=active(item)
+    state.Text=if on then "ENABLED" else "DISABLED"
+    state.BackgroundColor3=if on then Color3.fromRGB(79,63,124) else Color3.fromRGB(48,40,65)
+    rim.Color=if on then U.hex(a.s.accent) else Color3.fromRGB(115,92,157)
+    rim.Transparency=if on then .12 else .6
+    if edit then edit.Text=if selected==item.id then "CLOSE" else "EDIT" end
+   end)
+  end
+ end
+ local info=ui:note(string.format("PAGE %d / %d · %d styles",page,maxPage,#items),24);info.TextXAlignment=Enum.TextXAlignment.Center
+ if maxPage>1 then ui:chips({"Previous","Next"},function(n)
+  a.catalogPages[kind]=math.clamp(page+(if n=="Next" then 1 else -1),1,maxPage);ui:open(kind)
+ end,2) end
+end
+local function reopenCatalog(ui,a,kind)
+ local y=ui.sc.CanvasPosition.Y
+ ui:open(kind)
+ local page,sc=ui.page,ui.sc
+ task.defer(function() if not page.dead and sc.Parent then sc.CanvasPosition=Vector2.new(0,math.max(0,y)) end end)
+end
 local function simMap(ui,a)
  local map=ui:row(132,"VirtualMap");map.ClipsDescendants=true;map.BackgroundColor3=U.hex("211E36");local center=U.label(map,"CAMERA ↑",11,UDim2.new(.5,-32,.5,-8),UDim2.fromOffset(70,18));center.TextColor3=U.hex(a.s.accent)
  for _,p in a.sim.players do local b=U.button(map,tostring(p.id));b.AnchorPoint=Vector2.new(.5,.5);b.Size=UDim2.fromOffset(27,25);b.Position=UDim2.fromScale(.5+p.x*.45,.5+p.y*.45);ui.page:on(b.InputBegan,function(i) ui:begin(i,function(pos) local rel=pos-map.AbsolutePosition;p.x=math.clamp((rel.X/map.AbsoluteSize.X-.5)/.45,-1,1);p.y=math.clamp((rel.Y/map.AbsoluteSize.Y-.5)/.45,-1,1);b.Position=UDim2.fromScale(.5+p.x*.45,.5+p.y*.45) end) end) end
@@ -4116,92 +4218,110 @@ local function scripts(ui,a)
  end
 end
 function E.render(a,tab,ui)
- if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. F8 opens Studio. LeftAlt controls AETHER Alt Lock. Disable Roblox Shift Lock Switch first.",43);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme",{topCapsule=true,robloxRail=true,constellationBgA=true,constellationBgB=true,constellationLineA=true,constellationLineB=true,constellationNodeA=true,constellationNodeB=true});ui:title("CONSTELLATION COLORS");for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end;ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
+ if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. F8 opens Studio. Custom lock keybind is in Interaction. Native Shift Lock is disabled where Roblox allows it.",43);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme",{topCapsule=true,robloxRail=true,constellationBgA=true,constellationBgB=true,constellationLineA=true,constellationLineB=true,constellationNodeA=true,constellationNodeB=true});ui:title("CONSTELLATION COLORS");for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end;ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
  elseif tab=="HUD" then preview(ui,a,true);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:control("compact");ui:title("TOP / LEFT PANELS");for _,v in {"topCapsule","robloxRail","movePanels"} do ui:control(v) end;ui:note("Enable moving panels to drag the AETHER capsule and CHAT / BAG / LIST shortcuts.",38);ui:chips({"Reset panel positions"},function() a:patch({topCustom=false,railCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);local widgets={"hp","clock","profile","dock","top","rail"};if not table.find(widgets,a.hudTab) then a.hudTab="hp" end;ui:chips(widgets,function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
   if k=="top" or k=="rail" then for _,v in {k.."Custom",k.."X",k.."Y"} do ui:control(v) end
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
   if tab=="Character" then
-   ui:title("AETHER MOTION STUDIO V12.12")
+   ui:title("AETHER MOTION STUDIO V12.13")
    MotionStudio.mount(ui,a)
   else avatarPreview(ui,a) end
   if tab=="Halos" then
    ui:title("HALO COLLECTION")
-   ui:note("All halo styles in one list. Layered styles can be combined; classic styles share one active slot.",38)
+   ui:note("Layered halos can be combined. Classic styles share one slot; active layers are automatically spaced vertically.",40)
    local collection={}
-   for i,style in S.haloV2Styles do
-    collection[#collection+1]={id="layer:"..i,name=style,key="haloV2"..i}
-   end
-   for _,style in S.defs.haloStyle.min do
-    collection[#collection+1]={id="classic:"..style,name=style,classic=true}
-   end
+   for i,style in S.haloV2Styles do collection[#collection+1]={id="layer:"..i,name=style,key="haloV2"..i} end
+   for _,style in S.defs.haloStyle.min do collection[#collection+1]={id="classic:"..style,name=style,classic=true} end
    local selected=a.haloSelected
    local function active(item)
     if item.classic then return a.s.halo and a.s.haloStyle==item.name end
     return a.s[item.key.."Enabled"]
    end
-   for _,entry in collection do
-    local item=entry
-    local row=ui:row(42,"HaloStyle")
-    local label=U.label(row,item.name,12,UDim2.fromOffset(9,0),UDim2.new(.47,-10,1,0))
-    local edit=U.button(row,"EDIT");edit.Position=UDim2.new(.49,0,0,4);edit.Size=UDim2.new(.20,-4,1,-8);edit.TextSize=11
-    local state=U.button(row,"");state.Position=UDim2.new(.70,0,0,4);state.Size=UDim2.new(.30,-6,1,-8);state.TextSize=10
-    ui.page:on(edit.Activated,function()
-     a.haloSelected=if selected==item.id then nil else item.id
-     a.haloScroll=ui.sc.CanvasPosition.Y
-     ui:open("Halos")
-    end)
-    ui.page:on(state.Activated,function()
-     if item.classic then
-      if active(item) then a:set("halo",false)
-      else a:patch({halo=true,haloStyle=item.name}) end
-     else a:set(item.key.."Enabled",not active(item)) end
-    end)
-    ui:watch(function()
-     local enabled=active(item)
-     state.Text=if enabled then "ENABLED" else "DISABLED"
-     state.BackgroundColor3=if enabled then Color3.fromRGB(75,54,112) else Color3.fromRGB(43,39,52)
-     edit.Text=if selected==item.id then "CLOSE" else "EDIT"
-     edit.BackgroundColor3=if selected==item.id then Color3.fromRGB(84,61,118) else Color3.fromRGB(52,40,77)
-     label.TextColor3=if selected==item.id then U.hex(a.s.accent) else Color3.fromRGB(229,220,242)
-    end)
-    if selected==item.id then
-     ui:title("CUSTOMIZE / "..string.upper(item.name))
-     if item.classic then
-      ui:note("Classic styles share these visual settings. Enable this style to view it on your avatar.",34)
-      ui:colorPicker("haloColor")
-      for _,k in {"haloRadius","haloHeight","haloSpin","haloRainbow","haloDetail","haloWalk","haloGlow"} do ui:control(k) end
-     else
-      local k=item.key
-      ui:colorPicker(k.."Color");ui:colorPicker(k.."Secondary")
-      for _,suffix in {"Radius","Height","Spin","Opacity","Glow","Thickness","Count","Tilt"} do ui:control(k..suffix) end
-     end
+   catalog(ui,a,"Halos",collection,selected,active,function(item)
+    if item.classic then
+     if active(item) then a:set("halo",false) else a:patch({halo=true,haloStyle=item.name}) end
+    else a:set(item.key.."Enabled",not active(item)) end
+   end,function(item)
+    a.haloSelected=if selected==item.id then nil else item.id
+    reopenCatalog(ui,a,"Halos")
+   end)
+   ui:chips({"Disable all halos"},function()
+    local patch={halo=false};for i in S.haloV2Styles do patch["haloV2"..i.."Enabled"]=false end;a:patch(patch)
+   end,1)
+   for _,item in collection do
+    if selected~=item.id then continue end
+    ui:title("CUSTOMIZE / "..string.upper(item.name))
+    if item.classic then
+     ui:colorPicker("haloColor")
+     for _,k in {"haloRadius","haloHeight","haloSpin","haloRainbow","haloDetail","haloWalk","haloGlow"} do ui:control(k) end
+    else
+     local k=item.key
+     ui:colorPicker(k.."Color");ui:colorPicker(k.."Secondary")
+     for _,suffix in {"Radius","Height","Spin","Opacity","Glow","Thickness","Count","Tilt"} do ui:control(k..suffix) end
     end
+    break
    end
-   if a.haloScroll then
-    local y=a.haloScroll;a.haloScroll=nil
-    local page,sc=ui.page,ui.sc
-    task.defer(function()
-     if not page.dead and sc.Parent then sc.CanvasPosition=Vector2.new(0,math.max(0,y)) end
-    end)
-   end
-  elseif tab~="Character" then preset(ui,a,tab);ui:group(tab) end
- elseif tab=="Ambient" then local sky=ui:row(106,"SkyPreview");local grad=U.gradient(sky,Color3.new(),Color3.new(),90);local sun=U.frame(sky,"Sun",nil,UDim2.fromOffset(30,30));U.corner(sun,30);ui:watch(function() local s=a.s;sky.BackgroundColor3=Color3.new(1,1,1);grad.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,U.hex(s.skyA)),ColorSequenceKeypoint.new(.64,U.hex(s.skyB)),ColorSequenceKeypoint.new(1,U.hex(s.skyC))});sun.BackgroundColor3=U.hex(s.skyC);sun.Position=UDim2.fromScale(.7,.66-.45*math.sin(s.time/240*math.pi));sun.BackgroundTransparency=.04+s.fog*.004 end);preset(ui,a,tab);ui:group(tab,{starfallA=true,starfallB=true});ui:title("STARFALL COLORS");ui:colorPicker("starfallA");ui:colorPicker("starfallB")
+  elseif tab=="Wings" then
+   ui:title("WING COLLECTION")
+   local items={}
+   for _,style in S.defs.wingStyle.min do items[#items+1]={id=style,name=style} end
+   catalog(ui,a,"Wings",items,a.wingSelected,function(item) return a.s.wings and a.s.wingStyle==item.name end,function(item)
+    if a.s.wings and a.s.wingStyle==item.name then a:set("wings",false) else a:patch({wings=true,wingStyle=item.name}) end
+   end,function(item)
+    a.wingSelected=if a.wingSelected==item.id then nil else item.id
+    if a.wingSelected then a:patch({wings=true,wingStyle=item.name}) end
+    reopenCatalog(ui,a,"Wings")
+   end)
+   if a.wingSelected then ui:title("CUSTOMIZE / "..string.upper(a.wingSelected));ui:group("Wings",{wingStyle=true,wings=true}) end
+  elseif tab=="Neon" then
+   ui:title("EFFECT COLLECTION")
+   local items={}
+   for i,style in S.defs.neonMotion.min do items[#items+1]={id=style,name=style,icon=({"◇","◉","✧","♥","≈","✦"})[i]} end
+   items[#items+1]={id="aura",name="Aura",icon="✺"};items[#items+1]={id="trail",name="Trail",icon="≋"}
+   catalog(ui,a,"Neon",items,nil,function(item)
+    if item.id=="aura" or item.id=="trail" then return a.s[item.id] end
+    return a.s.neon and a.s.neonMotion==item.name
+   end,function(item)
+    if item.id=="aura" or item.id=="trail" then a:set(item.id,not a.s[item.id])
+    elseif a.s.neon and a.s.neonMotion==item.name then a:set("neon",false)
+    else a:patch({neon=true,neonMotion=item.name}) end
+   end)
+   ui:title("EFFECT SETTINGS");ui:group("Neon",{visualBloom=true,visualBloomStrength=true,visualBloomRadius=true,neonMotion=true})
+   for _,k in {"auraRate","trailLife","auraColor"} do ui:control(k) end
+  end
+ elseif tab=="Ambient" then
+  ui:title("AMBIENT COLLECTION")
+  local items={}
+  for _,row in S.skies do items[#items+1]={id=row[1],name=row[1],sky=row} end
+  local function active(item) return a.s.ambient and a.s.skyA==item.sky[2] and a.s.skyB==item.sky[3] and a.s.skyC==item.sky[4] end
+  catalog(ui,a,"Ambient",items,nil,active,function(item)
+   if active(item) then a:set("ambient",false) else a:patch(S.sky(item.sky)) end
+  end)
+  ui:title("AMBIENT SETTINGS")
+  ui:group("Ambient",{starfallA=true,starfallB=true,bloom=true,worldBloomSize=true,worldExposure=true})
+  ui:title("STARFALL COLORS");ui:colorPicker("starfallA");ui:colorPicker("starfallB")
  elseif tab=="Indicators" then preview(ui,a);gallery(ui,a);ui:group(tab,{shape=true});ui:title("PER-PLAYER OVERRIDE");local id=ui:box("UserId or simulator ID","1");local label=ui:box("Label override","");local color=ui:box("Override hex",a.s.arrowA);ui:chips({"Assign current shape","Remove override"},function(k) local p=S.copy(a.s.players);if k=="Assign current shape" then p[id.Text]={label=label.Text,color=color.Text,shape=a.s.shape} else p[id.Text]=nil end;a:set("players",p);ui:message("Overrides updated") end,2)
  elseif tab=="Cursor" then local f=ui:row(94,"CursorPreview");local host=U.frame(f,"OriginalCursorPreview",UDim2.fromScale(.5,.5),UDim2.fromOffset(60,60),nil,1);host.AnchorPoint=Vector2.new(.5,.5);a.preview={cursorHost=host};preset(ui,a,tab);ui:group(tab,{cursorTrailA=true,cursorTrailB=true});ui:title("TRAIL COLORS");ui:colorPicker("cursorTrailA");ui:colorPicker("cursorTrailB");ui:note("Cursor animation never moves its click hotspot. Enable Show hotspot marker to compare the real mouse position with the skin; use Pointer offset X/Y only for calibration. EditableImage renders desktop SVG; imports need an authorized asset ID.",57)
- elseif tab=="Camera" then ui:note("Camera framing, field of view and orbit controls. Shift-Lock settings are now in Interaction.",40);preset(ui,a,tab);ui:group(tab)
  elseif tab=="Interaction" then
-  ui:title("GAME INTERACTION")
+  ui:title("CAMERA")
+  preset(ui,a,"Camera");ui:group("Camera")
+  ui:title("CUSTOM LOCK / KEYBIND")
+  local keyButton=U.button(ui:row(38,"LockKeyCapture"),"")
+  keyButton.Size=UDim2.new(1,-8,1,-8);keyButton.Position=UDim2.fromOffset(4,4)
+  ui.page:on(keyButton.Activated,function() a.bindingLockKey=not a.bindingLockKey;ui:sync() end)
+  ui:watch(function() keyButton.Text=if a.bindingLockKey then "PRESS A KEY · ESC cancels" else "CHANGE KEY · "..a.s.lockKey end)
+  ui.page:add(function() a.bindingLockKey=false end)
   local lockStatus=ui:note("",45)
   ui:watch(function()
-   lockStatus.Text=if not a.s.lock then "ALT LOCK OFF · LeftAlt toggles; F8 opens Studio."
-    elseif a.view:nativeLockAvailable() then "ALT LOCK WAITING · Roblox Settings > Shift Lock Switch > Off."
-    elseif a.s.cameraMode~="Follow" then "ALT LOCK WAITING · Select Follow camera."
-    else "ALT LOCK READY · LeftAlt toggles in game. Right Shift has no AETHER action."
+   lockStatus.Text=if a.view:nativeLockAvailable() then "Native Shift Lock is still enabled in this place. Turn Shift Lock Switch off."
+    elseif not a.s.lock then "CUSTOM LOCK OFF · "..a.s.lockKey.." toggles; F8 opens Studio."
+    elseif a.s.cameraMode~="Follow" then "CUSTOM LOCK WAITING · Select Follow camera."
+    else "CUSTOM LOCK READY · "..a.s.lockKey.." toggles. Neither Shift is a lock key."
   end)
   ui:title("SHIFT-LOCK / RETICLE")
   for _,k in {"cross","crossScale","crossAlpha"} do ui:control(k) end
-  local inputKeys={inputOverlay=true,inputMouse=true,inputX=true,inputY=true,inputScale=true,inputOpacity=true,inputColor=true,wallhopHelper=true,wallhopX=true,wallhopY=true,wallhopScale=true,wallhopOpacity=true}
+  local inputKeys={lockKey=true,inputOverlay=true,inputMouse=true,inputX=true,inputY=true,inputScale=true,inputOpacity=true,inputColor=true,wallhopHelper=true,wallhopX=true,wallhopY=true,wallhopScale=true,wallhopOpacity=true}
   ui:group(tab,inputKeys)
   ui:title("LIVE INPUT DISPLAY")
   ui:note("Shows your own WASD, Space, Shift and mouse presses. Read-only visualization: no synthetic inputs or game automation.",44)
@@ -4483,11 +4603,11 @@ for index,style in S.haloV2Styles do
  range("Halos",k.."Count","Shape count",if index==5 then 7 else 8,3,12)
  range("Halos",k.."Tilt","Tilt degrees",0,-60,60)
 end
-toggle("Neon","neon","Character outline",true);range("Neon","neonFill","Body tint %",10,0,65);range("Neon","neonLight","Light intensity %",40,0,100);color("Neon","neonColor","Neon color","AB87FF");toggle("Neon","neonRainbow","Rainbow neon",false);choice("Neon","neonMotion","Neon animation","Breathe",{"Solid","Breathe","Aurora","Heartbeat","Flow","Reactive"});range("Neon","neonMotionSpeed","Neon animation speed %",90,0,180);range("Neon","neonMotionStrength","Neon animation intensity %",65,0,100);range("Neon","neonRange","Light radius (studs)",9,2,20);toggle("Neon","visualBloom","Real visual bloom",true);range("Neon","visualBloomStrength","Visual bloom strength %",70,0,100);range("Neon","visualBloomRadius","Visual bloom radius",28,8,56)
-toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA","High sky","282057");color("Ambient","skyB","Horizon","8C70C2");color("Ambient","skyC","Ground light","EAB6CD");range("Ambient","fog","Fog density %",35,0,90);range("Ambient","bloom","Bloom %",40,0,100);range("Ambient","time","Time (tenths of an hour)",166,0,239);range("Ambient","light","Brightness %",105,25,180);range("Ambient","saturation","Saturation %",9,-85,85);range("Ambient","blur","Depth blur",0,0,16);range("Ambient","fade","Atmosphere fade (ms)",700,0,3500);range("Ambient","worldContrast","Contrast %",0,-80,80);range("Ambient","worldExposure","Exposure %",0,-100,100);range("Ambient","worldGlare","Atmospheric glare %",0,0,100);range("Ambient","worldRays","Sun rays %",0,0,100);range("Ambient","worldFocus","Depth of field %",0,0,100);range("Ambient","worldFocusDistance","Focus distance (studs)",60,8,250);range("Ambient","worldBloomSize","Bloom radius",26,0,56);toggle("Ambient","starfall","Falling shapes",false);choice("Ambient","starfallShape","Falling shape","Rounded Star",{"Mixed","Rounded Star","Soft Star","Sparkle","Long Sparkle","Six Point Star","Eight Point Star","Circle","Rounded Square","Diamond","Rounded Triangle","Rounded Hexagon","Rounded Pentagon","Heart"});range("Ambient","starfallRotation","Star rotation (degrees/sec)",8,0,25);choice("Ambient","starfallMaterial","Star material","Neon",{"Neon","Glass","SmoothPlastic","Metal"});range("Ambient","starfallCount","Star count",8,1,16);range("Ambient","starfallSpeed","Fall speed (studs/sec)",35,10,90);range("Ambient","starfallSize","Star size (tenths of stud)",18,5,40);range("Ambient","starfallOpacity","Star opacity %",85,10,100);range("Ambient","starfallGlow","Star neon glow %",80,0,100);toggle("Ambient","starfallTail","Star streaks",true);toggle("Ambient","starfallRainbow","Rainbow stars",false);color("Ambient","starfallA","Star color start","E5D1FF");color("Ambient","starfallB","Star color end","83CFFF")
+toggle("Neon","neon","Character outline",true);range("Neon","neonFill","Body tint %",10,0,65);range("Neon","neonLight","Light intensity %",40,0,100);color("Neon","neonColor","Neon color","AB87FF");toggle("Neon","neonRainbow","Rainbow neon",false);choice("Neon","neonMotion","Neon animation","Breathe",{"Solid","Breathe","Aurora","Heartbeat","Flow","Reactive"});range("Neon","neonMotionSpeed","Neon animation speed %",90,0,180);range("Neon","neonMotionStrength","Neon animation intensity %",65,0,100);range("Neon","neonRange","Light radius (studs)",9,2,20);toggle("Neon","visualBloom","Legacy bloom (inactive)",false);range("Neon","visualBloomStrength","Visual bloom strength %",70,0,100);range("Neon","visualBloomRadius","Visual bloom radius",28,8,56)
+toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA","High sky","282057");color("Ambient","skyB","Horizon","8C70C2");color("Ambient","skyC","Ground light","EAB6CD");range("Ambient","fog","Fog density %",35,0,90);range("Ambient","bloom","Legacy bloom (inactive)",0,0,100);range("Ambient","time","Time (tenths of an hour)",166,0,239);range("Ambient","light","Brightness %",105,25,180);range("Ambient","saturation","Saturation %",9,-85,85);range("Ambient","blur","Depth blur",0,0,16);range("Ambient","fade","Atmosphere fade (ms)",700,0,3500);range("Ambient","worldContrast","Contrast %",0,-80,80);range("Ambient","worldExposure","Exposure %",0,-100,100);range("Ambient","worldGlare","Atmospheric glare %",0,0,100);range("Ambient","worldRays","Sun rays %",0,0,100);range("Ambient","worldFocus","Depth of field %",0,0,100);range("Ambient","worldFocusDistance","Focus distance (studs)",60,8,250);range("Ambient","worldBloomSize","Bloom radius",26,0,56);toggle("Ambient","starfall","Falling shapes",false);choice("Ambient","starfallShape","Falling shape","Rounded Star",{"Mixed","Rounded Star","Soft Star","Sparkle","Long Sparkle","Six Point Star","Eight Point Star","Circle","Rounded Square","Diamond","Rounded Triangle","Rounded Hexagon","Rounded Pentagon","Heart"});range("Ambient","starfallRotation","Star rotation (degrees/sec)",8,0,25);choice("Ambient","starfallMaterial","Star material","Neon",{"Neon","Glass","SmoothPlastic","Metal"});range("Ambient","starfallCount","Star count",8,1,16);range("Ambient","starfallSpeed","Fall speed (studs/sec)",35,10,90);range("Ambient","starfallSize","Star size (tenths of stud)",18,5,40);range("Ambient","starfallOpacity","Star opacity %",85,10,100);range("Ambient","starfallGlow","Star neon glow %",80,0,100);toggle("Ambient","starfallTail","Star streaks",true);toggle("Ambient","starfallRainbow","Rainbow stars",false);color("Ambient","starfallA","Star color start","E5D1FF");color("Ambient","starfallB","Star color end","83CFFF")
 toggle("Indicators","indicators","Directional indicators",true);choice("Indicators","shape","Indicator shape","Soft Triangle",S.shapes);range("Indicators","size","Size (px)",31,14,72);range("Indicators","corners","Corner softness %",30,0,100);range("Indicators","edge","Distance from edges %",11,4,30);range("Indicators","turn","Rotation smoothing (ms)",180,0,800);range("Indicators","ink","Neon intensity %",60,0,100);range("Indicators","spread","Neon spread (px)",6,0,18);range("Indicators","arrowAlpha","Opacity %",95,10,100);range("Indicators","arrowSpeed","Animation speed %",100,40,220);color("Indicators","arrowA","Gradient start","BFA2FF");color("Indicators","arrowB","Gradient end","FF9ECE");toggle("Indicators","arrowRainbow","Rainbow gradient",false);toggle("Indicators","pulse","Pulsation",true);choice("Indicators","labels","Arrow labels","Both",{"Off","Name","Distance","Both"});toggle("Indicators","nearby","Nearby nameplates",false);range("Indicators","reach","Tracking range (studs)",800,50,2500)
 toggle("Cursor","cursor","Custom game pointer",false);choice("Cursor","cursorShape","Pointer shape","Rounded Triangle",{"Rounded Triangle","Soft Arrow","Diamond","Orbit","Spark","Chevron","Neon Pointer","Arrowhead","Split Arrow","Needle","Crystal","Spear","Star Pointer","Compass","Crosshair","Heart","Image"});range("Cursor","cursorSize","Pointer size",30,12,72);range("Cursor","cursorGlow","Pointer glow %",55,0,100);choice("Cursor","cursorPalette","Desktop AETHER palette","Aurora",{"Aurora","Sunset","Ocean","Rainbow","Mono","Custom"});range("Cursor","hotX","Hotspot X %",19,0,100);range("Cursor","hotY","Hotspot Y %",8,0,100);color("Cursor","cursorA","Gradient start","BA99FF");color("Cursor","cursorB","Gradient end","69D9FA");toggle("Cursor","cursorRainbow","Rainbow pointer",true);range("Cursor","cursorSpeed","Gradient speed %",65,10,200);choice("Cursor","cursorAnimation","Cursor animation","Sway",{"Off","Breathe","Sway","Spin","Pulse"});range("Cursor","cursorMotionSpeed","Animation speed %",100,20,200);toggle("Cursor","cursorTrail","Cursor motion trail",false);choice("Cursor","cursorTrailStyle","Trail style","Triple",{"Triple","Single","Dots"});range("Cursor","cursorTrailLength","Trail lifetime (ms)",220,80,450);range("Cursor","cursorTrailWidth","Trail width (tenths of px)",12,5,35);range("Cursor","cursorTrailSpread","Trail spacing (px)",6,2,16);range("Cursor","cursorTrailGlow","Trail glow %",65,0,100);color("Cursor","cursorTrailA","Trail start","F5E5FF");color("Cursor","cursorTrailB","Trail end","9B6BFF");range("Cursor","cursorOffsetX","Pointer offset X (px)",0,-120,120);range("Cursor","cursorOffsetY","Pointer offset Y (px)",0,-120,120);toggle("Cursor","cursorDebug","Show hotspot marker",false);def("Cursor","image","Roblox image asset ID","asset","")
-toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Interaction","lock","Alt Lock · LeftAlt",false);choice("Interaction","lockReticle","Shift-lock reticle","Orbit",{"None","Dot","Ring","Orbit","Cross","Split Cross","Diamond","Triangle","Hexagon","Star","Corners","Compass","Double Ring","Petal"});range("Interaction","reticleSize","Reticle size (px)",28,12,64);range("Interaction","reticleStroke","Reticle thickness (px)",2,1,5);color("Interaction","reticleColor","Reticle color","C8A6FF");toggle("Interaction","reticleRainbow","Rainbow reticle",false);toggle("Interaction","reticleMotion","Reticle animation",true);range("Interaction","reticleSpeed","Reticle animation %",70,0,200);toggle("Interaction","reticleNeon","Neon reticle glow",true);range("Interaction","reticleGlow","Reticle glow intensity %",65,0,100);range("Interaction","reticleGlowRadius","Reticle glow radius (px)",4,1,8);toggle("Interaction","reticleGlowPulse","Pulsating glow",true)
+toggle("Camera","camera","Enable camera settings",false);choice("Camera","cameraMode","Camera mode","Follow",{"Follow","First Person","Orbit"});range("Camera","fov","Field of view",70,40,105);range("Camera","shoulder","Shoulder offset (tenths)",16,-35,35);range("Camera","cameraHeight","Height offset (tenths)",2,-10,35);range("Camera","radius","Orbit radius (studs)",9,4,24);range("Camera","orbitSpeed","Orbit rate (degrees/s)",18,-65,65);range("Camera","follow","Follow smoothing (ms)",140,0,750);toggle("Interaction","lock","Custom camera lock",false);S.lockKeys={"LeftAlt","RightAlt","LeftControl","RightControl","CapsLock","Q","E","R","T","G","H","J","K","L","V","B","C","X","Z","F1","F2","F3","F4","F5","F6","F7","F9","F10","F11","F12"};choice("Interaction","lockKey","Lock keybind","LeftAlt",S.lockKeys);choice("Interaction","lockReticle","Shift-lock reticle","Orbit",{"None","Dot","Ring","Orbit","Cross","Split Cross","Diamond","Triangle","Hexagon","Star","Corners","Compass","Double Ring","Petal"});range("Interaction","reticleSize","Reticle size (px)",28,12,64);range("Interaction","reticleStroke","Reticle thickness (px)",2,1,5);color("Interaction","reticleColor","Reticle color","C8A6FF");toggle("Interaction","reticleRainbow","Rainbow reticle",false);toggle("Interaction","reticleMotion","Reticle animation",true);range("Interaction","reticleSpeed","Reticle animation %",70,0,200);toggle("Interaction","reticleNeon","Neon reticle glow",true);range("Interaction","reticleGlow","Reticle glow intensity %",65,0,100);range("Interaction","reticleGlowRadius","Reticle glow radius (px)",4,1,8);toggle("Interaction","reticleGlowPulse","Pulsating glow",true)
 toggle("Interaction","inputOverlay","Show input overlay",false);toggle("Interaction","inputMouse","Show mouse buttons",true);range("Interaction","inputX","Input overlay X %",91,0,100);range("Interaction","inputY","Input overlay Y %",76,0,100);range("Interaction","inputScale","Input overlay size %",100,60,150);range("Interaction","inputOpacity","Input overlay opacity %",80,20,100);color("Interaction","inputColor","Pressed key color","BCA0FF");toggle("Interaction","wallhopHelper","Wallhop Helper",false);range("Interaction","wallhopX","Wallhop display X %",87,0,100);range("Interaction","wallhopY","Wallhop display Y %",42,0,100);range("Interaction","wallhopScale","Wallhop display size %",100,60,150);range("Interaction","wallhopOpacity","Wallhop display opacity %",90,20,100)
 choice("Fonts","font","Typeface","Gotham",S.fonts);choice("Fonts","weight","Weight","Bold",{"Regular","Medium","Bold","Heavy"});def("Fonts","fontAsset","Optional Roblox font family ID","asset","");text("Fonts","sample","Preview text","AETHER · Your interface",96);range("Fonts","fontSize","HUD type scale %",100,70,145);toggle("Fonts","fontGradient","Gradient lettering",true);range("Fonts","fontOutline","Text outline %",24,0,100);range("Fonts","fontGlow","Letter glow %",35,0,100);color("Fonts","fontA","Letter color","F1E6FF");color("Fonts","fontB","Letter gradient","CCA4FF")
 S.example='hud.widget("status", "Ready", 8, 38)\nfunction onHealthChanged(hp, maxHP)\n  hud.widget("status", hud.join("HP: ", hp), 8, 38)\n  if hp > 0 and hp <= maxHP * 0.3 then\n    hud.animate("status", "pulse")\n  else\n    hud.animate("status", "none")\n  end\nend'
@@ -4539,7 +4659,7 @@ for _,row in {
  {"Emerald Night","071E25","247B65","A6FFD1",37,60,13,78,21,18,-12,21,6,14},
  {"Amber Horizon","442C35","DF8652","FFE0A6",26,56,176,114,14,12,8,22,45,20},
  } do table.insert(S.skies,row) end
-function S.sky(row) return {ambient=true,skyA=row[2],skyB=row[3],skyC=row[4],fog=row[5],bloom=row[6],time=row[7],light=row[8],saturation=row[9],worldContrast=row[10] or 0,worldExposure=row[11] or 0,worldGlare=row[12] or 0,worldRays=row[13] or 0,worldFocus=row[14] or 0,worldFocusDistance=60,worldBloomSize=26} end
+function S.sky(row) return {ambient=true,skyA=row[2],skyB=row[3],skyC=row[4],fog=row[5],bloom=0,time=row[7],light=row[8],saturation=row[9],worldContrast=row[10] or 0,worldExposure=0,worldGlare=row[12] or 0,worldRays=row[13] or 0,worldFocus=row[14] or 0,worldFocusDistance=60,worldBloomSize=26} end
 S.presets={Theme={Violet={accent="A68AFF",secondary="FF89C7",glassColor="211C35"},Ocean={accent="68CEF4",secondary="9B91FF",glassColor="112636"},Rose={accent="F699C6",secondary="D8A5FF",glassColor="301B31"}},HUD={Classic={hpX=82,hpY=13,clockX=3,clockY=93,compact=false},Broadcast={hpX=3,hpY=78,clockX=95,clockY=5,hpScale=115},Compact={compact=true,hpX=96,hpY=16,hpScale=80}},Motion={Calm={speed=70,duration=520},Swift={speed=155,duration=150},Still={reduce=true}},Wings={Seraph={wings=true,wingStyle="Seraph",wingSpan=115},Blade={wings=true,wingStyle="Blade",wingColor="76E3FF"},Sylph={wings=true,wingStyle="Sylph",wingRainbow=true}},Halos={Crown={halo=true,haloStyle="Crown"},Binary={halo=true,haloStyle="Binary",haloColor="82D9FF"}},Character={Comet={aura=true,trail=true,auraColor="AA89FE"}},Neon={Pulse={neon=true,neonRainbow=true,neonLight=65}},Cursor={Aurora={cursor=true,cursorShape="Rounded Triangle",cursorRainbow=true},Diamond={cursor=true,cursorShape="Diamond",hotX=50,hotY=50}},Camera={Portrait={camera=true,cameraMode="Orbit",fov=55,radius=8,lock=false},Shoulder={camera=true,cameraMode="Follow",lock=true}},Fonts={Terminal={font="Code",weight="Bold",fontAsset="",fontGradient=false},Soft={font="FredokaOne",weight="Regular",fontAsset=""}},Indicators={},Ambient={},Scripts={Vitals={cue=S.example}}}
 for _,v in S.shapes do S.presets.Indicators[v]={shape=v,indicators=true} end
 for _,v in S.defs.neonMotion.min do S.presets.Neon[v]={neon=true,neonMotion=v,neonRainbow=(v=="Aurora")} end
@@ -5550,8 +5670,18 @@ function V:nativeLockAvailable()
  -- If the setting cannot be read, yield rather than fight the native controller.
  return not ok or available
 end
-function V.new(player,layer)
- local self=setmetatable({player=player,angle=0,clock=0},V)
+function V.new(player,layer,nativeOwner,inheritedNative)
+ local self=setmetatable({player=player,angle=0,clock=0,nativeOwner=nativeOwner},V)
+ -- The standard Roblox property disables both native Shift bindings, without intercepting movement keys.
+ local ok,before=pcall(function() return player.DevEnableMouseLock end)
+ if ok then
+  self.nativeOriginal=if type(inheritedNative)=="boolean" then inheritedNative else before
+  local changed=pcall(function() player.DevEnableMouseLock=false end)
+  if changed and player.DevEnableMouseLock==false then
+   self.nativeSuppressed=true
+   if nativeOwner then nativeOwner:SetAttribute("AETHERNativeLockOriginal",self.nativeOriginal) end
+  end
+ end
  -- This anchor marks the exact click pixel. Animated skin always rotates AROUND it.
  self.pointer=U.frame(layer,"MouseHotspot",nil,UDim2.fromOffset(1,1),nil,1)
  self.pointer.Active=false;self.pointer.Interactable=false;self.pointer.Visible=false;self.pointer.ZIndex=10
@@ -5643,6 +5773,15 @@ end
 function V:destroy()
  self:releaseCamera()
  self:restoreCursor()
+ if self.nativeSuppressed then
+  local pg=self.player:FindFirstChildOfClass("PlayerGui")
+  local current=pg and pg:FindFirstChild("AETHER_Studio")
+  if not current or current==self.nativeOwner then
+   pcall(function()
+    if self.player.DevEnableMouseLock==false then self.player.DevEnableMouseLock=self.nativeOriginal end
+   end)
+  end
+ end
  if self.previewImage then self.previewImage:Destroy();self.previewImage=nil end
  self.glyph:destroy()
  self.motionTrail:destroy()
@@ -5657,7 +5796,7 @@ function V:cursorStep(s)
  local camera=workspace.CurrentCamera
  local thirdPerson=camera and (camera.CFrame.Position-camera.Focus.Position).Magnitude>1.1
  local ownsLock=self.mouse~=nil and self.lockHum~=nil
- local locked=thirdPerson and (ownsLock or (not s.lock and self:nativeLockAvailable())) and Input.MouseBehavior==Enum.MouseBehavior.LockCenter and Input.MouseEnabled and not Gui.MenuIsOpen and not self.menuOpen and not Input:GetFocusedTextBox() and Input:GetLastInputType()~=Enum.UserInputType.Touch
+ local locked=thirdPerson and ownsLock and Input.MouseBehavior==Enum.MouseBehavior.LockCenter and Input.MouseEnabled and not Gui.MenuIsOpen and not self.menuOpen and not Input:GetFocusedTextBox() and Input:GetLastInputType()~=Enum.UserInputType.Touch
  self.shiftReticleActive=locked==true
  local show=s.cursor and not locked and Input.MouseEnabled and not Gui.MenuIsOpen
   and (not image or s.image~="") and Input:GetLastInputType()~=Enum.UserInputType.Touch
@@ -5732,7 +5871,7 @@ function V:step(s,hum,menu,dt,t)
  local camera=workspace.CurrentCamera
  local hrp=hum and hum.Parent and hum.Parent:FindFirstChild("HumanoidRootPart")
  local native=self:nativeLockAvailable()
- local nativeOwnsFollow=native and s.cameraMode=="Follow"
+ local nativeOwnsFollow=native and s.lock and s.cameraMode=="Follow"
  local requested=s.lock and s.cameraMode=="Follow" and not native
  local enabled=(s.camera or requested) and hrp and hum.Health>0 and camera and not nativeOwnsFollow
  self.lockOwner=if s.lock and nativeOwnsFollow then "Waiting for Roblox Shift Lock off" elseif nativeOwnsFollow then "Roblox" elseif requested then "AETHER" else "None"
@@ -6463,39 +6602,22 @@ function W:clear()
  if self.fxBloom then self.fxBloom:Destroy();self.fxBloom=nil end
  self.fxBloomKey=nil
 end
-function W:visualBloom(s)
- local visual=0
- if s.visualBloom then
-  if s.wings then visual=math.max(visual,s.sketchGlow/100) end
-  if s.halo then visual=math.max(visual,s.haloGlow/100) end
-  for i=1,7 do local k="haloV2"..i;if s[k.."Enabled"] then visual=math.max(visual,s[k.."Glow"]/100) end end
-  if s.neon then visual=math.max(visual,s.neonLight/100) end
-  if s.starfall and s.starfallMaterial=="Neon" and not s.reduce then visual=math.max(visual,s.starfallGlow/100) end
- end
- visual=visual*s.visualBloomStrength/100
- local ambient=if s.ambient then s.bloom/50 else 0
- local intensity=math.max(ambient,visual*1.8)
- local radius=if visual>0 then s.visualBloomRadius else s.worldBloomSize
- local key=tostring(intensity)..":"..tostring(radius)..":"..tostring(visual>0)
- if self.fxBloomKey==key then return end
- self.fxBloomKey=key
- if intensity<=0 then if self.fxBloom then self.fxBloom.Enabled=false end;return end
- if not self.fxBloom then self.fxBloom=U.new("BloomEffect",{Name="AetherVisualBloom"},L) end
- self.fxBloom.Enabled=true;self.fxBloom.Intensity=intensity;self.fxBloom.Size=radius
- self.fxBloom.Threshold=if visual>0 then .85 else 1.2
+function W:visualBloom()
+ -- Do not create a global BloomEffect; only clean up a previous AETHER-owned effect.
+ if self.fxBloom then self.fxBloom:Destroy();self.fxBloom=nil end
 end
 function W:apply(s)
  self.stars:step(s,os.clock())
- self:visualBloom(s)
+ self:visualBloom()
  if not s.ambient then if self.atmo then self:clearAtmosphere() end;return end
- local key=table.concat({s.skyA,s.skyB,s.skyC,s.fog,s.bloom,s.time,s.light,s.saturation,s.blur,s.fade,s.worldContrast,s.worldExposure,s.worldGlare,s.worldRays,s.worldFocus,s.worldFocusDistance,s.worldBloomSize,tostring(s.reduce)},":");if self.key==key then return end;self.key=key;self:stop()
+ local key=table.concat({s.skyA,s.skyB,s.skyC,s.fog,s.time,s.light,s.saturation,s.blur,s.fade,s.worldContrast,s.worldGlare,s.worldRays,s.worldFocus,s.worldFocusDistance,tostring(s.reduce)},":");if self.key==key then return end;self.key=key;self:stop()
  local function own(class) local o=U.new(class,{Name="Aether"..class},L);table.insert(self.owned,o);return o end
  if not self.atmo then self.atmo=L:FindFirstChildOfClass("Atmosphere") or own("Atmosphere");self.grade=own("ColorCorrectionEffect");self.blur=own("BlurEffect");self.rays=own("SunRaysEffect");self.focus=own("DepthOfFieldEffect") end
  local function set(o,p)
   if not self.saved[o] then self.saved[o]={} end;for k in p do if self.saved[o][k]==nil then self.saved[o][k]=o[k] end end
   if s.reduce or s.fade==0 then for k,v in p do o[k]=v end else local tw=T:Create(o,TweenInfo.new(s.fade/1000,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),p);table.insert(self.tweens,tw);tw:Play() end
  end
- set(L,{Ambient=U.hex(s.skyA),OutdoorAmbient=U.hex(s.skyB),Brightness=s.light/40,ClockTime=s.time/10,ExposureCompensation=s.worldExposure/50});set(self.atmo,{Color=U.hex(s.skyC),Decay=U.hex(s.skyB),Density=s.fog/150,Haze=s.fog/30,Glare=s.worldGlare*.03});set(self.grade,{Saturation=s.saturation/100,Contrast=s.worldContrast/100,TintColor=Color3.new(1,1,1):Lerp(U.hex(s.skyC),.13)});set(self.blur,{Size=s.blur});set(self.rays,{Intensity=s.worldRays/100,Spread=.8});set(self.focus,{FarIntensity=s.worldFocus/100,NearIntensity=s.worldFocus*.003,FocusDistance=s.worldFocusDistance,InFocusRadius=25})
+ set(L,{Ambient=U.hex(s.skyA),OutdoorAmbient=U.hex(s.skyB),Brightness=s.light/100,ClockTime=s.time/10});set(self.atmo,{Color=U.hex(s.skyC),Decay=U.hex(s.skyB),Density=s.fog/150,Haze=s.fog/30,Glare=s.worldGlare*.03});set(self.grade,{Saturation=s.saturation/100,Contrast=s.worldContrast/100,TintColor=Color3.new(1,1,1):Lerp(U.hex(s.skyC),.13)});set(self.blur,{Size=s.blur});set(self.rays,{Intensity=s.worldRays/100,Spread=.8});set(self.focus,{FarIntensity=s.worldFocus/100,NearIntensity=s.worldFocus*.003,FocusDistance=s.worldFocusDistance,InFocusRadius=25})
 end
 return W
 end
@@ -6530,6 +6652,7 @@ local Cues = module("Cues")
 -- Prevent multiple copies if the script is restarted in Studio.
 local pg = player:WaitForChild("PlayerGui")
 local prior = pg:FindFirstChild("AETHER_Studio")
+local inheritedNative = prior and prior:GetAttribute("AETHERNativeLockOriginal")
 if prior then prior:Destroy() end
 -- Reloads must not leave a previous high-order pointer behind.
 local priorPointer = pg:FindFirstChild("AETHER_Pointer")
@@ -6789,7 +6912,7 @@ local avatar = Avatar.new(workspace, false)
 local walkMotion = WalkMotion.new()
 local motionProps = PreviewProps.new(workspace, true)
 local world = World.new()
-local view = View.new(player, pointer)
+local view = View.new(player, pointer, gui, inheritedNative)
 app.view = view
 local ui = Controls.new(app, studioLayer, scope)
 app.ui = ui
@@ -6984,11 +7107,21 @@ end)
 if player.Character then bind(player.Character) end
 
 scope:on(UserInputService.InputBegan, function(input, processed)
-    if app.stopping or processed or UserInputService:GetFocusedTextBox() then return end
+    if app.stopping then return end
+    if app.bindingLockKey and ui.opened and ui.tab=="Interaction" then
+        if input.UserInputType==Enum.UserInputType.Keyboard and not UserInputService:GetFocusedTextBox() then
+            local name=input.KeyCode.Name
+            if name=="Escape" then app.bindingLockKey=false;ui:sync()
+            elseif table.find(S.lockKeys,name) then app.bindingLockKey=false;app:set("lockKey",name)
+            else ui:message("Choose a supported key (not Shift, movement or F8).") end
+        end
+        return
+    end
+    if processed or UserInputService:GetFocusedTextBox() then return end
     if app.editingHUD then if input.KeyCode==Enum.KeyCode.F8 then app:editHUD(false) end;return end
     if input.KeyCode == Enum.KeyCode.F8 then
         ui:show(not ui.opened)
-    elseif input.KeyCode == Enum.KeyCode.LeftAlt and app.mode=="Game" and not ui.opened and not game:GetService("GuiService").MenuIsOpen then
+    elseif input.KeyCode.Name == app.s.lockKey and app.mode=="Game" and not ui.opened and not game:GetService("GuiService").MenuIsOpen then
         local enable=not app.s.lock
         if enable then
             app:patch({lock=true,cameraMode="Follow"})

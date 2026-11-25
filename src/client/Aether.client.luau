@@ -29,6 +29,7 @@ local Cues = module("Cues")
 -- Prevent multiple copies if the script is restarted in Studio.
 local pg = player:WaitForChild("PlayerGui")
 local prior = pg:FindFirstChild("AETHER_Studio")
+local inheritedNative = prior and prior:GetAttribute("AETHERNativeLockOriginal")
 if prior then prior:Destroy() end
 -- Reloads must not leave a previous high-order pointer behind.
 local priorPointer = pg:FindFirstChild("AETHER_Pointer")
@@ -288,7 +289,7 @@ local avatar = Avatar.new(workspace, false)
 local walkMotion = WalkMotion.new()
 local motionProps = PreviewProps.new(workspace, true)
 local world = World.new()
-local view = View.new(player, pointer)
+local view = View.new(player, pointer, gui, inheritedNative)
 app.view = view
 local ui = Controls.new(app, studioLayer, scope)
 app.ui = ui
@@ -483,11 +484,21 @@ end)
 if player.Character then bind(player.Character) end
 
 scope:on(UserInputService.InputBegan, function(input, processed)
-    if app.stopping or processed or UserInputService:GetFocusedTextBox() then return end
+    if app.stopping then return end
+    if app.bindingLockKey and ui.opened and ui.tab=="Interaction" then
+        if input.UserInputType==Enum.UserInputType.Keyboard and not UserInputService:GetFocusedTextBox() then
+            local name=input.KeyCode.Name
+            if name=="Escape" then app.bindingLockKey=false;ui:sync()
+            elseif table.find(S.lockKeys,name) then app.bindingLockKey=false;app:set("lockKey",name)
+            else ui:message("Choose a supported key (not Shift, movement or F8).") end
+        end
+        return
+    end
+    if processed or UserInputService:GetFocusedTextBox() then return end
     if app.editingHUD then if input.KeyCode==Enum.KeyCode.F8 then app:editHUD(false) end;return end
     if input.KeyCode == Enum.KeyCode.F8 then
         ui:show(not ui.opened)
-    elseif input.KeyCode == Enum.KeyCode.LeftAlt and app.mode=="Game" and not ui.opened and not game:GetService("GuiService").MenuIsOpen then
+    elseif input.KeyCode.Name == app.s.lockKey and app.mode=="Game" and not ui.opened and not game:GetService("GuiService").MenuIsOpen then
         local enable=not app.s.lock
         if enable then
             app:patch({lock=true,cameraMode="Follow"})

@@ -22,6 +22,7 @@
       }
     },
     "StarterPlayer": {
+      "$properties": {"EnableMouseLockOption": false},
       "StarterPlayerScripts": {
         "AetherClient": {
           "$path": "src/client/Aether.client.luau"
