@@ -4586,11 +4586,13 @@ function E.render(a,tab,ui)
    ui.page:add(function() if a.peers.statusLabel==peerStatus then a.peers.statusLabel=nil end end)
   end
   ui:watch(function() peerStatus.Text=if a.peers then a.peers.status else "Peer relay unavailable" end)
-  if a.volleyball and a.volleyball:available() then
+  if a.volleyball then
    local vb=a.volleyball
    local lp=game:GetService("Players").LocalPlayer
    ui:title("VOLLEYBALL MODIFIERS / BETA")
-   ui:note("Session only. Values are written locally; server acceptance is not guaranteed.",44)
+   local availability=ui:note("",64)
+   ui:watch(function() availability.Text=vb:availabilityStatus() end)
+   ui:note("Session only. Values are written locally; server acceptance is not guaranteed. Controls remain visible while waiting for game attributes.",64)
    for _,name in {"BlockPower","BumpPower","DashPower","DiveSpeed","DrawPower","JumpPower","ServePower","SetPower"} do
     local key="Multiplier_"..name
     local field=ui:box(name,tostring(lp:GetAttribute(key) or ""),32,function(value)
@@ -4627,7 +4629,7 @@ function E.render(a,tab,ui)
    ui:watch(function() if not strength:IsFocused() then strength.Text=tostring(vb.tiltScale) end end)
    local status=ui:note("",64)
    ui:watch(function() status.Text=(if vb.auto then "AUTO TILT ON | " else "AUTO TILT OFF | ")..vb.status end)
-   local diagnostic=ui:note("",80)
+   local diagnostic=ui:note("",96)
    ui:watch(function() diagnostic.Text=vb:tiltDebug() end)
   end
   ui:title("AIR REDIRECTION")
@@ -7486,6 +7488,15 @@ do
             and type(player:GetAttribute("Multiplier_BumpPower"))=="number"
     end
     function vb:available() return available() end
+    function vb:availabilityStatus()
+        if app.mode~="Game" then return "Waiting: switch to Game mode" end
+        local missing={}
+        if type(ReplicatedStorage:GetAttribute("GamemodeId"))~="string" then table.insert(missing,"GamemodeId") end
+        if typeof(player:GetAttribute(tiltKey))~="Vector3" then table.insert(missing,tiltKey) end
+        if type(player:GetAttribute("Multiplier_BumpPower"))~="number" then table.insert(missing,"Multiplier_BumpPower") end
+        if #missing>0 then return "Waiting for attributes: "..table.concat(missing,", ") end
+        return "Game attributes detected"
+    end
     function vb:tiltDebug()
         local current=player:GetAttribute(tiltKey)
         local function fmt(v)

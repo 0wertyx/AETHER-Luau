@@ -131,6 +131,15 @@ do
             and type(player:GetAttribute("Multiplier_BumpPower"))=="number"
     end
     function vb:available() return available() end
+    function vb:availabilityStatus()
+        if app.mode~="Game" then return "Waiting: switch to Game mode" end
+        local missing={}
+        if type(ReplicatedStorage:GetAttribute("GamemodeId"))~="string" then table.insert(missing,"GamemodeId") end
+        if typeof(player:GetAttribute(tiltKey))~="Vector3" then table.insert(missing,tiltKey) end
+        if type(player:GetAttribute("Multiplier_BumpPower"))~="number" then table.insert(missing,"Multiplier_BumpPower") end
+        if #missing>0 then return "Waiting for attributes: "..table.concat(missing,", ") end
+        return "Game attributes detected"
+    end
     function vb:tiltDebug()
         local current=player:GetAttribute(tiltKey)
         local function fmt(v)
