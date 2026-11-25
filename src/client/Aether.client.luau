@@ -117,7 +117,7 @@ end
 -- Volleyball controls are session-local and never serialized into cosmetic presets.
 do
     local ReplicatedStorage=game:GetService("ReplicatedStorage")
-    local vb={originals={},corners={},auto=false,status="Waiting for compatible game",target=nil,tiltBasis="World",tiltScale=1,normalizeTilt=true,tiltWrites=0,tiltOverrides=0}
+    local vb={originals={},multiplierRequests={},corners={},auto=false,status="Waiting for compatible game",target=nil,tiltBasis="World",tiltScale=1,normalizeTilt=true,tiltWrites=0,tiltOverrides=0}
     app.volleyball=vb
     local attrs={
         BlockPower=true,BumpPower=true,DashPower=true,DiveSpeed=true,
@@ -165,16 +165,26 @@ do
         vb.originals[key]=nil
     end
     function vb:setMultiplier(name,value)
-        assert(available(),"Volleyball attributes not available")
+        assert(app.mode=="Game","Switch to Game mode")
         assert(attrs[name],"Unknown multiplier")
         assert(type(value)=="number" and value==value and value>=0 and value<math.huge,"Enter a finite nonnegative number")
         local key="Multiplier_"..name
         assert(type(player:GetAttribute(key))=="number","Multiplier unavailable")
         write(key,value)
+        self.multiplierRequests[name]=value
         self.status=name.." set locally"
+    end
+    function vb:multiplierStatus(name)
+        local actual=player:GetAttribute("Multiplier_"..name)
+        local requested=self.multiplierRequests[name]
+        if type(actual)~="number" then return "Attribute unavailable" end
+        if requested==nil then return string.format("Actual: %.5g | Not edited",actual) end
+        local same=math.abs(actual-requested)<=math.max(1e-6,math.abs(requested)*1e-6)
+        return string.format("Requested: %.5g | Actual: %.5g | %s",requested,actual,if same then "Local match" else "Changed by game")
     end
     function vb:reset()
         self.auto=false
+        table.clear(self.multiplierRequests)
         for key in table.clone(self.originals) do restore(key) end
         self.target=nil
         self.status="Original values restored where unchanged"
@@ -222,8 +232,12 @@ do
         if elapsed<.1 then return end
         elapsed=0
         if app.stopping or not gui.Parent then return end
-        if not available() then
+        if app.mode~="Game" then
             if next(vb.originals) or vb.auto then vb:reset() end
+            return
+        end
+        if not available() then
+            if vb.auto then restore(tiltKey);vb.status="Waiting for Tilt attributes" end
             return
         end
         if not vb.auto then return end

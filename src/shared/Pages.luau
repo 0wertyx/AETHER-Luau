@@ -761,8 +761,21 @@ function E.render(a,tab,ui)
     local field=ui:box(name,tostring(lp:GetAttribute(key) or ""),32,function(value)
      vb:setMultiplier(name,assert(tonumber(value),"Enter a number"))
     end)
-    ui:watch(function()
-     if not field:IsFocused() then field.Text=tostring(lp:GetAttribute(key) or "") end
+    local readback=ui:note("",40)
+    local function refresh()
+     if not field:IsFocused() then
+      local requested=vb.multiplierRequests[name]
+      local value=if requested~=nil then requested else lp:GetAttribute(key)
+      local shown=tostring(value or "")
+      if field.Text~=shown then field.Text=shown end
+     end
+     readback.Text=vb:multiplierStatus(name)
+    end
+    ui:watch(refresh)
+    local elapsed=0
+    ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
+     elapsed+=dt
+     if elapsed>=.25 then elapsed=0;if ui.opened then refresh() end end
     end)
    end
    ui:chips({"Restore original values"},function() vb:reset();ui:sync() end,1)
