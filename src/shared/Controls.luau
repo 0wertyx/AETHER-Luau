@@ -1,4 +1,5 @@
 local StarterGui=game:GetService("StarterGui");local Chat=game:GetService("TextChatService");local Input=game:GetService("UserInputService");local Tween=game:GetService("TweenService");local U=require(script.Parent.Util);local S=require(script.Parent.Schema);local Icons=require(script.Parent.Icons)
+local Constellation=require(script.Parent.Constellation)
 local UI={};UI.__index=UI
 local bg=Color3.fromRGB(19,16,32);local dim=Color3.fromRGB(173,163,197);local soft=Color3.fromRGB(43,35,60)
 function UI.new(app,gui,scope)
@@ -70,20 +71,10 @@ function UI.new(app,gui,scope)
  scope:on(self.railCollapse.Activated,function() self.railCollapsed=not self.railCollapsed;self:layout() end)
  self.panel=U.new("CanvasGroup",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=.035,BorderSizePixel=0,Size=UDim2.fromScale(1,1),GroupTransparency=1,Visible=false,Active=true},self.stage);U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3);self.panel.BackgroundTransparency=1;self.panel.GroupColor3=Color3.new(1,1,1)
  self.panelBackground=U.frame(self.panel,"GlassBackground",nil,nil,Color3.new(1,1,1),.035);self.panelBackground.Active=false;self.panelBackground.Interactable=false;self.panelBackground.ZIndex=1;U.corner(self.panelBackground,17)
- U.gradient(self.panelBackground,bg,Color3.fromRGB(39,30,58),82)
+ self.backgroundGradient=U.gradient(self.panelBackground,bg,Color3.fromRGB(39,30,58),82)
  self.geoLayer=U.frame(self.panel,"GeometryBackground",UDim2.fromOffset(3,3),UDim2.new(1,-6,1,-6),nil,1)
  self.geoLayer.ClipsDescendants=true;self.geoLayer.Active=false;self.geoLayer.ZIndex=1
- self.geo={}
- for i=1,20 do
-  local root=U.frame(self.geoLayer,"FloatingShape"..i,nil,UDim2.fromOffset(48,48),nil,1)
-  root.AnchorPoint=Vector2.new(.5,.5);root.Active=false
-  local edges={}
-  for j=1,12 do
-   local edge=U.frame(root,"Edge",nil,UDim2.fromOffset(1,1),Color3.new(1,1,1),1)
-   edge.AnchorPoint=Vector2.new(.5,.5);edge.Active=false;U.corner(edge,3);edges[j]=edge
-  end
-  table.insert(self.geo,{root=root,edges=edges})
- end
+ self.constellation=Constellation.new(self.geoLayer)
  self.header=U.frame(self.panel,"Titlebar",nil,UDim2.new(1,0,0,46),nil,1);self.header.Active=true;self.brand=U.label(self.header,"A E T H E R",18,UDim2.fromOffset(16,2),UDim2.fromOffset(135,40));self.tag=U.label(self.header,"",10,UDim2.fromOffset(147,3),UDim2.new(1,-190,0,40));self.tag.TextColor3=dim
  self.close=U.button(self.header,"×");self.close.Modal=true;self.close.Size=UDim2.fromOffset(33,29);self.close.Position=UDim2.new(1,-43,0,8);scope:on(self.close.Activated,function() self:show(false) end)
  self.dockPicker=U.button(self.header,"←");self.dockPicker.Size=UDim2.fromOffset(32,29);self.dockPicker.Position=UDim2.new(1,-79,0,8);self.dockPicker.TextSize=18
@@ -324,40 +315,7 @@ function UI:animateBackground(t)
   b.BackgroundColor3=soft:Lerp(accent:Lerp(bg,.42),amount)
  end
  self.geoLayer.Visible=s.menuGeometry and self.panel.Visible
- if not self.geoLayer.Visible then return end
- local tm=if s.reduce then 0 else t*s.menuMotion/100
- local key=s.menuShape..":"..s.accent..":"..s.secondary..":"..s.menuOpacity..":"..s.menuDensity
- if self.geoLast==tm and self.geoSettings==key then return end
- self.geoLast=tm;self.geoSettings=key
- local a,b=U.hex(s.accent),U.hex(s.secondary)
- local mixed={3,4,6,12}
- for i,g in self.geo do
-  g.root.Visible=i<=s.menuDensity
-  if i>s.menuDensity then continue end
-  local count=if s.menuShape=="Rings" then 12 elseif s.menuShape=="Crystals" then 4 elseif s.menuShape=="Triangles" then 3 elseif s.menuShape=="Hexagons" then 6 else mixed[i%4+1]
-  local size=(34+(i*19)%73)*(1+.05*math.sin(tm*.4+i))
-  g.root.Size=UDim2.fromOffset(size,size)
-  g.root.Position=UDim2.fromScale(.08+((i*.618)%1)*.84+math.sin(tm*.17+i)*.035,.08+((i*.381)%1)*.84+math.cos(tm*.21+i)*.045)
-  g.root.Rotation=i*31+tm*(if i%2==0 then 11 else -8)
-  if g.key~=key then
-   g.key=key
-   for j,p in g.edges do
-    p.Visible=j<=count
-    if j<=count then
-     local q0=(j-1)/count*math.pi*2
-     local q1=j/count*math.pi*2
-     local u=Vector2.new(math.cos(q0),math.sin(q0))*.44
-     local v=Vector2.new(math.cos(q1),math.sin(q1))*.44
-     local d=v-u
-     p.Position=UDim2.fromScale(.5+(u.X+v.X)*.5,.5+(u.Y+v.Y)*.5)
-     p.Size=UDim2.new(d.Magnitude,0,0,1.5)
-     p.Rotation=math.deg(math.atan2(d.Y,d.X))
-     p.BackgroundColor3=a:Lerp(b,(i%7)/6)
-     p.BackgroundTransparency=1-s.menuOpacity/100*.42
-    end
-   end
-  end
- end
+ if self.geoLayer.Visible then self.constellation:step(dt,s) end
 end
 function UI:begin(i,fn,origin) if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end;local v=Vector2.new(i.Position.X,i.Position.Y);self.drag={i=i,start=v,fn=fn,origin=origin};fn(v,v,origin) end
 function UI:show(on)
@@ -388,6 +346,8 @@ function UI:watch(fn) table.insert(self.syncs,fn);fn() end
 function UI:sync()
  if not self.panel.Parent then return end
  local st=self.app.s
+ self.backgroundGradient.Color=ColorSequence.new(U.hex(st.constellationBgA),U.hex(st.constellationBgB))
+ self.backgroundGradient.Rotation=st.constellationAngle
  local layoutKey=table.concat({st.menuDock,st.menuWidth,st.menuHeight,st.menuFloatX,st.menuFloatY,tostring(st.menuResize),tostring(st.robloxRail),tostring(st.topCustom),st.topX,st.topY,tostring(st.railCustom),st.railX,st.railY},":")
  if self.layoutKey~=layoutKey and not self.menuDraft then self:layout() end
  local primary=U.hex(st.uiFontColor or "F1E6FF")
