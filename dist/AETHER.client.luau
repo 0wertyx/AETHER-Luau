@@ -2492,6 +2492,8 @@ __aether_factories["MotionStudio"] = function()
 -- AETHER Motion Studio V12.2: native avatar ViewportFrame editor, staged selection.
 -- No game-character changes, browser, network, or external asset dependencies.
 local U=__aether_require("Util")
+local Schema=__aether_require("Schema")
+local Http=game:GetService("HttpService")
 local Packs=__aether_require("MotionPacks")
 local Props=__aether_require("PreviewProps")
 local Run=game:GetService("RunService")
@@ -2973,6 +2975,49 @@ end
 local function part(parent,name,size,color)
  return U.new("Part",{Name=name,Size=size,Color=color,Anchored=true,CanCollide=false,CanTouch=false,CanQuery=false,CastShadow=false,Material=Enum.Material.SmoothPlastic},parent)
 end
+-- Only confirmed editor settings enter the shared settings bank.
+-- Playback position and pause are transport commands, never autosaved.
+local previewKeys={"state","auto","speed","origin","pitch","yaw","roll","cam","zoom","height","props","grid","joints"}
+local liveKeys={pack="walkStyle",enabled="walkAnimation",intensity="walkIntensity",aura="aura",trail="trail",auraRate="auraRate",trailLife="trailLife",auraColor="auraColor"}
+local limits={speed={.25,2},origin={0,150},pitch={-360,360},yaw={-360,360},roll={-360,360},cam={-180,180},zoom={.65,1.5},height={0,1.5}}
+local function defaults(pack)
+ return {state="Run",auto=false,speed=1,origin=100,pitch=if pack=="Godly Aura" then 9 else 0,yaw=0,roll=0,cam=45,zoom=1,height=0,props=true,grid=true,joints=false}
+end
+local function readSaved(settings)
+ local out=defaults(settings.walkStyle)
+ for key,k in liveKeys do out[key]=settings[k] end
+ local raw=settings.motionStudioConfig
+ if type(raw)=="string" and raw~="" then
+  local ok,data=pcall(function() return Http:JSONDecode(raw) end)
+  if ok and type(data)=="table" then
+   for _,key in previewKeys do
+    local v=data[key];local d=out[key];local lim=limits[key]
+    if lim and type(v)=="number" and v==v and v>=lim[1] and v<=lim[2] then out[key]=v
+    elseif type(d)=="boolean" and type(v)=="boolean" then out[key]=v
+    elseif key=="state" and table.find({"Idle","Walk","Run","Jump","Fall"},v) then out[key]=v end
+   end
+  end
+ end
+ return out
+end
+local function differences(draft,saved)
+ local n=0
+ for _,k in previewKeys do
+  local x,y=draft[k],saved[k]
+  if type(x)=="number" and type(y)=="number" then
+   if math.abs(x-y)>1e-7 then n+=1 end
+  elseif x~=y then n+=1 end
+ end
+ for k in liveKeys do if draft[k]~=saved[k] then n+=1 end end
+ return n
+end
+local function buildPatch(draft)
+ local p,config={},{}
+ for k,name in liveKeys do p[name]=Schema.value(name,draft[k]) end
+ for _,k in previewKeys do config[k]=draft[k] end
+ p.motionStudioConfig=Http:JSONEncode(config)
+ return p
+end
 function M.mount(ui,a)
  local scope=ui.page
  local frame=ui:row(340,"MotionStudioViewport")
@@ -2991,41 +3036,59 @@ function M.mount(ui,a)
  end
  local markers={};for i=2,6 do local p=part(world,"Origin",V(.14,.14,.14),violet);p.Shape=Enum.PartType.Ball;p.Material=Enum.Material.Neon;p.Transparency=1;markers[i]=p end
  local props=Props.new(world)
+ local fxDots,fxTrail={},{}
+ for i=1,20 do
+  local p=part(world,"PreviewAura",V(.09,.09,.09),violet);p.Shape=Enum.PartType.Ball;p.Material=Enum.Material.Neon;p.Transparency=1;fxDots[i]=p
+ end
+ for i=1,12 do
+  local p=part(world,"PreviewTrail",V(.05,.05,.05),violet);p.Shape=Enum.PartType.Ball;p.Material=Enum.Material.Neon;p.Transparency=1;fxTrail[i]=p
+ end
  local caption=U.label(frame,"",12,UDim2.fromOffset(12,8),UDim2.new(1,-108,0,22))
  local fpsLabel=U.label(frame,"-- FPS",11,UDim2.new(1,-85,0,8),UDim2.fromOffset(74,22));fpsLabel.TextXAlignment=Enum.TextXAlignment.Right
  local status=U.label(frame,"",11,UDim2.fromOffset(12,32),UDim2.new(1,-24,0,18));status.TextColor3=violet
- local s={pack=a.s.walkStyle or "Natural",state="Run",t=0,seek=0,auto=false,paused=false,speed=1,origin=100,intensity=a.s.walkIntensity or 65,pitch=0,yaw=0,roll=0,cam=45,zoom=1,height=0,props=true,grid=true,joints=false}
- if s.pack=="Godly Aura" then s.pitch=9 end
+ local s=readSaved(a.s)
+ s.t=0;s.seek=0;s.paused=false
  local dirty=true;local updates={};local sliding=nil;local oldScroll=nil
  local function mark() dirty=true end
  local function sync() dirty=true;s.seek=s.t%2.8;for _,f in updates do f() end;ui:sync() end
- local applyRow=ui:row(44,"ConfirmAnimation")
- local confirm=U.button(applyRow,"CONFIRM")
- confirm.Position=UDim2.fromOffset(4,4);confirm.Size=UDim2.new(.65,-8,1,-8)
- local cancel=U.button(applyRow,"CANCEL")
- cancel.Position=UDim2.new(.65,0,0,4);cancel.Size=UDim2.new(.35,-4,1,-8)
- local selection=ui:note("",38)
+ local actionRows={}
+ local selection=ui:note("",50)
  local function updateSelection()
-  local saved=a.s.walkStyle or "Natural"
-  local applied=a.s.walkAnimation and saved==s.pack and a.s.walkIntensity==s.intensity
+  local saved=readSaved(a.s)
+  local n=differences(s,saved)
   local ready=rigData~=nil
-  confirm.Text=if not ready then "AVATAR NOT READY" elseif applied then "APPLIED ✓" else "CONFIRM · "..s.pack
-  confirm.Active=ready and not applied;confirm.AutoButtonColor=ready and not applied
-  confirm.BackgroundColor3=if ready and not applied then Color3.fromRGB(106,74,158) else Color3.fromRGB(49,43,62)
-  selection.Text="Preview: "..s.pack.." / Saved: "..saved..(if a.s.walkAnimation then "" else " (disabled)")..(if rigData and rigData.kind=="R15" then " · R15 adapted poses; props are R6 only" else "")
- end
- ui:watch(updateSelection)
- scope:on(confirm.Activated,function()
-  if not rigData then return end
-  if not a.s.walkAnimation or a.s.walkStyle~=s.pack or a.s.walkIntensity~=s.intensity then
-   a:patch({walkAnimation=true,walkStyle=s.pack,walkIntensity=math.clamp(math.round(s.intensity),0,100)})
+  for _,row in actionRows do
+   row.confirm.Text=if not ready then "AVATAR NOT READY" elseif n==0 then "SAVED ✓" else "CONFIRM ALL ("..tostring(n)..")"
+   row.confirm.Active=ready and n>0;row.confirm.AutoButtonColor=ready and n>0
+   row.confirm.BackgroundColor3=if ready and n>0 then Color3.fromRGB(106,74,158) else Color3.fromRGB(49,43,62)
+   row.cancel.Text=if n>0 then "CANCEL" else "NO CHANGES";row.cancel.Active=n>0;row.cancel.AutoButtonColor=n>0
   end
-  updateSelection();ui:message("Animation saved: "..s.pack)
- end)
- scope:on(cancel.Activated,function()
-  s.pack=a.s.walkStyle or "Natural";s.intensity=a.s.walkIntensity or 65;s.t=0;s.pitch=if s.pack=="Godly Aura" then 9 else 0;s.yaw=0;s.roll=0
-  sync();ui:message("Preview selection discarded")
- end)
+  selection.Text="Preview: "..s.pack.." / Saved: "..saved.pack.." · "..(if n==0 then "All settings saved" else tostring(n).." unsaved changes")..(if rigData and rigData.kind=="R15" then " · R15 adapted poses" else "")
+ end
+ local function confirmAll()
+  if not rigData or differences(s,readSaved(a.s))==0 then return end
+  a:patch(buildPatch(s))
+  sync();ui:message("Motion Studio settings saved")
+ end
+ local function cancelAll()
+  local saved=readSaved(a.s)
+  for k,v in saved do s[k]=v end
+  s.t=0;s.seek=0;s.paused=false
+  sync();ui:message("All unconfirmed changes discarded")
+ end
+ local function actionRow()
+  local row=ui:row(44,"ConfirmAllMotionStudio")
+  local confirm=U.button(row,"CONFIRM ALL")
+  confirm.Position=UDim2.fromOffset(4,4);confirm.Size=UDim2.new(.65,-8,1,-8)
+  local cancel=U.button(row,"CANCEL")
+  cancel.Position=UDim2.new(.65,0,0,4);cancel.Size=UDim2.new(.35,-4,1,-8)
+  table.insert(actionRows,{confirm=confirm,cancel=cancel})
+  scope:on(confirm.Activated,function() ui:action(confirmAll) end)
+  scope:on(cancel.Activated,function() ui:action(cancelAll) end)
+  updateSelection()
+ end
+ actionRow()
+ ui:watch(updateSelection)
  local function stopSlide()
   sliding=nil
   if oldScroll~=nil and ui.sc and ui.sc.Parent then ui.sc.ScrollingEnabled=oldScroll end
@@ -3045,7 +3108,7 @@ function M.mount(ui,a)
   local function move(x)
    local k=math.clamp((x-track.AbsolutePosition.X)/math.max(1,track.AbsoluteSize.X),0,1)
    s[key]=math.clamp(min+math.floor(k*(max-min)/step+.5)*step,min,max)
-   if onChange then onChange() end;update();mark()
+   if onChange then onChange() end;update();mark();updateSelection()
   end
   scope:on(track.InputBegan,function(input)
    if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
@@ -3072,7 +3135,8 @@ function M.mount(ui,a)
  ui:chips({"Jump / Fall / Land","Manual"},function(n) s.auto=n~="Manual";s.t=0;sync() end,2,function() return if s.auto then "Jump / Fall / Land" else "Manual" end)
  ui:title("ANIMATION PACKS · 44")
  local order={"Natural","Heroic","Bouncy","Floating","Glide","Ethereal"};for _,n in Packs.order do table.insert(order,n) end
- ui:chips(order,function(n) s.pack=n;s.t=0;s.pitch=if n=="Godly Aura" then 9 else 0;s.yaw=0;s.roll=0;sync() end,3,function() return s.pack end)
+ ui:chips(order,function(n) s.pack=n;s.enabled=true;s.t=0;s.pitch=if n=="Godly Aura" then 9 else 0;s.yaw=0;s.roll=0;sync() end,3,function() return s.pack end)
+ ui:chips({"Animation on","Animation off"},function(n) s.enabled=n=="Animation on";sync() end,2,function() return if s.enabled then "Animation on" else "Animation off" end)
  ui:title("PLAYBACK & CAMERA")
  slider("Speed",.25,2,.25,"speed",function(v) return tostring(v).."x" end)
  slider("Camera orbit",-180,180,1,"cam",degrees)
@@ -3086,12 +3150,25 @@ function M.mount(ui,a)
  slider("Roll / Z",-360,360,1,"roll",degrees)
  ui:chips({"Zero rotation","Default pose"},function(n) s.pitch=if n=="Default pose" and s.pack=="Godly Aura" then 9 else 0;s.yaw=0;s.roll=0;sync() end,2)
  ui:title("VIEWPORT")
- ui:chips({"Props","Grid","Origins"},function(n) if n=="Props" then s.props=not s.props elseif n=="Grid" then s.grid=not s.grid else s.joints=not s.joints end;sync() end,3)
+ local function switch(label,key)
+  ui:chips({label.." on",label.." off"},function(n) s[key]=n==label.." on";sync() end,2,function() return label..(if s[key] then " on" else " off") end)
+ end
+ switch("Props","props");switch("Grid","grid");switch("Origins","joints")
+ ui:title("CHARACTER EFFECTS · PREVIEW")
+ switch("Aura","aura");switch("Trail","trail")
+ slider("Aura emission / second",1,45,1,"auraRate",function(v) return tostring(math.round(v)) end)
+ slider("Trail lifetime (ms)",80,1300,10,"trailLife",function(v) return tostring(math.round(v)) end)
+ local colorBox=ui:box("Aura / trail color (HEX)",s.auraColor,34,function(value)
+  local hex=string.upper((value:gsub("^#","")))
+  s.auraColor=Schema.value("auraColor",hex);sync()
+ end)
+ ui:watch(function() if not colorBox:IsFocused() then colorBox.Text=s.auraColor end end)
  ui:chips({"Reset editor"},function()
-  s.pack=a.s.walkStyle or "Natural";s.state="Run";s.t=0;s.auto=false;s.paused=false;s.speed=1;s.origin=100;s.intensity=a.s.walkIntensity or 65;s.pitch=if s.pack=="Godly Aura" then 9 else 0;s.yaw=0;s.roll=0;s.cam=45;s.zoom=1;s.height=0;s.props=true;s.grid=true;s.joints=false
-  sync()
+  for k,v in defaults(s.pack) do s[k]=v end
+  s.t=0;s.seek=0;s.paused=false;sync()
  end,1)
- ui:note("Preview uses your avatar. Choose a pack, inspect the motion, then confirm. Camera, rotation, origins and playback controls are preview-only.",48)
+ ui:note("Every option is staged until Confirm All. Cancel restores the last saved configuration. Camera, pose rotation, origins and playback are editor settings, not live character physics.",64)
+ actionRow()
  local function visible(b)
   local r=rigData
   if not r or b==r.root then return false end
@@ -3109,7 +3186,11 @@ function M.mount(ui,a)
   local air=state=="Jump" or state=="Fall"
   local O,I=s.origin/100,s.intensity/100
   local r=rigData
-  if not r then caption.Text="YOUR AVATAR";status.Text=avatarStatus;dirty=false;return end
+  if not r then
+   for _,b in fxDots do b.Transparency=1 end;for _,b in fxTrail do b.Transparency=1 end
+   for _,b in markers do b.Transparency=1 end
+   caption.Text="YOUR AVATAR";status.Text=avatarStatus;dirty=false;return
+  end
   local cf,pivots=avatarPose(r,p,O,I)
   for _,b in r.parts do
    b.CFrame=cf[b] or CFrame.identity
@@ -3156,6 +3237,25 @@ function M.mount(ui,a)
   end
   local lift=V(0,dy,0)
   for _,b in all do b.CFrame+=lift end
+  -- Viewport-compatible visual approximation; no live emitters or trails are changed.
+  local torso=model:FindFirstChild("Torso") or model:FindFirstChild("UpperTorso") or r.root
+  local color=Color3.fromHex(s.auraColor)
+  local count=math.clamp(math.floor(s.auraRate*.44+.5),1,#fxDots)
+  for i,b in fxDots do
+   b.Transparency=if s.aura and i<=count then .18+.55*((t*.65+i/count)%1) else 1
+   if s.aura and i<=count then
+    local u=(t*.65+i/count)%1;local th=i*2.39996+t*1.4
+    b.Color=color;b.Position=torso.CFrame:PointToWorldSpace(V(math.cos(th)*(1.45+.25*u),-1.8+u*3.6,math.sin(th)*(1.1+.35*u)))
+   end
+  end
+  for i,b in fxTrail do
+   local u=i/#fxTrail;b.Transparency=if s.trail then .18+.78*u else 1
+   if s.trail then
+    local len=.4+3*s.trailLife/1300
+    b.Color=color;b.Size=Vector3.one*(.16*(1-u)+.025)
+    b.Position=torso.CFrame:PointToWorldSpace(V(.28*math.sin(t*7-u*5),-.9-.3*u,.65+len*u))
+   end
+  end
   for i,b in markers do
    local pos=pivots[i]
    if pos then b.Position=transform:PointToWorldSpace(pos)+lift end
@@ -3819,7 +3919,7 @@ function E.render(a,tab,ui)
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
   if tab=="Character" then
-   ui:title("AETHER MOTION STUDIO V12.3")
+   ui:title("AETHER MOTION STUDIO V12.4")
    MotionStudio.mount(ui,a)
   else avatarPreview(ui,a) end
   if tab=="Halos" then
@@ -3848,10 +3948,7 @@ function E.render(a,tab,ui)
    local skip={}
    for i in S.haloV2Styles do for _,suffix in S.haloV2Fields do skip["haloV2"..i..suffix]=true end end
    ui:group(tab,skip)
-  elseif tab=="Character" then
-   ui:title("CHARACTER EFFECTS")
-   ui:group(tab,{walkStyle=true,walkIntensity=true})
-  else preset(ui,a,tab);ui:group(tab) end
+  elseif tab~="Character" then preset(ui,a,tab);ui:group(tab) end
  elseif tab=="Ambient" then local sky=ui:row(106,"SkyPreview");local grad=U.gradient(sky,Color3.new(),Color3.new(),90);local sun=U.frame(sky,"Sun",nil,UDim2.fromOffset(30,30));U.corner(sun,30);ui:watch(function() local s=a.s;sky.BackgroundColor3=Color3.new(1,1,1);grad.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,U.hex(s.skyA)),ColorSequenceKeypoint.new(.64,U.hex(s.skyB)),ColorSequenceKeypoint.new(1,U.hex(s.skyC))});sun.BackgroundColor3=U.hex(s.skyC);sun.Position=UDim2.fromScale(.7,.66-.45*math.sin(s.time/240*math.pi));sun.BackgroundTransparency=.04+s.fog*.004 end);preset(ui,a,tab);ui:group(tab,{starfallA=true,starfallB=true});ui:title("STARFALL COLORS");ui:colorPicker("starfallA");ui:colorPicker("starfallB")
  elseif tab=="Indicators" then preview(ui,a);gallery(ui,a);ui:group(tab,{shape=true});ui:title("PER-PLAYER OVERRIDE");local id=ui:box("UserId or simulator ID","1");local label=ui:box("Label override","");local color=ui:box("Override hex",a.s.arrowA);ui:chips({"Assign current shape","Remove override"},function(k) local p=S.copy(a.s.players);if k=="Assign current shape" then p[id.Text]={label=label.Text,color=color.Text,shape=a.s.shape} else p[id.Text]=nil end;a:set("players",p);ui:message("Overrides updated") end,2)
  elseif tab=="Cursor" then local f=ui:row(94,"CursorPreview");local host=U.frame(f,"OriginalCursorPreview",UDim2.fromScale(.5,.5),UDim2.fromOffset(60,60),nil,1);host.AnchorPoint=Vector2.new(.5,.5);a.preview={cursorHost=host};preset(ui,a,tab);ui:group(tab,{cursorTrailA=true,cursorTrailB=true});ui:title("TRAIL COLORS");ui:colorPicker("cursorTrailA");ui:colorPicker("cursorTrailB");ui:note("Cursor animation never moves its click hotspot. Enable Show hotspot marker to compare the real mouse position with the skin; use Pointer offset X/Y only for calibration. EditableImage renders desktop SVG; imports need an authorized asset ID.",57)
@@ -4113,7 +4210,7 @@ for _,row in {{"hp","Health",3,9},{"clock","Clock",3,96},{"profile","Player card
  range("HUD",k.."Scale",t.." · scale %",100,50,160);range("HUD",k.."Turn",t.." · rotation",0,-180,180);range("HUD",k.."Alpha",t.." · opacity %",100,10,100)
 end
 toggle("Character","walkAnimation","Custom walking animation",false);choice("Character","walkStyle","Walking style","Natural",{"Natural","Heroic","Floating","Bouncy","Glide","Ethereal","Toy","Robot","Ninja","Bubbly","Stylish","Mage","Levitation","Oldschool","Vampire","Astronaut","Zombie","Cartoony",
- "Angel Glide","Bat Swoop","Mermaid Drift","Serpent Slither","Cartwheel Flow","Rubberhose","Dream Sleep","Plushie","Cat Paws","Shy Kawaii","Gymnast","Skip Hop","Reindeer Prance","Fighter","Harpy Glide","Godly Aura","Wavy Expressive","Retro Zombie","Tsundere","Doll Walk","Skater","Little Duck","Floating Head","Dark Aura","Anime Hero","Headless Float"});range("Character","walkIntensity","Walking intensity %",65,0,100);toggle("Character","aura","Aura particles",false);toggle("Character","trail","Motion trail",false);range("Character","auraRate","Emission / second",12,1,45);range("Character","trailLife","Trail lifetime (ms)",400,80,1300);color("Character","auraColor","Aura color","C4A3FF")
+ "Angel Glide","Bat Swoop","Mermaid Drift","Serpent Slither","Cartwheel Flow","Rubberhose","Dream Sleep","Plushie","Cat Paws","Shy Kawaii","Gymnast","Skip Hop","Reindeer Prance","Fighter","Harpy Glide","Godly Aura","Wavy Expressive","Retro Zombie","Tsundere","Doll Walk","Skater","Little Duck","Floating Head","Dark Aura","Anime Hero","Headless Float"});range("Character","walkIntensity","Walking intensity %",65,0,100);text("Character","motionStudioConfig","Motion Studio configuration","",2048);toggle("Character","aura","Aura particles",false);toggle("Character","trail","Motion trail",false);range("Character","auraRate","Emission / second",12,1,45);range("Character","trailLife","Trail lifetime (ms)",400,80,1300);color("Character","auraColor","Aura color","C4A3FF")
 toggle("Wings","wings","Show wings",false);choice("Wings","wingStyle","Silhouette","Seraph",{"Seraph","Blade","Sylph","Phoenix","Frost","Butterfly","Raven","Celestial","Crystal","Dusk","Petal","Storm","Royal","Eclipse","Prism Wings","Triad Wings","Hex Wings","Star Wings","Orbital Wings","Diamond Wings","Geo Bloom","Kagune","Seraphim","Burnt Fallen","Knife Wing","Crystal Wing"});range("Wings","wingSpan","Span %",100,50,175);range("Wings","wingSweep","Sweep (degrees)",24,-25,65);range("Wings","wingBeat","Flap speed %",90,0,200);color("Wings","wingColor","Feather color","B49BFF");toggle("Wings","wingRainbow","Prismatic feathers",false);choice("Wings","wingDetail","Feather detail","High",{"Balanced","High","Ultra"});toggle("Wings","wingWalk","Walking wing reaction",true);toggle("Wings","sketchColors","Original sketch palette",true);range("Wings","sketchGlow","Wing neon glow %",80,0,100);range("Wings","sketchMotion","Floating motion %",70,0,150);toggle("Wings","redDiamond","Red rotating diamond",false);toggle("Wings","blueDiamond","Blue rotating diamond",false);range("Wings","diamondSpeed","Diamond rotation %",100,0,200);range("Wings","diamondSize","Diamond size %",100,50,175);toggle("Wings","diamondEcho","Diamond rotation echoes",true)
 toggle("Halos","halo","Show halo",false);choice("Halos","haloStyle","Orbit form","Ring",{"Ring","Binary","Crown","Double Ring","Spiral","Starfall","Solar","Lunar","Orbitals","Thorns","Prism","Eclipse","Comet","Lotus","Triangle","Square","Pentagon","Hexagon","Octagon","Star","Double Diamond","Infinity"});range("Halos","haloRadius","Radius %",88,45,175);range("Halos","haloHeight","Height above head %",105,55,220);range("Halos","haloSpin","Orbit speed %",75,0,200);color("Halos","haloColor","Halo color","FFB4D6");toggle("Halos","haloRainbow","Prismatic halo",false);choice("Halos","haloDetail","Halo geometry detail","High",{"Balanced","High","Ultra"});toggle("Halos","haloWalk","Walking halo reaction",true);range("Halos","haloGlow","Legacy halo glow %",75,0,100)
 S.haloV2Styles={"Prism Shards","Classic Ring","Twin Ring","Orbit Rings","Cluster Halo","Fallen Fragments","Aether Crown"}
