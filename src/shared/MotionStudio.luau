@@ -720,7 +720,8 @@ function M.mount(ui,a)
   sync();ui:message("All unconfirmed changes discarded")
  end
  local function actionRow()
-  local row=ui:row(44,"ConfirmAllMotionStudio")
+  ui.sc.Size=UDim2.new(1,0,1,-50)
+  local row=scope:add(U.frame(ui.pageBox,"ConfirmAllMotionStudio",UDim2.new(0,0,1,-44),UDim2.new(1,-8,0,44),Color3.fromRGB(34,27,53),.05));U.corner(row,8);row.ZIndex=5
   local confirm=U.button(row,"CONFIRM ALL")
   confirm.Position=UDim2.fromOffset(4,4);confirm.Size=UDim2.new(.65,-8,1,-8)
   local cancel=U.button(row,"CANCEL")
@@ -825,7 +826,6 @@ function M.mount(ui,a)
   s.t=0;s.seek=0;s.paused=false;sync()
  end,1)
  ui:note("Confirm All saves the pack, intensity, animation speed and origins. Camera, manual rotation and extra levitation remain preview-only.",64)
- actionRow()
  local function visible(b)
   local r=rigData
   if not r or b==r.root then return false end
