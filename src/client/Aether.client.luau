@@ -699,11 +699,6 @@ local function stepAirControl(dt)
     app.airObserved = (app.airObserved or 0)+1
     app.airLastDetection = string.format("%s | state %s | floor %s | Y %.1f",detection,state.Name,floor.Name,v.Y)
     if not app.s.airControl then app.airDiagnostic="Skipped: disabled in settings";return app.airDiagnostic end
-    if app.ui.opened or app.editingHUD or UserInputService:GetFocusedTextBox() then
-        app.airBlocked = (app.airBlocked or 0)+1
-        app.airDiagnostic = "Skipped: menu, HUD editor or text input open"
-        return app.airDiagnostic
-    end
     local input = humanoid.MoveDirection
     local direction = Vector3.new(input.X,0,input.Z)
     local horizontal = Vector3.new(v.X,0,v.Z)
@@ -786,9 +781,7 @@ scope:on(RunService.PreSimulation, function(dt)
             app:log("Air Redirection",tostring(airResult))
         end
     end
-    if app.airCurrent ~= "Menu, HUD editor or text input open" then
-        app.airLastActive = app.airCurrent
-    end
+    app.airLastActive = app.airCurrent
     local characterToAnimate = if app.mode == "Game" then character else nil
     local ok, err = pcall(walkMotion.step, walkMotion, characterToAnimate, app.s, dt)
     if not ok and not app.walkError then
