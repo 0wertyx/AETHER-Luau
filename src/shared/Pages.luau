@@ -46,6 +46,9 @@ local function avatarPreview(ui,a,worldMode)
  local full=false
  local paused=false
  local speed=1
+ local demoState="Walk"
+ local demoStrength=100
+ local previewStatus=nil
  local stage=nil
  local floorOffset=2
  local centerOffset=Vector3.zero
@@ -72,7 +75,7 @@ local function avatarPreview(ui,a,worldMode)
   local aspect=math.max(.1,view.AbsoluteSize.X/math.max(1,view.AbsoluteSize.Y))
   local half=math.rad(cam.FieldOfView*.5)
   local angle=math.min(half,math.atan(math.tan(half)*aspect))
-  local distance=if worldMode and full then 12*zoom else radius/math.sin(angle)*1.12*zoom
+  local distance=if worldMode and full then 12*zoom else radius/math.sin(angle)*(if worldMode then 1.12 else 1.26)*zoom
   local offset=Vector3.new(math.sin(yaw)*math.cos(pitch),math.sin(pitch),-math.cos(yaw)*math.cos(pitch))
   local pos=center+offset*distance
   if worldMode and full and stage then
@@ -196,7 +199,7 @@ local function avatarPreview(ui,a,worldMode)
  end
  previewState.pose=function(settings,dt)
   local rig=previewState.rig
-  if page.dead or not rootPart or not rootPart.Parent or not rig then return end
+  if page.dead or not ui.opened or not rootPart or not rootPart.Parent or not rig then return end
   if worldMode then
    if paused then return end
    dt=math.min(dt,.05)*speed
@@ -238,11 +241,25 @@ local function avatarPreview(ui,a,worldMode)
    end
    center=rootPart.Position+centerOffset;applyCamera()
   end
+  if not worldMode and paused then return end
   for _,motor in motors do motor.Transform=CFrame.identity end
-  if ((ui.tab=="Character" and settings.walkAnimation) or (worldMode and (moving or not grounded))) and not settings.reduce then
-   local demo=settings
-   if worldMode and not settings.walkAnimation then demo=table.clone(settings);demo.walkAnimation=true end
-   motion:step(rig,demo,dt,if worldMode then {movement=math.clamp(velocity.Magnitude/16,0,1),grounded=grounded,jumping=verticalSpeed>0} else true)
+  if (ui.tab=="Character" or worldMode) and not settings.reduce then
+   local demo=table.clone(settings);demo.walkAnimation=true
+   local virtual
+   if worldMode then
+    virtual={movement=math.clamp(velocity.Magnitude/16,0,1),grounded=grounded,jumping=verticalSpeed>0,fullPose=true}
+   else
+    dt=math.min(dt,.05)*speed
+    demo.walkIntensity=demoStrength
+    local state=if demoState=="Jump" then Enum.HumanoidStateType.Jumping
+     elseif demoState=="Fall" then Enum.HumanoidStateType.Freefall
+     elseif demoState=="Swim" then Enum.HumanoidStateType.Swimming
+     elseif demoState=="Climb" then Enum.HumanoidStateType.Climbing
+     else Enum.HumanoidStateType.Running
+    local airborne=demoState=="Jump" or demoState=="Fall"
+    virtual={movement=if demoState=="Idle" then 0 elseif demoState=="Walk" then .78 else 1,grounded=not airborne,jumping=demoState=="Jump",state=state,speed=if demoState=="Run" then 24 else 16,fullPose=true}
+   end
+   motion:step(rig,demo,dt,virtual)
   else
    motion:bind(nil)
   end
@@ -269,7 +286,7 @@ local function avatarPreview(ui,a,worldMode)
    end
    for _,obj in rig:GetDescendants() do
     if not obj.Parent then continue end
-    if obj:IsA("LuaSourceContainer") or obj:IsA("Tool") or obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Highlight") or obj:IsA("Sound") then
+    if obj:IsA("LuaSourceContainer") or obj:IsA("Animator") or obj:IsA("AnimationController") or obj:IsA("Tool") or obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Highlight") or obj:IsA("Sound") then
      obj:Destroy()
     elseif obj:IsA("BasePart") then
      obj.Anchored=true;obj.CanCollide=false;obj.CanTouch=false;obj.CanQuery=false;obj.LocalTransparencyModifier=0
@@ -283,7 +300,7 @@ local function avatarPreview(ui,a,worldMode)
    rig.Name="LocalAvatarPreview"
    avatar:clear()
    if previewState.rig then previewState.rig:Destroy() end
-   rig.Parent=w;previewState.rig=rig;prepareRig(rig);previewState.pose(a.s,0);label.Visible=false;fit()
+   rig.Parent=w;previewState.rig=rig;prepareRig(rig);fit();previewState.pose(a.s,0);label.Visible=false
    if worldMode then resetScene() end
   end)
  end
@@ -396,7 +413,21 @@ local function avatarPreview(ui,a,worldMode)
    applyCamera()
   end
  end)
- ui:note(if worldMode then "Capture visible scene · Full screen: WASD, Space, RMB camera, Shift lock" else "Hold middle mouse to orbit · Scroll to zoom · Walking preview",32)
+ ui:note(if worldMode then "Capture visible scene · Full screen: WASD, Space, RMB camera, Shift lock" else "Hold middle mouse to orbit · Scroll to zoom · Full-body preview (independent of game animation)",42)
+ if not worldMode and ui.tab=="Character" then
+  ui:title("FULL-BODY ANIMATION PREVIEW")
+  ui:note("Preview plays the selected style even when Custom walking animation is off. Only the local GUI rig is animated here.",44)
+  ui:chips({"Idle","Walk","Run","Jump","Fall","Swim","Climb"},function(n)
+   demoState=n;motion:bind(nil)
+  end,4,function() return demoState end)
+  ui:chips({"0.5x","1x","1.5x","2x"},function(n) speed=tonumber(n:sub(1,-2)) or 1 end,4,function() return tostring(speed).."x" end)
+  ui:chips({"50%","75%","100%"},function(n) demoStrength=tonumber(n:sub(1,-2)) or 100 end,3,function() return tostring(demoStrength).."%" end)
+  ui:chips({"Pause","Play"},function(n) paused=n=="Pause" end,2,function() return if paused then "Pause" else "Play" end)
+  previewStatus=ui:note("",28)
+  ui:watch(function()
+   previewStatus.Text=(a.s.walkStyle or "Natural").." / "..demoState.." · "..tostring(demoStrength).."%"
+  end)
+ end
  if worldMode then
   ui:chips({"Capture visible scene","Full screen"},function(n) if n=="Full screen" then openFull() else captureScene() end end,2)
   ui:chips({"Demo stage","Pause / resume","Playback speed"},function(n) if n=="Demo stage" then resetScene() elseif n=="Pause / resume" then togglePause() else cycleSpeed() end end,3)
