@@ -786,10 +786,12 @@ function E.render(a,tab,ui)
    end,3)
    local cal=ui:note("",36)
    ui:watch(function() cal.Text=string.format("Calibration: A %s | B %s | C %s",if vb.corners[1] then "OK" else "-",if vb.corners[2] then "OK" else "-",if vb.corners[3] then "OK" else "-") end)
+   local geometryStatus=ui:note("",56)
+   ui:watch(function() geometryStatus.Text=vb:calibrationStatus() end)
    ui:chips({"Toggle Auto Tilt","Clear court"},function(label)
     if label=="Clear court" then vb:clearCourt() else vb:toggleAuto() end
     ui:sync()
-   end,2)
+   end,2,function() return if vb.auto then "Toggle Auto Tilt" else "" end)
    ui:chips({"World coordinates","Character coordinates"},function(label)
     vb.tiltBasis=if label=="World coordinates" then "World" else "Character"
     vb.requestedTilt=nil;ui:sync()
@@ -803,10 +805,21 @@ function E.render(a,tab,ui)
     vb.tiltScale=n;vb.requestedTilt=nil
    end)
    ui:watch(function() if not strength:IsFocused() then strength.Text=tostring(vb.tiltScale) end end)
-   local status=ui:note("",64)
-   ui:watch(function() status.Text=(if vb.auto then "AUTO TILT ON | " else "AUTO TILT OFF | ")..vb.status end)
+   local status=ui:note("",80)
    local diagnostic=ui:note("",96)
-   ui:watch(function() diagnostic.Text=vb:tiltDebug() end)
+   local function refreshTilt()
+    status.Text=(if vb.auto then "AUTO TILT ON | " else "AUTO TILT OFF | ")..vb.status
+    diagnostic.Text=vb:tiltDebug()
+    geometryStatus.Text=vb:calibrationStatus()
+    cal.Text=string.format("Calibration: A %s | B %s | C %s",if vb.corners[1] then "OK" else "-",if vb.corners[2] then "OK" else "-",if vb.corners[3] then "OK" else "-")
+    availability.Text=vb:availabilityStatus()
+   end
+   ui:watch(refreshTilt)
+   local tiltRefresh=0
+   ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
+    tiltRefresh+=dt
+    if tiltRefresh>=.25 then tiltRefresh=0;if ui.opened then refreshTilt() end end
+   end)
   end
   ui:title("AIR REDIRECTION")
   ui:control("airControl");ui:control("airControlStrength");ui:control("airControlSpeed");ui:control("airTiltAngle");ui:control("bunnyHop")

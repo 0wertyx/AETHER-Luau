@@ -125,18 +125,13 @@ do
     }
     local tiltKey="Gameplay_TiltDirection"
     local function available()
-        return app.mode=="Game"
-            and type(ReplicatedStorage:GetAttribute("GamemodeId"))=="string"
-            and typeof(player:GetAttribute(tiltKey))=="Vector3"
-            and type(player:GetAttribute("Multiplier_BumpPower"))=="number"
+        return app.mode=="Game" and typeof(player:GetAttribute(tiltKey))=="Vector3"
     end
     function vb:available() return available() end
     function vb:availabilityStatus()
         if app.mode~="Game" then return "Waiting: switch to Game mode" end
         local missing={}
-        if type(ReplicatedStorage:GetAttribute("GamemodeId"))~="string" then table.insert(missing,"GamemodeId") end
         if typeof(player:GetAttribute(tiltKey))~="Vector3" then table.insert(missing,tiltKey) end
-        if type(player:GetAttribute("Multiplier_BumpPower"))~="number" then table.insert(missing,"Multiplier_BumpPower") end
         if #missing>0 then return "Waiting for attributes: "..table.concat(missing,", ") end
         return "Game attributes detected"
     end
@@ -195,15 +190,16 @@ do
         table.clear(self.corners);self.target=nil;self.side=nil;self.map=nil;self.status="Calibration cleared"
     end
     function vb:capture(index)
-        assert(available(),"Volleyball attributes not available")
+        if app.mode~="Game" then self.status="Calibration needs Game mode";return end
         local char=player.Character
         local root=char and char:FindFirstChild("HumanoidRootPart")
-        assert(root and root:IsA("BasePart"),"Character unavailable")
+        if not root or not root:IsA("BasePart") then self.status="Calibration: character root unavailable";return end
         local map=ReplicatedStorage:GetAttribute("Map")
-        if self.map~=map then self:clearCourt();self.map=map end
+        if map~=nil and self.map~=nil and self.map~=map then self:clearCourt() end
+        if map~=nil then self.map=map end
         self.auto=false;restore(tiltKey);self.target=nil
         self.corners[index]=flatten(root.Position)
-        self.status="Court corner "..index.." saved"
+        self.status=string.format("Corner %s saved: X %.2f Z %.2f",({"A","B","C"})[index],root.Position.X,root.Position.Z)
     end
     local function geometry()
         local a,b,c=vb.corners[1],vb.corners[2],vb.corners[3]
@@ -219,10 +215,23 @@ do
         if length<8 or math.abs(along)>width*.2 then return nil end
         return a,u,cross.Unit,width,length
     end
+    function vb:calibrationStatus()
+        local a,b,c=self.corners[1],self.corners[2],self.corners[3]
+        if not (a and b and c) then return "Capture missing corners A / B / C" end
+        local width=(b-a).Magnitude
+        if width<4 then return "A and B are too close (minimum 4 studs)" end
+        local u=(b-a).Unit
+        local ac=c-a
+        local along=ac:Dot(u)
+        local length=(ac-u*along).Magnitude
+        if length<8 then return "C is too close to the A-B edge (minimum 8 studs)" end
+        if math.abs(along)>width*.2 then return "C must be across the net on A's sideline, not B's" end
+        return string.format("Court ready: %.1f x %.1f studs",width,length)
+    end
     function vb:toggleAuto()
         if self.auto then self.auto=false;restore(tiltKey);self.target=nil;self.status="Auto Tilt off";return end
-        assert(available(),"Volleyball attributes not available")
-        assert(geometry(),"Capture three corners: A, adjacent B across width, C across net at same sideline")
+        if not available() then self.status=self:availabilityStatus();return end
+        if not geometry() then self.status=self:calibrationStatus();return end
         self.tiltWrites=0;self.tiltOverrides=0;self.requestedTilt=nil
         self.auto=true;self.status="Auto Tilt beta enabled"
     end
@@ -246,7 +255,9 @@ do
             vb.tiltOverrides+=1
         end
         local ok,err=pcall(function()
-            if ReplicatedStorage:GetAttribute("Map")~=vb.map then vb:clearCourt();return end
+            local map=ReplicatedStorage:GetAttribute("Map")
+            if map~=nil and vb.map~=nil and map~=vb.map then vb:clearCourt();vb.status="Map changed; recalibrate";return end
+            if map~=nil then vb.map=map end
             if player:GetAttribute("Gameplay_InGame")~=true then restore(tiltKey);vb.target=nil;vb.status="Waiting for match";return end
             local a,u,v,width,length=geometry()
             if not a then vb:clearCourt();return end
