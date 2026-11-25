@@ -27,7 +27,7 @@ function P:build(kind)
   items.strings={}
   for i=1,5 do items.strings[i]=part(root,"PuppetThread",Vector3.new(.025,.025,1),pale) end
  elseif kind=="Fighter" then
-  items.handle=part(root,"FantasyPropGrip",Vector3.new(.19,.57,.19),dark)
+  items.handle=part(root,"FantasyPropGrip",Vector3.new(.21,.91,.21),dark)
   items.guard=part(root,"FantasyPropOrnament",Vector3.new(.65,.12,.24),violet)
   items.blade=part(root,"FantasyLightBlade",Vector3.new(.24,2.05,.10),pale)
   items.blade.Material=Enum.Material.Neon
@@ -38,7 +38,7 @@ end
 local function line(p,a,b)
  local d=b-a;p.Size=Vector3.new(.025,.025,math.max(.025,d.Magnitude));p.CFrame=CFrame.lookAt((a+b)/2,b)
 end
-function P:update(rig,kind,phase,airProgress)
+function P:update(rig,kind,phase,state)
  local torso=rig and rig:FindFirstChild("Torso")
  local ra=rig and rig:FindFirstChild("Right Arm")
  local la=rig and rig:FindFirstChild("Left Arm")
@@ -49,10 +49,20 @@ function P:update(rig,kind,phase,airProgress)
  if not torso or not ra or not la or not rl or not ll or not head or not root or (kind~="Skater" and kind~="Doll Walk" and kind~="Fighter") then self:clear();return end
  if self.kind~=kind then self:build(kind) end
  local q=self.parts
+ local function grip(arm,side,target)
+  local shoulder=torso.CFrame:PointToWorldSpace(Vector3.new(side*(torso.Size.X/2+arm.Size.X*.35),torso.Size.Y*.25,0))
+  local d=target-shoulder;if d.Magnitude<.001 then return end
+  local y=-d.Unit;local x=y:Cross(torso.CFrame.LookVector)
+  if x.Magnitude<.001 then x=y:Cross(torso.CFrame.UpVector) end
+  if x.Magnitude<.001 then return end
+  x=x.Unit;local z=x:Cross(y).Unit
+  arm.CFrame=CFrame.fromMatrix(target+y*(arm.Size.Y/2),x,y,z)
+ end
  if kind=="Fighter" then
-  -- An oversized stylized light prop, permanently attached to the hand pose.
-  local cf=ra.CFrame*CFrame.new(0,-ra.Size.Y/2+.10,0)*CFrame.Angles(math.rad(75),0,math.rad(8))
-  q.handle.CFrame=cf;q.guard.CFrame=cf*CFrame.new(0,.34,0);q.blade.CFrame=cf*CFrame.new(0,1.38,0);q.tip.CFrame=cf*CFrame.new(0,2.40,0)
+  local cf=torso.CFrame*CFrame.new(0,-.12,-1.26)*CFrame.Angles(math.rad(-22),0,math.rad(-13))
+  grip(ra,1,cf:PointToWorldSpace(Vector3.new(0,.23,0)))
+  grip(la,-1,cf:PointToWorldSpace(Vector3.new(0,-.23,0)))
+  q.handle.CFrame=cf;q.guard.CFrame=cf*CFrame.new(0,.48,0);q.blade.CFrame=cf*CFrame.new(0,1.56,0);q.tip.CFrame=cf*CFrame.new(0,2.58,0)
  elseif kind=="Doll Walk" then
   local bar=CFrame.new(head.Position+Vector3.new(.08*math.sin(phase),1.65,0))*root.CFrame.Rotation*CFrame.Angles(0,0,.12*math.sin(phase))
   q.bar.CFrame=bar;q.cross.CFrame=bar
@@ -60,11 +70,24 @@ function P:update(rig,kind,phase,airProgress)
   local anchors={Vector3.new(1.2,0,0),Vector3.new(-1.2,0,0),Vector3.new(0,0,0),Vector3.new(.45,0,.7),Vector3.new(-.45,0,-.7)}
   for i=1,5 do line(q.strings[i],bar:PointToWorldSpace(anchors[i]),targets[i]) end
  else
-  local a=rl.CFrame:PointToWorldSpace(Vector3.new(0,-rl.Size.Y/2,0))
-  local b=ll.CFrame:PointToWorldSpace(Vector3.new(0,-ll.Size.Y/2,0))
-  local center=(a+b)/2
-  local rotation=root.CFrame.Rotation*CFrame.Angles(0,math.rad(52)+(airProgress or 0)*math.pi*2,0)
-  local cf=CFrame.new(center.X,math.min(a.Y,b.Y)-.10,center.Z)*rotation
+  local cf
+  if state==Enum.HumanoidStateType.Freefall then
+   cf=torso.CFrame*CFrame.new(0,-.5,-1.35)*CFrame.Angles(math.rad(8),math.rad(90),math.rad(8))
+   grip(ra,1,cf:PointToWorldSpace(Vector3.new(0,.12,1.03)))
+   grip(la,-1,cf:PointToWorldSpace(Vector3.new(0,.12,-1.03)))
+  else
+   local a=rl.CFrame:PointToWorldSpace(Vector3.new(0,-rl.Size.Y/2,0))
+   local b=ll.CFrame:PointToWorldSpace(Vector3.new(0,-ll.Size.Y/2,0))
+   local function bottom(p)
+    local sz=p.Size/2;local r=p.CFrame
+    return p.Position.Y-math.abs(r.RightVector.Y)*sz.X-math.abs(r.UpVector.Y)*sz.Y-math.abs(r.LookVector.Y)*sz.Z
+   end
+   local center=(a+b)/2
+   local z=Vector3.new(a.X-b.X,0,a.Z-b.Z)
+   if z.Magnitude<.001 then z=root.CFrame.LookVector end
+   z=z.Unit;local y=Vector3.yAxis;local x=y:Cross(z).Unit
+   cf=CFrame.fromMatrix(Vector3.new(center.X,math.min(bottom(rl),bottom(ll))-.095,center.Z),x,y,z)
+  end
   q.deck.CFrame=cf;q.grip.CFrame=cf*CFrame.new(0,.08,0)
   for i=1,2 do local side=if i==1 then -1 else 1;q.ends[i].CFrame=cf*CFrame.new(0,.01,side*1.65)*CFrame.Angles(0,0,math.pi/2) end
   for i=1,4 do local x=if i%2==0 then .65 else -.65;local z=if i<3 then 1.02 else -1.02;q.wheels[i].CFrame=cf*CFrame.new(x,-.20,z)*CFrame.Angles(phase*2,0,0) end
