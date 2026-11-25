@@ -669,7 +669,7 @@ function FX.new(parent)
  links.Active=false;links.Interactable=false
  local nodes=U.frame(parent,"Figures",nil,nil,nil,1)
  nodes.Active=false;nodes.Interactable=false
- return setmetatable({parent=parent,linkLayer=links,nodeLayer=nodes,nodes={},links={},elapsed=0,w=0,h=0},FX)
+ return setmetatable({parent=parent,linkLayer=links,nodeLayer=nodes,nodes={},links={},w=0,h=0},FX)
 end
 function FX:addNode(w,h)
  local root=frame(self.nodeLayer,"Figure")
@@ -718,9 +718,9 @@ local function drawNode(n,kind,r,color,opacity)
  for j=count+1,#n.edges do n.edges[j].Visible=false end
 end
 function FX:step(dt,s)
- self.elapsed+=dt
- if self.elapsed<1/30 then return end
- local step=math.min(self.elapsed,.1);self.elapsed=0
+ -- Called once per Roblox RenderStepped via Controls:animateBackground.
+ -- Integrate movement using frame delta; do not impose an independent FPS cap.
+ local step=math.clamp(dt,0,.1)
  local size=self.parent.AbsoluteSize
  local w,h=size.X,size.Y
  if w<2 or h<2 then return end
