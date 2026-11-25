@@ -325,6 +325,10 @@ local function procedural(name,t,state)
  local ra,la,rl,ll=R-A*w,R+A*w,L*w,-L*w
  local rz,lz,br,turn=S,-S,p.roll*90*s*m,5*s*m
  local h1,h2=math.max(0,c)*.2*m,math.max(0,-c)*.2*m
+ if state=="Run" then
+  B-=7+12*p.stride
+  ra*=1.12;la*=1.12;rl*=1.20;ll*=1.20;h1*=1.35;h2*=1.35
+ end
  if f=="float" or f=="wing" or f=="paired" or f=="sleep" then
   rl=-10+6*s;ll=-12+6*math.sin(a-.6);ra=R+A*.7*s;la=R+A*.7*math.sin(a-.7);h1=.05+.025*s;h2=.05+.025*c
   if f=="wing" then rz=45+25*s;lz=-rz elseif f=="paired" then rl=18*s;ll=rl;turn=12*s elseif f=="sleep" then B=28+4*s;rl=25;ll=-10 end
@@ -337,6 +341,14 @@ local function procedural(name,t,state)
  elseif f=="strut" then turn=12*s;br=10*s
  elseif f=="stiff" then h1*=.4;h2*=.4;turn*=.25
  elseif f=="slow" then rl*=.75;ll*=.75;h1*=1.5;h2*=1.5 end
+ if state=="Idle" and not (f=="float" or f=="wing" or f=="paired" or f=="sleep") then
+  -- Breathing, relaxed shoulder motion and weight shifts without a walk cycle.
+  local breath=math.sin(t*(1.25+p.cadence*.10))
+  B=-p.lean*30+1.8*breath
+  br=p.roll*25*breath;turn=p.roll*15*math.sin(t*.9)
+  ra+=2.2*breath;la-=2.2*breath
+  rl=2.5*breath;ll=-2.5*breath
+ end
  if state=="Jump" or state=="Fall" then
   local up=state=="Jump";B+=if up then -9 else 8
   ra=R+(if up then 75 else 22);la=R+(if up then 45 else 16)
@@ -344,6 +356,9 @@ local function procedural(name,t,state)
   rl=if up then 35+p.stride*60 else 12;ll=if up then -12-p.stride*30 else 18
   h1=if up then .22 else .06;h2=if up then .12 else .03
   if (p.hover or 0)>0 or f=="wing" then ra=-20;la=-20;rz=S+20;lz=-S-20;rl=8;ll=8 end
+  local drift=math.sin(t*(2+p.cadence*.35))
+  if up then ra+=6*drift;la-=5*drift;rl+=5*drift
+  else rz+=7*drift;lz-=7*drift;rl+=6*drift;ll-=6*drift;B+=3*drift end
  end
  return convert(P(J(B,turn,br,.06*s*m,p.bob*math.abs(s)*m,-.05*m),J(ra,-5,rz,.015,.04*math.max(0,s),.1*s*m),J(la,5,lz,-.015,.04*math.max(0,-s),-.1*s*m),J(rl,0,3,.02,h1,-.12*s*m),J(ll,0,-3,-.02,h2,.12*s*m),J(-B*.75,-turn*.65,-br*.6)))
 end
@@ -735,7 +750,7 @@ function M.mount(ui,a)
   updates[#updates+1]=update;update()
   local function move(x)
    local k=math.clamp((x-track.AbsolutePosition.X)/math.max(1,track.AbsoluteSize.X),0,1)
-   s[key]=math.clamp(min+math.floor(k*(max-min)/step+.5)*step,min,max)
+   s[key]=math.clamp(math.round((min+math.floor(k*(max-min)/step+.5)*step)*1000)/1000,min,max)
    if onChange then onChange() end;update();mark();updateSelection()
   end
   scope:on(track.InputBegan,function(input)
@@ -846,14 +861,14 @@ function M.mount(ui,a)
   local model=r.model
   local follow={}
   for i,v in r.followers do follow[i]=v.owner.CFrame:ToObjectSpace(v.part.CFrame) end
-  if r.kind=="R6" and ((name=="Skater" and s.props and state~="Fall") or (name=="Harpy Glide" and not air and not special)) then
+  if r.kind=="R6" and (state=="Idle" or state=="Walk" or state=="Run") and ((name=="Skater" and s.props) or (name=="Harpy Glide" and not special)) then
    local left,right=model:FindFirstChild("Left Leg"),model:FindFirstChild("Right Leg")
    if left and right then
     local l=math.min(bottom(left.CFrame,left.Size),bottom(right.CFrame,right.Size))
     for _,b in {left,right} do b.CFrame+=V(0,l-bottom(b.CFrame,b.Size),0) end
    end
   end
-  if s.props then props:update(model,name,t*4,if state=="Fall" then Enum.HumanoidStateType.Freefall elseif state=="Jump" then Enum.HumanoidStateType.Jumping else Enum.HumanoidStateType.Running) else props:clear() end
+  if s.props then props:update(model,name,t*4,if state=="Climb" then Enum.HumanoidStateType.Climbing elseif state=="Swim" then Enum.HumanoidStateType.Swimming elseif state=="Fall" then Enum.HumanoidStateType.Freefall elseif state=="Jump" then Enum.HumanoidStateType.Jumping else Enum.HumanoidStateType.Running) else props:clear() end
   for i,v in r.followers do v.part.CFrame=v.owner.CFrame*follow[i] end
   local rotation=angle(s.pitch,s.yaw,s.roll)*angle(spin,0,0)
   if name=="Cartwheel Flow" and (state=="Walk" or state=="Run") then rotation*=angle(0,0,lt*240) end
@@ -865,9 +880,9 @@ function M.mount(ui,a)
   if props.root then for _,b in props.root:GetDescendants() do if b:IsA("BasePart") then table.insert(all,b);b.CFrame=transform*b.CFrame;support=math.min(support,bottom(b.CFrame,b.Size)) end end end
   if support==math.huge then support=0 end
   local gap=(profile(name).hover or 0)+s.height
-  if state=="Climb" or state=="Swim" then gap=.65+s.height end
   if name=="Godly Aura" then gap=.18+.045*math.sin(t*tau/3.6)+s.height end
   if name=="Harpy Glide" then gap=s.height end
+  if state=="Climb" or state=="Swim" then gap=.65+s.height end
   if name=="Floating Head" then gap+=4 end
   if not special and air then local u=lt%1.2/1.2;gap+=if state=="Jump" then 1.65*math.sin(math.pi*u/(if s.auto then 2 else 1)) else 1.65*(1-u*u) end
   if (state=="Walk" or state=="Run") and families[name]=="hop" then gap+=profile(name).bob*math.abs(math.sin(t*profile(name).cadence)) end
