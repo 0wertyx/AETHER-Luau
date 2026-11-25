@@ -2,6 +2,7 @@
 -- Poses are visual-only; HumanoidRootPart physics and game controls are unchanged.
 -- Evaluated at PreSimulation after Animator's own animation tracks.
 local MotionPacks=require(script.Parent.MotionPacks)
+local Signature=require(script.Parent.SignatureR6)
 local W={}
 W.__index=W
 local function motor(rig,...)
@@ -16,7 +17,7 @@ function W.new()
 end
 function W:bind(character)
  if self.character==character then return end
- self.character=character;self.phase=0;self.blend=0;self.hover=0
+ self.character=character;self.phase=0;self.blend=0;self.hover=0;self.airTime=0;self.wasAir=false;self.signatureActive=false;self.airProgress=0
  table.clear(self.motors)
  if not character then return end
  local j=self.motors
@@ -106,6 +107,47 @@ function W:step(character,s,dt,preview)
  local ph=self.phase;local wave=math.sin(ph);local cross=math.cos(ph)
  local weight=self.blend
  local j=self.motors
+ self.signatureActive=false;self.airProgress=0
+ if fullPreview and hum.RigType==Enum.HumanoidRigType.R6 and not swimming and not climbing then
+  if airborne then self.airTime=(if self.wasAir then self.airTime or 0 else 0)+dt else self.airTime=0 end
+  self.wasAir=airborne
+  -- Character tab repeats its preview jump; the simulator plays one turn.
+  local airProgress=if airborne then (if virtual.loopAir then (self.airTime/.82)%1 else math.clamp(self.airTime/.82,0,1)) else 0
+  local signature=Signature.get(style,ph/(2*math.pi),moving,airborne,airProgress)
+  if signature then
+   local strength=math.clamp((virtual.originStrength or 100)/100,0,1)
+   local function apply(m,v)
+    if not m or not m.Parent then return end
+    local scale=if m.Part0 then math.clamp(m.Part0.Size.Y/2,.65,1.6) else 1
+    local basis=m.C0.Rotation
+    local body=CFrame.new(Vector3.new(v[4],v[5],v[6])*weight*strength*scale)
+      *CFrame.Angles(math.rad(v[1])*weight,math.rad(v[2])*weight,math.rad(v[3])*weight)
+    m.Transform=basis:Inverse()*body*basis
+   end
+   for name,v in signature do apply(j[name],v) end
+   -- Plant the lowest foot at neutral floor height in grounded cycles.
+   -- Adjust only the visual root transform, never HumanoidRootPart.
+   if not airborne and j.Root and j.RightHip and j.LeftHip then
+    local function bottom(m,torso,animated)
+     local cf=torso*m.C0*(if animated then m.Transform else CFrame.identity)*m.C1:Inverse()
+     local sz=m.Part1.Size/2
+     return cf.Position.Y-math.abs(cf.RightVector.Y)*sz.X-math.abs(cf.UpVector.Y)*sz.Y-math.abs(cf.LookVector.Y)*sz.Z
+    end
+    local root=j.Root
+    local neutral=root.C0*root.C1:Inverse()
+    local posed=root.C0*root.Transform*root.C1:Inverse()
+    local floor=math.min(bottom(j.RightHip,neutral,false),bottom(j.LeftHip,neutral,false))
+    local low=math.min(bottom(j.RightHip,posed,true),bottom(j.LeftHip,posed,true))
+    local hover=if style=="Godly Aura" then .18 elseif style=="Harpy Glide" then .035 elseif style=="Skater" then .28 else 0
+    local dy=math.clamp(floor-low+hover*weight,-.85,.85)
+    root.Transform=root.C0.Rotation:Inverse()*CFrame.new(0,dy,0)*root.C0.Rotation*root.Transform
+   end
+   self.signatureActive=true;self.airProgress=airProgress
+   return
+  end
+ else
+  self.wasAir=false;self.airTime=0
+ end
  local r6Origin=fullPreview and hum.RigType==Enum.HumanoidRigType.R6
  local origin=MotionPacks.origin(style)
  local originAmount=math.clamp((virtual and virtual.originStrength or 100)/100,0,1)*weight
