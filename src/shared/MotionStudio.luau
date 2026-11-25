@@ -512,7 +512,7 @@ end
 -- Shared pose evaluator for the editor and authorized local avatar animation.
 function M.runtimeSettings(settings)
  local saved=readSaved(settings)
- return {style=saved.pack,speed=saved.speed,origin=saved.origin/100,intensity=math.clamp(saved.intensity/100,0,1)}
+ return {style=saved.pack,speed=saved.speed,origin=saved.origin/100,intensity=math.clamp(saved.intensity/100,0,1),props=saved.props}
 end
 function M.runtimePose(config,t,state,airTime)
  local name=config.style
@@ -533,7 +533,8 @@ function M.runtimePose(config,t,state,airTime)
   result.Root=angle(spin+tilt,0,0)*result.Root
  end
  local hover=if name=="Godly Aura" then .18+.045*math.sin(t*tau/3.6) else (profile(name).hover or 0)
- if name=="Harpy Glide" or name=="Skater" then hover=0 end
+ if name=="Harpy Glide" then hover=0 end
+ if name=="Skater" then hover=if config.props and not airborne then .40 else 0 end
  if not airborne and families[name]=="hop" and state~="Idle" then
   hover+=profile(name).bob*math.abs(math.sin(t*profile(name).cadence))
  end
@@ -750,7 +751,7 @@ function M.mount(ui,a)
     for _,b in {left,right} do b.CFrame+=V(0,l-bottom(b.CFrame,b.Size),0) end
    end
   end
-  if s.props and r.kind=="R6" then props:update(model,name,t*4,if state=="Fall" then Enum.HumanoidStateType.Freefall elseif state=="Jump" then Enum.HumanoidStateType.Jumping else Enum.HumanoidStateType.Running) else props:clear() end
+  if s.props then props:update(model,name,t*4,if state=="Fall" then Enum.HumanoidStateType.Freefall elseif state=="Jump" then Enum.HumanoidStateType.Jumping else Enum.HumanoidStateType.Running) else props:clear() end
   for i,v in r.followers do v.part.CFrame=v.owner.CFrame*follow[i] end
   local rotation=angle(s.pitch,s.yaw,s.roll)*angle(spin,0,0)
   if name=="Cartwheel Flow" and not air and state~="Idle" then rotation*=angle(0,0,lt*240) end
