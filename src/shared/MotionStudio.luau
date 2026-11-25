@@ -347,7 +347,69 @@ local function procedural(name,t,state)
  end
  return convert(P(J(B,turn,br,.06*s*m,p.bob*math.abs(s)*m,-.05*m),J(ra,-5,rz,.015,.04*math.max(0,s),.1*s*m),J(la,5,lz,-.015,.04*math.max(0,-s),-.1*s*m),J(rl,0,3,.02,h1,-.12*s*m),J(ll,0,-3,-.02,h2,.12*s*m),J(-B*.75,-turn*.65,-br*.6)))
 end
+-- Independent climb and swimming cycles, using the personality of each pack.
+-- Hands reach in alternating phases on a ladder; swimming uses a horizontal
+-- root, alternating strokes or synchronized sweeps, and style-specific kicks.
+local aquaticTraits={
+ Natural={1,1,0,0},Heroic={1.18,1.10,-5,8},Bouncy={1.13,1.2,5,12},
+ Floating={.72,.55,6,15},Glide={.78,.55,-9,18},Ethereal={.68,.65,12,23},
+ Toy={.80,.76,0,0},Robot={.72,.70,0,0},Ninja={1.30,1.18,-12,5},
+ Bubbly={1.06,1.18,9,15},Stylish={.88,.78,7,10},Mage={.76,.64,5,25},
+ Levitation={.68,.55,4,30},Oldschool={1,1,-2,0},Vampire={.90,.82,10,16},
+ Astronaut={.62,.72,-4,10},Zombie={.74,.60,14,12},Cartoony={1.22,1.30,8,20},
+ ["Angel Glide"]={.74,.66,-3,32},["Bat Swoop"]={1.12,.90,-13,40},
+ ["Mermaid Drift"]={.70,.60,4,36},["Serpent Slither"]={.82,.55,8,24},
+ ["Cartwheel Flow"]={1.04,1.02,-6,27},Rubberhose={1.12,1.25,7,24},
+ ["Dream Sleep"]={.54,.44,19,13},Plushie={.72,.65,3,14},["Cat Paws"]={1.13,1.05,9,20},
+ ["Shy Kawaii"]={.78,.70,12,-8},Gymnast={1.14,1.12,-7,36},
+ ["Skip Hop"]={1.15,1.20,5,15},["Reindeer Prance"]={1.18,1.12,2,21},
+ Fighter={1.06,1.10,-10,7},["Harpy Glide"]={.92,.78,-7,42},
+ ["Godly Aura"]={.65,.58,13,30},["Wavy Expressive"]={1.05,1.10,11,34},
+ ["Retro Zombie"]={.62,.68,7,5},Tsundere={.90,.83,10,3},
+ ["Doll Walk"]={.70,.76,8,19},Skater={.91,.85,-8,15},["Little Duck"]={1.24,.95,6,38},
+ ["Floating Head"]={.65,.52,12,18},["Dark Aura"]={.72,.60,-11,30},
+ ["Anime Hero"]={1.30,1.18,-15,11},["Headless Float"]={.76,.58,5,32}
+}
+local function waterClimbPose(name,t,state)
+ local p=profile(name);local family=families[name] or "step"
+ local q=aquaticTraits[name] or aquaticTraits.Natural
+ local rate=q[1];local amp=q[2];local lean=q[3];local spread=q[4]
+ local a=t*(if state=="Climb" then 5.4 else 4.5)*rate
+ local wave=math.sin(a);local cross=math.cos(a)
+ if family=="stiff" or name=="Doll Walk" then wave=math.tanh(wave*2.6);cross=math.tanh(cross*2.6) end
+ if state=="Climb" then
+  local r=math.max(0,wave);local l=math.max(0,-wave)
+  local arm=math.clamp(39*amp+12*p.arms,28,65);local leg=math.clamp(32*amp+18*p.stride,23,60)
+  local ra,la=125+arm*wave,125-arm*wave
+  local rl,ll=12-leg*wave,12+leg*wave
+  local handSpread=8+spread*.45
+  if name=="Little Duck" then handSpread+=12
+  elseif name=="Fighter" then ra=145+arm*.45*wave
+  elseif name=="Godly Aura" then ra+=8;la-=8
+  elseif name=="Harpy Glide" then handSpread+=10 end
+  return convert(P(J(-9+lean*.35,7*wave,4*cross*amp,.045*wave,.04*math.sin(2*a),-.10),
+   J(ra,-8,handSpread,.04,.22*r,-.12*r),J(la,8,-handSpread,-.04,.22*l,-.12*l),
+   J(rl,0,5,.02,.18*l,-.16*l),J(ll,0,-5,-.02,.18*r,-.16*r),J(12-lean*.3,-5*wave,-3*cross)))
+ end
+ local paired=family=="paired" or family=="float" or family=="wing" or name=="Harpy Glide" or name=="Godly Aura" or name=="Little Duck"
+ local stroke=math.clamp(46*amp+18*p.arms,30,75)
+ local ra,la=75+stroke*wave,75-stroke*wave
+ local rz,lz=20+spread*.7,-20-spread*.7
+ local rl,ll=24*amp*wave,-24*amp*wave
+ if paired then
+  ra=72+stroke*wave;la=ra;rz+=25*cross;lz=-rz
+  rl=18*amp*math.sin(a-.6);ll=rl
+ elseif family=="sweep" then
+  rl=22*wave;ll=22*math.sin(a-.5);rz+=14*cross;lz-=14*cross
+ elseif name=="Fighter" then ra=102+24*wave;la=55-46*wave
+ elseif name=="Zombie" or name=="Retro Zombie" then ra=92+35*wave;la=77+32*math.cos(a*.9) end
+ local rootPitch=-78+lean*.38+4*cross
+ return convert(P(J(rootPitch,7*wave,6*cross*amp,.055*wave,.04*cross,0),
+  J(ra,-8,rz,.025,.05*math.max(0,wave),.10*cross),J(la,8,lz,-.025,.05*math.max(0,-wave),-.10*cross),
+  J(rl,0,5,.025,.045*math.max(0,-wave),0),J(ll,0,-5,-.025,.045*math.max(0,wave),0),J(65-lean*.25,-4*wave,-3*cross)))
+end
 local function pose(name,t,state)
+ if state=="Climb" or state=="Swim" then return waterClimbPose(name,t,state) end
  if not keys[name] then return procedural(name,t,state) end
  local r=rests[name] or neutral
  local period=if name=="Godly Aura" then (if state=="Walk" then 4.2 else 3.6) else tau/(profile(name).cadence*(if state=="Run" then 1.5 else 1))
@@ -486,11 +548,11 @@ local function part(parent,name,size,color)
 end
 -- Only confirmed editor settings enter the shared settings bank.
 -- Playback position and pause are transport commands, never autosaved.
-local previewKeys={"state","auto","speed","origin","pitch","yaw","roll","cam","zoom","height","props","grid","joints"}
+local previewKeys={"state","auto","speed","adaptive","previewVelocity","origin","pitch","yaw","roll","cam","zoom","height","props","grid","joints"}
 local liveKeys={pack="walkStyle",enabled="walkAnimation",intensity="walkIntensity",aura="aura",trail="trail",auraRate="auraRate",trailLife="trailLife",auraColor="auraColor"}
-local limits={speed={.25,2},origin={0,150},pitch={-360,360},yaw={-360,360},roll={-360,360},cam={-180,180},zoom={.65,1.5},height={0,1.5}}
+local limits={speed={.25,2},previewVelocity={0,40},origin={0,150},pitch={-360,360},yaw={-360,360},roll={-360,360},cam={-180,180},zoom={.65,1.5},height={0,1.5}}
 local function defaults(pack)
- return {state="Run",auto=false,speed=1,origin=100,pitch=if pack=="Godly Aura" then 9 else 0,yaw=0,roll=0,cam=45,zoom=1,height=0,props=true,grid=true,joints=false}
+ return {state="Run",auto=false,speed=1,adaptive=true,previewVelocity=16,packRates={},origin=100,pitch=if pack=="Godly Aura" then 9 else 0,yaw=0,roll=0,cam=45,zoom=1,height=0,props=true,grid=true,joints=false}
 end
 local function readSaved(settings)
  local out=defaults(settings.walkStyle)
@@ -503,8 +565,14 @@ local function readSaved(settings)
     local v=data[key];local d=out[key];local lim=limits[key]
     if lim and type(v)=="number" and v==v and v>=lim[1] and v<=lim[2] then out[key]=v
     elseif type(d)=="boolean" and type(v)=="boolean" then out[key]=v
-    elseif key=="state" and table.find({"Idle","Walk","Run","Jump","Fall"},v) then out[key]=v end
+    elseif key=="state" and table.find({"Idle","Walk","Run","Climb","Fall","Jump","Swim"},v) then out[key]=v end
    end
+   if type(data.packRates)=="table" then
+    for name,value in data.packRates do
+     if extra[name] and type(value)=="number" and value==value and value>=.25 and value<=2 and math.abs(value-1)>1e-7 then out.packRates[name]=value end
+    end
+   elseif out.speed~=1 then out.packRates[out.pack]=out.speed end
+   out.speed=out.packRates[out.pack] or 1
   end
  end
  return out
@@ -512,7 +580,23 @@ end
 -- Shared pose evaluator for the editor and authorized local avatar animation.
 function M.runtimeSettings(settings)
  local saved=readSaved(settings)
- return {style=saved.pack,speed=saved.speed,origin=saved.origin/100,intensity=math.clamp(saved.intensity/100,0,1),props=saved.props}
+ return {style=saved.pack,speed=saved.speed,adaptive=saved.adaptive,origin=saved.origin/100,intensity=math.clamp(saved.intensity/100,0,1),props=saved.props}
+end
+-- Speed scales cadence only, never WalkSpeed, velocity or movement physics.
+function M.speedFactor(config,state,velocity)
+ if not config.adaptive then return 1 end
+ local name=config.style or config.pack or "Natural"
+ local p=profile(name)
+ local reference
+ if state=="Walk" or state=="Run" then
+  local stride=math.clamp(p.stride/.24,.7,1.3)
+  local cadence=math.clamp(p.cadence/7.5,.75,1.25)
+  reference=(if state=="Run" then 16 else 8)*math.clamp(stride*cadence,.68,1.35)
+ elseif state=="Climb" then reference=5
+ elseif state=="Swim" then reference=8
+ else return 1 end
+ local low=if state=="Swim" then .28 elseif state=="Climb" then 0 else .12
+ return math.clamp(math.max(0,velocity or reference)/reference,low,3)
 end
 function M.runtimePose(config,t,state,airTime)
  local name=config.style
@@ -535,7 +619,8 @@ function M.runtimePose(config,t,state,airTime)
  local hover=if name=="Godly Aura" then .18+.045*math.sin(t*tau/3.6) else (profile(name).hover or 0)
  if name=="Harpy Glide" then hover=0 end
  if name=="Skater" then hover=if config.props and not airborne then .40 else 0 end
- if not airborne and families[name]=="hop" and state~="Idle" then
+ if state=="Climb" or state=="Swim" then hover=0 end
+ if (state=="Walk" or state=="Run") and families[name]=="hop" then
   hover+=profile(name).bob*math.abs(math.sin(t*profile(name).cadence))
  end
  return result,hover*config.intensity
@@ -549,12 +634,15 @@ local function differences(draft,saved)
   elseif x~=y then n+=1 end
  end
  for k in liveKeys do if draft[k]~=saved[k] then n+=1 end end
+ for name in extra do if name~=draft.pack and math.abs((draft.packRates[name] or 1)-(saved.packRates[name] or 1))>1e-7 then n+=1 end end
  return n
 end
 local function buildPatch(draft)
  local p,config={},{}
  for k,name in liveKeys do p[name]=Schema.value(name,draft[k]) end
  for _,k in previewKeys do config[k]=draft[k] end
+ config.packRates=table.clone(draft.packRates)
+ config.packRates[draft.pack]=if math.abs(draft.speed-1)>1e-7 then draft.speed else nil
  p.motionStudioConfig=Http:JSONEncode(config)
  return p
 end
@@ -671,14 +759,26 @@ function M.mount(ui,a)
  ui:chips({"Play","Pause","Replay","+1 frame"},function(n)
   if n=="Play" then s.paused=false elseif n=="Pause" then s.paused=true elseif n=="Replay" then s.t=0;s.paused=false else s.paused=true;s.t+=1/60 end;sync()
  end,4,function() return if s.paused then "Pause" else "Play" end)
- ui:chips({"Idle","Walk","Run","Jump","Fall"},function(n) s.state=n;s.auto=false;s.t=0;sync() end,5,function() return s.state end)
+ ui:chips({"Idle","Walk","Run","Climb","Fall","Jump","Swim"},function(n)
+  s.state=n;s.auto=false;s.t=0
+  s.previewVelocity=if n=="Walk" then 8 elseif n=="Run" then 16 elseif n=="Climb" then 5 elseif n=="Swim" then 8 else 0
+  sync()
+ end,4,function() return s.state end)
  ui:chips({"Jump / Fall / Land","Manual"},function(n) s.auto=n~="Manual";s.t=0;sync() end,2,function() return if s.auto then "Jump / Fall / Land" else "Manual" end)
  ui:title("ANIMATION PACKS · 44")
  local order={"Natural","Heroic","Bouncy","Floating","Glide","Ethereal"};for _,n in Packs.order do table.insert(order,n) end
- ui:chips(order,function(n) s.pack=n;s.enabled=true;s.t=0;s.pitch=if n=="Godly Aura" then 9 else 0;s.yaw=0;s.roll=0;sync() end,3,function() return s.pack end)
+ ui:chips(order,function(n)
+  s.packRates[s.pack]=if math.abs(s.speed-1)>1e-7 then s.speed else nil
+  s.pack=n;s.speed=s.packRates[n] or 1;s.enabled=true;s.t=0;s.pitch=if n=="Godly Aura" then 9 else 0;s.yaw=0;s.roll=0;sync()
+ end,3,function() return s.pack end)
  ui:chips({"Animation on","Animation off"},function(n) s.enabled=n=="Animation on";sync() end,2,function() return if s.enabled then "Animation on" else "Animation off" end)
  ui:title("PLAYBACK & CAMERA")
- slider("Speed",.25,2,.25,"speed",function(v) return tostring(v).."x" end)
+ ui:chips({"Adaptive speed","Fixed speed"},function(n) s.adaptive=n=="Adaptive speed";sync() end,2,function() return if s.adaptive then "Adaptive speed" else "Fixed speed" end)
+ slider("Pack speed multiplier",.25,2,.05,"speed",function(v) return string.format("%.2fx",v) end,function()
+  s.packRates[s.pack]=if math.abs(s.speed-1)>1e-7 then s.speed else nil
+ end)
+ slider("Preview movement speed (stud/s)",0,40,1,"previewVelocity",function(v) return string.format("%.0f",v) end)
+ local speedInfo=ui:note("",35)
  slider("Camera orbit",-180,180,1,"cam",degrees)
  slider("Zoom",.65,1.5,.05,"zoom",decimal)
  slider("Origin Motion",0,150,5,"origin",percent)
@@ -704,7 +804,9 @@ function M.mount(ui,a)
  end)
  ui:watch(function() if not colorBox:IsFocused() then colorBox.Text=s.auraColor end end)
  ui:chips({"Reset editor"},function()
+  local rates=s.packRates
   for k,v in defaults(s.pack) do s[k]=v end
+  s.packRates=rates;s.packRates[s.pack]=nil
   s.t=0;s.seek=0;s.paused=false;sync()
  end,1)
  ui:note("Confirm All saves the pack, intensity, animation speed and origins. Camera, manual rotation and extra levitation remain preview-only.",64)
@@ -754,7 +856,7 @@ function M.mount(ui,a)
   if s.props then props:update(model,name,t*4,if state=="Fall" then Enum.HumanoidStateType.Freefall elseif state=="Jump" then Enum.HumanoidStateType.Jumping else Enum.HumanoidStateType.Running) else props:clear() end
   for i,v in r.followers do v.part.CFrame=v.owner.CFrame*follow[i] end
   local rotation=angle(s.pitch,s.yaw,s.roll)*angle(spin,0,0)
-  if name=="Cartwheel Flow" and not air and state~="Idle" then rotation*=angle(0,0,lt*240) end
+  if name=="Cartwheel Flow" and (state=="Walk" or state=="Run") then rotation*=angle(0,0,lt*240) end
   local center=if model:FindFirstChild("Torso") then model.Torso.Position elseif model:FindFirstChild("UpperTorso") then model.UpperTorso.Position else r.root.Position
   local transform=CFrame.new(center)*rotation*CFrame.new(-center)
   local all={};local support=math.huge
@@ -763,11 +865,12 @@ function M.mount(ui,a)
   if props.root then for _,b in props.root:GetDescendants() do if b:IsA("BasePart") then table.insert(all,b);b.CFrame=transform*b.CFrame;support=math.min(support,bottom(b.CFrame,b.Size)) end end end
   if support==math.huge then support=0 end
   local gap=(profile(name).hover or 0)+s.height
+  if state=="Climb" or state=="Swim" then gap=.65+s.height end
   if name=="Godly Aura" then gap=.18+.045*math.sin(t*tau/3.6)+s.height end
   if name=="Harpy Glide" then gap=s.height end
   if name=="Floating Head" then gap+=4 end
   if not special and air then local u=lt%1.2/1.2;gap+=if state=="Jump" then 1.65*math.sin(math.pi*u/(if s.auto then 2 else 1)) else 1.65*(1-u*u) end
-  if not air and families[name]=="hop" and state~="Idle" then gap+=profile(name).bob*math.abs(math.sin(t*profile(name).cadence)) end
+  if (state=="Walk" or state=="Run") and families[name]=="hop" then gap+=profile(name).bob*math.abs(math.sin(t*profile(name).cadence)) end
   local dy=gap-support
   if special then
    local fixed=math.huge;local g=avatarPose(r,ground,O,I)
@@ -856,10 +959,12 @@ function M.mount(ui,a)
  scope:on(Run.RenderStepped,function(dt)
   if scope.dead or not ui.opened or ui.tab~="Character" then return end
   elapsed+=dt
-  if not s.paused then s.t+=math.min(dt,.1)*s.speed;dirty=true end
+  local factor=M.speedFactor(s,s.state,s.previewVelocity)
+  if s.auto then factor=1 end
+  if not s.paused then s.t+=math.min(dt,.1)*s.speed*factor;dirty=true end
   if dirty then render();frames+=1 end
   if elapsed>=.75 then fpsLabel.Text=if s.paused then "PAUSED" else string.format("%.0f FPS",frames/elapsed);frames=0;elapsed=0 end
-  previous+=dt;if previous>=1/20 then s.seek=s.t%2.8;timeline();previous=0 end
+  previous+=dt;if previous>=1/20 then s.seek=s.t%2.8;timeline();speedInfo.Text=string.format("Effective speed %.2fx · %s",s.speed*factor,if s.adaptive then "Adaptive" else "Fixed");previous=0 end
  end)
  scope:add(function() props:clear() end)
  render()
