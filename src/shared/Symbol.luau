@@ -3,7 +3,7 @@
 local AssetService=game:GetService("AssetService")
 local U=require(script.Parent.Util)
 local Icons=require(script.Parent.Icons)
-local M={};local masks={};local N=64
+local M={};local masks={};local N=96
 local paths={
  ["Soft Triangle"]="16,1 30,29 16,22 2,29",Chevron="4,8 6,7 16,15 26,7 28,8 28,14 16,26 4,14",Diamond="16,2 18,4 30,16 18,29 16,30 14,29 2,16",
  ["Neon Pointer"]="16,1 27,30 16,21 5,30|16,8 19,19 13,19",["Double Chevron"]="3,16 16,3 29,16 25,20 16,11 7,20|3,26 16,13 29,26 25,30 16,21 7,30",
@@ -57,7 +57,7 @@ local function build(name,round)
    if name=="Location Pin" then return ((xx-16)^2+(yy-20)^2<112 or (yy>=2 and yy<21 and math.abs(xx-16)<(yy-1)*.56)) and (xx-16)^2+(yy-20)^2>15 end
    if name=="Orbit Arc" or name=="Orbit" then local d=(xx-16)^2+(yy-17)^2;return (d<186 and d>93 and (yy>=13 or xx<13)) or (yy<13 and math.abs(xx-18)<yy*.55) end
    for i=1,#inter-1,2 do if xx>=inter[i] and xx<inter[i+1] then return true end end;return false end
-  local x=0;local nextRow={};while x<N do if not pixel(x) then x+=1;continue end;local l=x;repeat x+=1 until x==N or not pixel(x);local id=l*64+x;local b=last[id];if b then b.h+=1 else b={x=l,y=y,w=x-l,h=1};table.insert(rows,b) end;nextRow[id]=b end;last=nextRow
+  local x=0;local nextRow={};while x<N do if not pixel(x) then x+=1;continue end;local l=x;repeat x+=1 until x==N or not pixel(x);local id=l*(N+1)+x;local b=last[id];if b then b.h+=1 else b={x=l,y=y,w=x-l,h=1};table.insert(rows,b) end;nextRow[id]=b end;last=nextRow
  end;return rows
 end
 -- Share the exact outline / ECG geometry with the Health navigation icon.
@@ -182,10 +182,21 @@ function M.gallery(parent,name,round)
  return M.new(parent,name,round)
 end
 function M.new(parent,name,round)
- local root=U.new("CanvasGroup",{Name="Glyph",BackgroundTransparency=1,AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromScale(1,1)},parent)
+ local root=U.new("Frame",{Name="Glyph",BackgroundTransparency=1,AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),Size=UDim2.fromScale(1,1),Active=false,Interactable=false},parent)
  local outer=U.frame(root,"OuterGlow",nil,nil,nil,.89);U.corner(outer,999);local inner=U.frame(root,"InnerGlow",nil,nil,nil,.80);U.corner(inner,999)
  local ink=U.frame(root,"Ink",nil,nil,nil,1);for _,f in {outer,inner,ink} do f.AnchorPoint=Vector2.new(.5,.5);f.Position=UDim2.fromScale(.5,.5) end
- local self={root=root,ink=ink,parts={},key=""}
+ local self={root=root,ink=ink,parts={},key="",alpha=0}
+ function self:opacity(value)
+  local alpha=math.clamp(value,0,1)
+  if self.alpha==alpha then return end
+  self.alpha=alpha
+  for _,part in self.parts do part.BackgroundTransparency=alpha end
+  if self.hd then self.hd.ImageTransparency=alpha end
+  local glow=self.glow or 0
+  outer.BackgroundTransparency=1-(1-alpha)*glow*.0016
+  inner.BackgroundTransparency=1-(1-alpha)*glow*.0024
+  if self.hdGlow then self.hdGlow.ImageTransparency=1-(1-alpha)*glow*.008 end
+ end
  if name=="Heart" then self.hd,self.hdGradient,self.hdGlow=heartImage(ink) end
  function self:shape(n,r)
   r=math.round(r/10)*10;local key=n..r;if self.key==key then return end;self.key=key
@@ -195,7 +206,7 @@ function M.new(parent,name,round)
    if n=="Heart" then for _,part in self.parts do part.Visible=false end;self.mask={};self.a=nil;return end
   end
   local mask=masks[key];if not mask then mask=build(n,r);masks[key]=mask end
-  for i,rect in mask do local part=self.parts[i] or U.frame(ink,"Run",nil,nil,Color3.new(1,1,1));self.parts[i]=part;part.Position=UDim2.fromScale(rect.x/N,rect.y/N);part.Size=UDim2.fromScale(rect.w/N,rect.h/N);part.Visible=true end
+  for i,rect in mask do local part=self.parts[i] or U.frame(ink,"Run",nil,nil,Color3.new(1,1,1));self.parts[i]=part;part.Position=UDim2.fromScale(rect.x/N,rect.y/N);part.Size=UDim2.fromScale(rect.w/N,rect.h/N);part.BackgroundTransparency=self.alpha;part.Visible=true end
   for i=#mask+1,#self.parts do self.parts[i].Visible=false end;self.mask=mask;self.a=nil
  end
  function self:paint(a,b,glow,spread,middle,angle)
@@ -217,7 +228,7 @@ function M.new(parent,name,round)
    if self.hdGlow then self.hdGlow.ImageColor3=middle or a:Lerp(b,.5) end
    outer.BackgroundColor3=b;inner.BackgroundColor3=a;self.a=a;self.b=b;self.mid=middle;self.angle=angle
   end
-  if self.glow~=glow or self.spread~=spread then outer.BackgroundTransparency=1-glow*.0016;inner.BackgroundTransparency=1-glow*.0024;outer.Visible=glow>0 and not (self.hd and self.hd.Visible);inner.Visible=outer.Visible;if self.hdGlow then self.hdGlow.ImageTransparency=1-glow*.008 end;local k=.69+spread*.016;outer.Size=UDim2.fromScale(k,k);inner.Size=UDim2.fromScale(k*.77,k*.77);ink.Size=if self.hd and self.hd.Visible then UDim2.fromScale(.94,.94) else UDim2.fromScale(.73,.73);self.glow=glow;self.spread=spread end
+  if self.glow~=glow or self.spread~=spread then outer.BackgroundTransparency=1-(1-self.alpha)*glow*.0016;inner.BackgroundTransparency=1-(1-self.alpha)*glow*.0024;outer.Visible=glow>0 and not (self.hd and self.hd.Visible);inner.Visible=outer.Visible;if self.hdGlow then self.hdGlow.ImageTransparency=1-(1-self.alpha)*glow*.008 end;local k=.69+spread*.016;outer.Size=UDim2.fromScale(k,k);inner.Size=UDim2.fromScale(k*.77,k*.77);ink.Size=if self.hd and self.hd.Visible then UDim2.fromScale(.94,.94) else UDim2.fromScale(.73,.73);self.glow=glow;self.spread=spread end
  end
  self:shape(name,round or 30);self:paint(Color3.fromRGB(185,150,255),Color3.fromRGB(255,165,220),50,8);return self
 end
