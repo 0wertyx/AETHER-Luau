@@ -509,6 +509,36 @@ local function readSaved(settings)
  end
  return out
 end
+-- Shared pose evaluator for the editor and authorized local avatar animation.
+function M.runtimeSettings(settings)
+ local saved=readSaved(settings)
+ return {style=saved.pack,speed=saved.speed,origin=saved.origin/100,intensity=math.clamp(saved.intensity/100,0,1)}
+end
+function M.runtimePose(config,t,state,airTime)
+ local name=config.style
+ local p,spin=pose(name,t,state),0
+ local airborne=state=="Jump" or state=="Fall"
+ if name=="Harpy Glide" and airborne then
+  -- One authored flip per real jump, with a continuous clock into freefall.
+  p,spin=harpy(math.min(.30+math.max(0,airTime)*2.2,1.62))
+ end
+ local result={}
+ for i,key in joints do
+  result[key]=CFrame.new(p[i].v*config.origin*config.intensity)*qframe(qslerp(ident,p[i].q,config.intensity))
+ end
+ local tilt=if name=="Godly Aura" then 9 else 0
+ if name=="Cartwheel Flow" and (state=="Walk" or state=="Run") then
+  result.Root=angle(0,0,t*240)*result.Root
+ else
+  result.Root=angle((spin+tilt)*config.intensity,0,0)*result.Root
+ end
+ local hover=if name=="Godly Aura" then .18+.045*math.sin(t*tau/3.6) else (profile(name).hover or 0)
+ if name=="Harpy Glide" or name=="Skater" then hover=0 end
+ if not airborne and families[name]=="hop" and state~="Idle" then
+  hover+=profile(name).bob*math.abs(math.sin(t*profile(name).cadence))
+ end
+ return result,hover*config.intensity
+end
 local function differences(draft,saved)
  local n=0
  for _,k in previewKeys do
@@ -676,7 +706,7 @@ function M.mount(ui,a)
   for k,v in defaults(s.pack) do s[k]=v end
   s.t=0;s.seek=0;s.paused=false;sync()
  end,1)
- ui:note("Every option is staged until Confirm All. Cancel restores the last saved configuration. Camera, pose rotation, origins and playback are editor settings, not live character physics.",64)
+ ui:note("Confirm All saves the pack, intensity, animation speed and origins. Camera, manual rotation and extra levitation remain preview-only.",64)
  actionRow()
  local function visible(b)
   local r=rigData
