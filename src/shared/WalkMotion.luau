@@ -772,7 +772,7 @@ function W:applyAirTilt(character,direction,dt,degrees,preview)
   local localDir=parent.CFrame:VectorToObjectSpace(direction)
   local planar=Vector2.new(localDir.X,localDir.Z)
   if planar.Magnitude>1 then planar=planar.Unit end
-  local angle=math.rad(math.clamp(degrees,0,35))
+  local angle=math.rad(math.clamp(degrees,0,65))
   target=Vector2.new(planar.Y*angle,-planar.X*angle)
  end
  local current=self.airTiltAngles or Vector2.zero
