@@ -4703,7 +4703,7 @@ function E.render(a,tab,ui)
     if curveElapsed>=.25 then curveElapsed=0;if ui.opened then refreshCurve() end end
    end)
    ui:title("AUTO TILT / BETA")
-   ui:note("Correct edges: player or projected aim OUT = recover inside the opposing Court; both IN = nearest side edge. Uses a heading estimate, not a confirmed ball landing point.",96)
+   ui:note("OUT recovery overrides every aiming mode and targets the center. IN headings in Correct edges aim toward an inset edge. Strong recovery input is experimental and may be normalized or rejected.",96)
    ui:chips({"Auto detect court"},function() vb:detectCourt();ui:sync() end,1)
    ui:chips({"Corner A","Corner B","Corner C"},function(label)
     vb:capture(if label=="Corner A" then 1 elseif label=="Corner B" then 2 else 3);ui:sync()
@@ -4725,6 +4725,12 @@ function E.render(a,tab,ui)
     vb.tiltScale=n;vb.requestedTilt=nil
    end)
    ui:watch(function() if not strength:IsFocused() then strength.Text=tostring(vb.tiltScale) end end)
+   local recovery=ui:box("OUT recovery strength (1–10x)",tostring(vb.tiltRecovery),32,function(raw)
+    local n=assert(tonumber(raw),"Enter a number")
+    assert(n==n and n>=1 and n<=10,"Enter 1 to 10")
+    vb.tiltRecovery=n;vb.requestedTilt=nil
+   end)
+   ui:watch(function() if not recovery:IsFocused() then recovery.Text=tostring(vb.tiltRecovery) end end)
    local status=ui:note("",80)
    ui:title("TILT DEBUG / LIVE")
    local diagnostic=ui:note("",192)
@@ -7637,7 +7643,7 @@ end
 -- Volleyball controls are session-local and never serialized into cosmetic presets.
 do
     local ReplicatedStorage=game:GetService("ReplicatedStorage")
-    local vb={originals={},multiplierRequests={},corners={},auto=false,status="Waiting for compatible game",target=nil,tiltAim="Correct edges",tiltScale=1,tiltWrites=0,tiltOverrides=0,tiltHooks=0,tiltCalls=0,tiltAttachAttempts=0,tiltAttachError=nil,tiltLastCall=nil}
+    local vb={originals={},multiplierRequests={},corners={},auto=false,status="Waiting for compatible game",target=nil,tiltAim="Correct edges",tiltScale=1,tiltRecovery=5,tiltWrites=0,tiltOverrides=0,tiltHooks=0,tiltCalls=0,tiltAttachAttempts=0,tiltAttachError=nil,tiltLastCall=nil}
     app.volleyball=vb
     vb.curveEnabled=false
     vb.curveStatus="Off | local special experiment"
@@ -8157,25 +8163,21 @@ do
             local rescue=not inside or not directionIn
             local aimMode=vb.tiltAim
             local desiredLateral=0
-            if aimMode=="Aim left" then
+            -- Recovery takes priority over every aiming preset.
+            -- Choose the center for the largest margin from all boundary lines.
+            if rescue then
+                desiredLateral=0
+                desiredDepth=0
+                aimMode="RECOVER IN"
+            elseif aimMode=="Aim left" then
                 desiredLateral=-usableW
             elseif aimMode=="Aim right" then
                 desiredLateral=usableW
             elseif aimMode=="Correct edges" then
-                if rescue then
-                    -- Recover into the interior instead of targeting the line.
-                    local safeW=math.min(usableW,hw*.6)
-                    local safeD=math.min(usableD,hd*.6)
-                    desiredLateral=math.clamp(projected,-safeW,safeW)
-                    if t<=0 then desiredDepth=math.clamp(oz,-safeD,safeD) end
-                    aimMode="RECOVER IN"
-                else
-                    -- A valid forward heading is directed to the nearest side edge.
-                    local edgeSign=if math.abs(projected)>.01 then (if projected<0 then -1 else 1)
-                        elseif ox<0 then -1 else 1
-                    desiredLateral=edgeSign*usableW
-                    aimMode="EDGE AIM"
-                end
+                local edgeSign=if math.abs(projected)>.01 then (if projected<0 then -1 else 1)
+                    elseif ox<0 then -1 else 1
+                desiredLateral=edgeSign*usableW
+                aimMode="EDGE AIM"
             end
             local target=center+lateralAxis*desiredLateral+depthAxis*desiredDepth
             vb.target=target
@@ -8191,13 +8193,21 @@ do
             local correction=math.clamp(angle/math.rad(22.5),-1,1)*vb.tiltScale
             local horizontal=right*correction
             local facing=desired:Dot(look)
-            if facing<0 then
-                -- A backwards target cannot be guaranteed by sideways curve alone.
-                horizontal=desired*vb.tiltScale
+            if rescue then
+                local gain=vb.tiltRecovery
+                if facing<=0.15 then
+                    horizontal=desired*gain
+                else
+                    local amount=math.clamp(angle/math.rad(12),-1,1)
+                    if not directionIn and math.abs(amount)>.001 then
+                        amount=math.sign(amount)*math.max(.5,math.abs(amount))
+                    end
+                    horizontal=right*(amount*gain)
+                end
             end
             vb.requestedTilt=horizontal+Vector3.yAxis
             vb.tiltFresh=os.clock()
-            vb.status=string.format("%s | %s | player %s | aim %s | tilt %+.0f%% | X %.1f Z %.1f%s",aimMode,zoneName,if inside then "IN" else "OUT",if directionIn then "IN" else "OUT",correction*100,target.X,target.Z,if facing<0 then " | facing away" else "")
+            vb.status=string.format("%s | %s | player %s | aim %s | requested %.2fx | X %.1f Z %.1f%s",aimMode,zoneName,if inside then "IN" else "OUT",if directionIn then "IN" else "OUT",horizontal.Magnitude,target.X,target.Z,if facing<0 then " | facing away" else "")
         end)
         if not ok then
             vb.auto=false
