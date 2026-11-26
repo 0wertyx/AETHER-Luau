@@ -850,7 +850,7 @@ function E.render(a,tab,ui)
     if curveElapsed>=.25 then curveElapsed=0;if ui.opened then refreshCurve() end end
    end)
    ui:title("AUTO TILT / BETA")
-   ui:note("All-style beta: adjusts local jump tilt used by the hit handler. Correct edges preserves manual tilt when the straight heading is in bounds; Aim center estimates a lateral correction. Ball response depends on style and server logic.",96)
+   ui:note("Targets the opposing half from any map position when court geometry is known. Aim center is default. Requested tilt is a direction estimate, not a guaranteed ball landing point.",96)
    ui:chips({"Auto detect court"},function() vb:detectCourt();ui:sync() end,1)
    ui:chips({"Corner A","Corner B","Corner C"},function(label)
     vb:capture(if label=="Corner A" then 1 elseif label=="Corner B" then 2 else 3);ui:sync()

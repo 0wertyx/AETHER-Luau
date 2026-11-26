@@ -4703,7 +4703,7 @@ function E.render(a,tab,ui)
     if curveElapsed>=.25 then curveElapsed=0;if ui.opened then refreshCurve() end end
    end)
    ui:title("AUTO TILT / BETA")
-   ui:note("All-style beta: adjusts local jump tilt used by the hit handler. Correct edges preserves manual tilt when the straight heading is in bounds; Aim center estimates a lateral correction. Ball response depends on style and server logic.",96)
+   ui:note("Targets the opposing half from any map position when court geometry is known. Aim center is default. Requested tilt is a direction estimate, not a guaranteed ball landing point.",96)
    ui:chips({"Auto detect court"},function() vb:detectCourt();ui:sync() end,1)
    ui:chips({"Corner A","Corner B","Corner C"},function(label)
     vb:capture(if label=="Corner A" then 1 elseif label=="Corner B" then 2 else 3);ui:sync()
@@ -7637,7 +7637,7 @@ end
 -- Volleyball controls are session-local and never serialized into cosmetic presets.
 do
     local ReplicatedStorage=game:GetService("ReplicatedStorage")
-    local vb={originals={},multiplierRequests={},corners={},auto=false,status="Waiting for compatible game",target=nil,tiltAim="Correct edges",tiltScale=1,tiltWrites=0,tiltOverrides=0,tiltHooks=0,tiltCalls=0,tiltAttachAttempts=0,tiltAttachError=nil,tiltLastCall=nil}
+    local vb={originals={},multiplierRequests={},corners={},auto=false,status="Waiting for compatible game",target=nil,tiltAim="Aim center",tiltScale=1,tiltWrites=0,tiltOverrides=0,tiltHooks=0,tiltCalls=0,tiltAttachAttempts=0,tiltAttachError=nil,tiltLastCall=nil}
     app.volleyball=vb
     vb.curveEnabled=false
     vb.curveStatus="Off | local special experiment"
@@ -8091,35 +8091,33 @@ do
             local char=player.Character
             local root=char and char:FindFirstChild("HumanoidRootPart")
             if not root or not root:IsA("BasePart") then restore(tiltKey);return end
-            local relative=flatten(root.Position)-a
+            local origin=flatten(root.Position)
+            local relative=origin-a
             local px,pz=relative:Dot(u),relative:Dot(v)
-            local padding=if vb.courtZones then 45 else 5
-            if px<-5 or px>width+5 or pz<-padding or pz>length+padding then
-                restore(tiltKey);vb.target=nil;vb.status="Outside calibrated court";return
-            end
             local half=length*.5
-            -- Near the net, keep the last observed side instead of oscillating.
-            if math.abs(pz-half)>1 then vb.side=if pz<half then -1 else 1 end
-            local side=vb.side or (if pz<half then -1 else 1)
+            -- Prefer the actual team rather than the player's position on the map.
+            local team=player.Team and tonumber(player.Team:GetAttribute("Index"))
+            local side
+            if vb.courtZones and (team==1 or team==2) then
+                side=if team==1 then -1 else 1
+                vb.side=side
+            else
+                if vb.side==nil or math.abs(pz-half)>1 then vb.side=if pz<half then -1 else 1 end
+                side=vb.side
+            end
             local depth=if side==-1 then length*.75 else length*.25
             local look=flatten(root.CFrame.LookVector)
             local dv=look:Dot(v)
-            if math.abs(dv)<.15 or (depth-pz)*dv<=0 then
-                releaseLocalTilt();vb.target=nil;vb.status="Face the opposite court";return
-            end
-            local straightLateral=px+look:Dot(u)*(depth-pz)/dv
+            local forward=math.abs(dv)>.15 and (depth-pz)*dv>0
+            local straightLateral=if forward then px+look:Dot(u)*(depth-pz)/dv else width*.5
             local margin=math.min(2,width*.2)
-            local lateral=if vb.tiltAim=="Aim center" then width*.5
-                elseif vb.tiltAim=="Aim left" then width*.2
+            local lateral=if vb.tiltAim=="Aim left" then width*.2
                 elseif vb.tiltAim=="Aim right" then width*.8
-                else math.clamp(straightLateral,margin,width-margin)
-            -- Court left/right are relative to the player's attacking half.
-            if (vb.tiltAim=="Aim left" or vb.tiltAim=="Aim right") and u:Dot(flatten(root.CFrame.RightVector))<0 then
-                lateral=width-lateral
-            end
+                elseif vb.tiltAim=="Correct edges" and forward then math.clamp(straightLateral,margin,width-margin)
+                else width*.5
+            if side==1 and (vb.tiltAim=="Aim left" or vb.tiltAim=="Aim right") then lateral=width-lateral end
             local target=a+u*lateral+v*depth
             if vb.courtZones then
-                -- Clamp the target within the actual opposite zone's local rectangle.
                 local opposite=vb.courtZones[if side==-1 then 2 else 1]
                 local localPoint=opposite.CFrame:PointToObjectSpace(target)
                 local mx=math.min(2,opposite.Size.X*.2)
@@ -8129,21 +8127,19 @@ do
                     0,
                     math.clamp(localPoint.Z,-opposite.Size.Z*.5+mz,opposite.Size.Z*.5-mz))))
             end
-            -- Estimate lateral correction relative to the uncurved heading.
-            -- This is an aiming heuristic, not a server-side impact guarantee.
-            local right=flatten(root.CFrame.RightVector)
-            if right.Magnitude<.01 then return end
-            right=right.Unit
-            local straight=a+u*straightLateral+v*depth
-            local lateralError=(target-straight):Dot(right)
-            local curve=math.clamp(lateralError/math.max(4,width*.15)*vb.tiltScale,-1,1)
-            if math.abs(curve)<.04 then
-                releaseLocalTilt();vb.target=target;vb.status="Straight heading inside target; manual tilt retained";return
-            end
-            vb.requestedTilt=right*curve+Vector3.yAxis
-            vb.tiltFresh=os.clock()
             vb.target=target
-            vb.status=string.format("Tilt correction %.2f | target X %.1f Z %.1f",curve,target.X,target.Z)
+            local delta=target-origin
+            if delta.Magnitude<.05 then
+                releaseLocalTilt();vb.status="At target";return
+            end
+            -- Requested tilt points toward the selected target in world space.
+            -- This is a direction heuristic; it cannot guarantee a landing point.
+            if vb.tiltAim=="Correct edges" and forward and math.abs(lateral-straightLateral)<.04 then
+                releaseLocalTilt();vb.status="Straight heading inside target; manual tilt retained";return
+            end
+            vb.requestedTilt=delta.Unit*vb.tiltScale+Vector3.yAxis
+            vb.tiltFresh=os.clock()
+            vb.status=string.format("Opponent target X %.1f Z %.1f | direction estimate | team %s",target.X,target.Z,tostring(team or "?"))
         end)
         if not ok then
             vb.auto=false
