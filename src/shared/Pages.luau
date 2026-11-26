@@ -792,6 +792,19 @@ function E.render(a,tab,ui)
     trajectoryElapsed+=dt
     if trajectoryElapsed>=.25 then trajectoryElapsed=0;if ui.opened then refreshTrajectory() end end
    end)
+   ui:title("JINKO DIRECTION ESP / BETA")
+   ui:note("Shows the replicated horizontal tilt vector for Jester (Jinko). Purple arrow is a tilt indicator, not a verified shot prediction. No keypress data.",72)
+   ui:chips({"Toggle Jinko Direction ESP"},function() vb:toggleJinkoDirection();ui:sync() end,1,function() return if vb.jinkoDirection.enabled then "Toggle Jinko Direction ESP" else "" end)
+   local jinkoStatus=ui:note("",56)
+   local function refreshJinko()
+    jinkoStatus.Text=(if vb.jinkoDirection.enabled then "ON | " else "OFF | ")..vb.jinkoDirection.status
+   end
+   ui:watch(refreshJinko)
+   local jinkoElapsed=0
+   ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
+    jinkoElapsed+=dt
+    if jinkoElapsed>=.25 then jinkoElapsed=0;if ui.opened then refreshJinko() end end
+   end)
    ui:title("JINKO STYLE / LOCAL PREVIEW")
    ui:note("Uses the game's local style observer, including its animation and special refresh. No account slot or server multiplier is changed. Turn off to restore the original selection.",84)
    ui:chips({"Toggle Jinko preview"},function() vb:toggleStyle();ui:sync() end,1,function() return if vb.styleEnabled then "Toggle Jinko preview" else "" end)
