@@ -625,58 +625,149 @@ do
 end
 
 
--- Ball radius experiment: local multiplier only; actual hit validation is unverified.
+-- Local ball mesh radius experiment. Visual copy and guide never participate in queries.
 do
     local vb=app.volleyball
     local rs=game:GetService("ReplicatedStorage")
-    local key="Modifier_BallSizeMultiplier"
-    local exp={factor=2,enabled=false,status="Off"}
+    local tags=game:GetService("CollectionService")
+    local exp={factor=2,enabled=false,show=true,status="Off"}
     vb.ballRadius=exp
-    local original,applied
-    local function reset(reason)
-        if applied~=nil and rs:GetAttribute(key)==applied then
-            rs:SetAttribute(key,original)
+    local entry,folder
+    local searchAt=0
+    local function clear()
+        local e=entry;entry=nil
+        if e and e.part.Parent then
+            pcall(function()
+                if e.part.Size==e.applied then e.part.Size=e.base end
+                if e.part.LocalTransparencyModifier==1 then e.part.LocalTransparencyModifier=e.ltm end
+            end)
         end
-        original=nil;applied=nil;exp.enabled=false;exp.status=reason or "Off"
+        if folder then folder:Destroy();folder=nil end
+    end
+    local function reset(reason)
+        clear();searchAt=0;exp.enabled=false;exp.status=reason or "Off"
+    end
+    local function resolvePart(model)
+        if not model or not model:IsA("Model") or not model.Name:match("^CLIENT_BALL_") or not model:IsDescendantOf(workspace) then return nil end
+        local p=model.PrimaryPart
+        if p and p:IsA("MeshPart") and p.CanQuery then return p end
+        local found
+        for _,child in model:GetChildren() do
+            if child:IsA("MeshPart") and child.CanQuery then
+                if found then return nil end
+                found=child
+            end
+        end
+        return found
+    end
+    local function findPart()
+        local seen,models={},{}
+        local function add(obj)
+            if obj:IsA("BasePart") then obj=obj.Parent end
+            if obj and not seen[obj] then
+                seen[obj]=true
+                if resolvePart(obj) then table.insert(models,obj) end
+            end
+        end
+        for _,obj in tags:GetTagged("Ball") do add(obj) end
+        if #models==0 then
+            for _,obj in workspace:GetDescendants() do
+                if obj.Name:match("^CLIENT_BALL_") then add(obj) end
+            end
+        end
+        local active=rs:GetAttribute("ActiveBall")
+        if active~=nil then
+            for _,model in models do
+                if model.Name=="CLIENT_BALL_"..tostring(active) or tostring(model:GetAttribute("ServerId"))==tostring(active) then
+                    return resolvePart(model)
+                end
+            end
+        end
+        if #models==1 then return resolvePart(models[1]) end
+        return nil
+    end
+    local function nonInteractive(p)
+        p.Anchored=true;p.CanCollide=false;p.CanTouch=false;p.CanQuery=false;p.CastShadow=false
+        for _,tag in tags:GetTags(p) do tags:RemoveTag(p,tag) end
+    end
+    local function attach(p)
+        clear()
+        local base=p.Size
+        local oldArchivable=p.Archivable
+        p.Archivable=true
+        local ok,copy=pcall(function() return p:Clone() end)
+        p.Archivable=oldArchivable
+        if not ok or not copy then error("Ball visual copy unavailable") end
+        for _,child in copy:GetChildren() do
+            if not (child:IsA("SurfaceAppearance") or child:IsA("Decal") or child:IsA("Texture")) then child:Destroy() end
+        end
+        for _,obj in copy:GetDescendants() do
+            for _,tag in tags:GetTags(obj) do tags:RemoveTag(obj,tag) end
+        end
+        nonInteractive(copy);copy.Name="NormalBallVisual";copy.Size=base;copy.LocalTransparencyModifier=0
+        copy.CFrame=p.CFrame
+        folder=Instance.new("Folder");folder.Name="AETHER_BallHitboxPreview";folder.Parent=workspace
+        copy.Parent=folder
+        local guide=Instance.new("Part")
+        guide.Name="ExpandedRadius";guide.Shape=Enum.PartType.Ball;nonInteractive(guide)
+        guide.Material=Enum.Material.Neon;guide.Color=Color3.fromRGB(165,105,255);guide.Transparency=.9
+        guide.Size=base*exp.factor;guide.CFrame=p.CFrame;guide.Parent=folder
+        local outline=Instance.new("Highlight")
+        outline.Name="RadiusOutline";outline.Adornee=guide;outline.FillTransparency=1
+        outline.OutlineColor=guide.Color;outline.OutlineTransparency=.15;outline.DepthMode=Enum.HighlightDepthMode.Occluded
+        outline.Parent=guide
+        entry={part=p,base=base,applied=base,ltm=p.LocalTransparencyModifier,copy=copy,guide=guide,outline=outline}
     end
     function vb:setBallRadiusFactor(value)
         assert(type(value)=="number" and value==value and value>=1 and value<=5,"Enter 1 to 5")
-        if exp.enabled then reset("Off | apply new factor") end
         exp.factor=value
     end
+    function vb:toggleBallRadiusGuide() exp.show=not exp.show end
     function vb:toggleBallRadius()
         if exp.enabled then reset();return end
-        if app.mode~="Game" or player:GetAttribute("Gameplay_InGame")~=true then
-            exp.status="Waiting for match";return
-        end
-        local current=rs:GetAttribute(key)
-        if type(current)~="number" or current~=current or current<=0 or current>10 then
-            exp.status="Ball size attribute unavailable";return
-        end
-        original=current;applied=current*exp.factor
-        local ok=pcall(function() rs:SetAttribute(key,applied) end)
-        if not ok or rs:GetAttribute(key)~=applied then
-            reset("Local write failed");return
-        end
-        exp.enabled=true;exp.status=string.format("Local %.2fx | hit validation unverified",applied)
+        if app.mode~="Game" then exp.status="Switch to Game mode";return end
+        exp.enabled=true;exp.status="Waiting for match ball";searchAt=0
     end
     local oldReset=vb.reset
     function vb:reset()
         reset()
         oldReset(self)
     end
-    local elapsed=0
-    scope:on(RunService.Heartbeat,function(dt)
-        elapsed+=dt
-        if elapsed<.1 then return end
-        elapsed=0
+    local function tick()
         if not exp.enabled then return end
-        if app.stopping or not gui.Parent or app.mode~="Game" or player:GetAttribute("Gameplay_InGame")~=true then
-            reset("Off | match ended");return
+        if app.stopping or not gui.Parent or app.mode~="Game" then reset("Off | left Game mode");return end
+        if player:GetAttribute("Gameplay_InGame")~=true then
+            if entry then reset("Off | match ended") else exp.status="Waiting for match" end
+            return
         end
-        if rs:GetAttribute(key)~=applied then
-            reset("Off | game changed the value")
+        if entry and (not entry.part:IsDescendantOf(workspace) or not entry.part.CanQuery or not folder or not folder.Parent) then
+            clear();searchAt=0
         end
+        if os.clock()>=searchAt then
+            searchAt=os.clock()+.5
+            local p=findPart()
+            if entry and p~=entry.part then clear() end
+            if p and not entry then attach(p) end
+        end
+        if not entry then exp.status="Waiting for one identifiable queryable ball mesh";return end
+        local e=entry
+        local p=e.part
+        if p.Size~=e.applied then e.base=p.Size end
+        if p.LocalTransparencyModifier~=1 then e.ltm=p.LocalTransparencyModifier end
+        local target=e.base*exp.factor
+        if p.Size~=target then p.Size=target end
+        e.applied=p.Size
+        p.LocalTransparencyModifier=1
+        e.copy.Size=e.base;e.copy.CFrame=p.CFrame
+        e.copy.Transparency=p.Transparency;e.copy.Color=p.Color;e.copy.Material=p.Material
+        e.guide.Size=e.applied;e.guide.CFrame=p.CFrame
+        e.guide.Transparency=if exp.show then .9 else 1
+        e.outline.Enabled=exp.show
+        exp.status=string.format("%.2fx | %.2f studs | local only",exp.factor,e.applied.X)
+    end
+    scope:on(RunService.RenderStepped,function()
+        local ok,err=pcall(tick)
+        if not ok then reset("Ball hitbox error: "..tostring(err)) end
     end)
     scope:add(function() reset() end)
 end

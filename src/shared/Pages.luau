@@ -779,16 +779,19 @@ function E.render(a,tab,ui)
     end)
    end
    ui:chips({"Restore original values"},function() vb:reset();ui:sync() end,1)
-   ui:title("BALL HITBOX EXPERIMENT / BETA")
-   ui:note("Local ball-radius multiplier only. Does not prove that hit validation uses this radius. Automatically restores on match exit or when disabled.",72)
-   local radiusField=ui:box("Ball radius factor (1–5)",tostring(vb.ballRadius.factor),32,function(raw)
+   ui:title("BALL HITBOX EXPANDER / BETA")
+   ui:note("Expands the local queryable ball mesh while preserving the normal visible ball. Purple sphere marks the expanded size; server hit validation is unverified.",72)
+   local radiusField=ui:box("Ball size factor (1–5)",tostring(vb.ballRadius.factor),32,function(raw)
     vb:setBallRadiusFactor(assert(tonumber(raw),"Enter a number"))
    end)
-   ui:chips({"Toggle Ball Radius"},function() vb:toggleBallRadius();ui:sync() end,1,function() return if vb.ballRadius.enabled then "Toggle Ball Radius" else "" end)
-   local radiusStatus=ui:note("",56)
+   ui:chips({"Toggle Ball Expander","Show Hitbox"},function(v)
+    if v=="Show Hitbox" then vb:toggleBallRadiusGuide() else vb:toggleBallRadius() end
+    ui:sync()
+   end,1,function() return if vb.ballRadius.enabled then "Toggle Ball Expander" else "" end)
+   local radiusStatus=ui:note("",64)
    local function refreshRadius()
     if not radiusField:IsFocused() then radiusField.Text=tostring(vb.ballRadius.factor) end
-    radiusStatus.Text=(if vb.ballRadius.enabled then "ON | " else "OFF | ")..vb.ballRadius.status
+    radiusStatus.Text=(if vb.ballRadius.enabled then "ON | " else "OFF | ")..vb.ballRadius.status.." | Guide: "..(if vb.ballRadius.show then "ON" else "OFF")
    end
    ui:watch(refreshRadius)
    local radiusElapsed=0
