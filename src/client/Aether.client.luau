@@ -625,6 +625,62 @@ do
 end
 
 
+-- Ball radius experiment: local multiplier only; actual hit validation is unverified.
+do
+    local vb=app.volleyball
+    local rs=game:GetService("ReplicatedStorage")
+    local key="Modifier_BallSizeMultiplier"
+    local exp={factor=2,enabled=false,status="Off"}
+    vb.ballRadius=exp
+    local original,applied
+    local function reset(reason)
+        if applied~=nil and rs:GetAttribute(key)==applied then
+            rs:SetAttribute(key,original)
+        end
+        original=nil;applied=nil;exp.enabled=false;exp.status=reason or "Off"
+    end
+    function vb:setBallRadiusFactor(value)
+        assert(type(value)=="number" and value==value and value>=1 and value<=5,"Enter 1 to 5")
+        if exp.enabled then reset("Off | apply new factor") end
+        exp.factor=value
+    end
+    function vb:toggleBallRadius()
+        if exp.enabled then reset();return end
+        if app.mode~="Game" or player:GetAttribute("Gameplay_InGame")~=true then
+            exp.status="Waiting for match";return
+        end
+        local current=rs:GetAttribute(key)
+        if type(current)~="number" or current~=current or current<=0 or current>10 then
+            exp.status="Ball size attribute unavailable";return
+        end
+        original=current;applied=current*exp.factor
+        local ok=pcall(function() rs:SetAttribute(key,applied) end)
+        if not ok or rs:GetAttribute(key)~=applied then
+            reset("Local write failed");return
+        end
+        exp.enabled=true;exp.status=string.format("Local %.2fx | hit validation unverified",applied)
+    end
+    local oldReset=vb.reset
+    function vb:reset()
+        reset()
+        oldReset(self)
+    end
+    local elapsed=0
+    scope:on(RunService.Heartbeat,function(dt)
+        elapsed+=dt
+        if elapsed<.1 then return end
+        elapsed=0
+        if not exp.enabled then return end
+        if app.stopping or not gui.Parent or app.mode~="Game" or player:GetAttribute("Gameplay_InGame")~=true then
+            reset("Off | match ended");return
+        end
+        if rs:GetAttribute(key)~=applied then
+            reset("Off | game changed the value")
+        end
+    end)
+    scope:add(function() reset() end)
+end
+
 -- Multi-style beta: visualize the replicated horizontal tilt vector only.
 -- This does not expose input, predict a hit, or modify the game state.
 do
