@@ -4630,7 +4630,7 @@ function E.render(a,tab,ui)
     if trajectoryElapsed>=.25 then trajectoryElapsed=0;if ui.opened then refreshTrajectory() end end
    end)
    ui:title("JINKO DIRECTION ESP / BETA")
-   ui:note("Shows the replicated horizontal tilt vector for Jester (Jinko). Purple arrow is a tilt indicator, not a verified shot prediction. No keypress data.",72)
+   ui:note("Purple arrow and 36-stud line show the replicated horizontal tilt direction for Jester (Jinko). This is a straight direction guide, not a verified ball flight or landing prediction.",72)
    ui:chips({"Toggle Jinko Direction ESP"},function() vb:toggleJinkoDirection();ui:sync() end,1,function() return if vb.jinkoDirection.enabled then "Toggle Jinko Direction ESP" else "" end)
    local jinkoStatus=ui:note("",56)
    local function refreshJinko()
@@ -8116,6 +8116,7 @@ do
     local folder=nil
     local elapsed=0
     local tint=Color3.fromRGB(190,150,255)
+    local projectionLength=36 -- Direction guide in studs, not a ball flight model.
     local function clear()
         if folder then folder:Destroy();folder=nil end
         table.clear(entries)
@@ -8131,11 +8132,13 @@ do
             folder=Instance.new("Folder");folder.Name="AETHER_JinkoTiltBeta";folder.Parent=workspace
         end
         local model=Instance.new("Folder");model.Parent=folder
-        return {model=model,shaft=part(model),left=part(model),right=part(model)}
+        local guide=part(model);guide.Name="TiltProjection";guide.Transparency=.3
+        return {model=model,shaft=part(model),left=part(model),right=part(model),guide=guide}
     end
-    local function segment(p,a,b)
+    local function segment(p,a,b,width)
         local delta=b-a
-        p.Size=Vector3.new(.12,.12,delta.Magnitude)
+        local w=width or .12
+        p.Size=Vector3.new(w,w,delta.Magnitude)
         p.CFrame=CFrame.lookAt((a+b)*.5,b)
     end
     function vb:toggleJinkoDirection()
@@ -8177,6 +8180,7 @@ do
             local back=tip-dir*1.35
             local entry=entries[other]
             if not entry then entry=make();entries[other]=entry end
+            segment(entry.guide,start,start+dir*projectionLength,.2)
             segment(entry.shaft,start,tip)
             segment(entry.left,tip,back+right*.75)
             segment(entry.right,tip,back-right*.75)
@@ -8186,7 +8190,7 @@ do
         for other,entry in entries do
             if not seen[other] then entry.model:Destroy();entries[other]=nil end
         end
-        esp.status=if count>0 then string.format("%d active | replicated tilt, not confirmed shot aim",count) else "Waiting for active Jinko tilt"
+        esp.status=if count>0 then string.format("%d active | 36-stud tilt guide | flight unverified",count) else "Waiting for active Jinko tilt"
     end
     scope:on(RunService.Heartbeat,tick)
     scope:add(clear)
