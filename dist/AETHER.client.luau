@@ -4664,7 +4664,7 @@ function E.render(a,tab,ui)
     if trajectoryElapsed>=.25 then trajectoryElapsed=0;if ui.opened then refreshTrajectory() end end
    end)
    ui:title("DIRECTION ESP / BETA")
-   ui:note("Jinko, Sanju, Kijo and Twins (Okuro beta): purple arrow and 36-stud tilt guide. Both Twins variants are included pending exact ID confirmation. Flight prediction is unverified.",72)
+   ui:note("Jinko, Sanju, Kijo and Twins (TheTwins): purple arrow and 36-stud tilt guide. Flight prediction is unverified.",72)
    ui:chips({"Toggle Direction ESP"},function() vb:toggleJinkoDirection();ui:sync() end,1,function() return if vb.jinkoDirection.enabled then "Toggle Direction ESP" else "" end)
    local jinkoStatus=ui:note("",56)
    local function refreshJinko()
@@ -8306,9 +8306,8 @@ do
     local elapsed=0
     local tint=Color3.fromRGB(190,150,255)
     local projectionLength=36 -- Direction guide in studs, not a ball flight model.
-    -- Public names and observed internal aliases. Both Twins variants are admitted
-    -- until the exact Okuro variant ID is confirmed in a live test.
-    local supported={Jester=true,Jinko=true,Rintaro=true,Sanju=true,Sanu=true,Kijo=true,Okuro=true,Twin1=true,Twin2=true}
+    -- Public names and internal aliases, including observed TheTwins special ID.
+    local supported={Jester=true,Jinko=true,Rintaro=true,Sanju=true,Sanu=true,Kijo=true,Okuro=true,Twin1=true,Twin2=true,TheTwins=true}
     local function clear()
         if folder then folder:Destroy();folder=nil end
         table.clear(entries)

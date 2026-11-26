@@ -811,7 +811,7 @@ function E.render(a,tab,ui)
     if trajectoryElapsed>=.25 then trajectoryElapsed=0;if ui.opened then refreshTrajectory() end end
    end)
    ui:title("DIRECTION ESP / BETA")
-   ui:note("Jinko, Sanju, Kijo and Twins (Okuro beta): purple arrow and 36-stud tilt guide. Both Twins variants are included pending exact ID confirmation. Flight prediction is unverified.",72)
+   ui:note("Jinko, Sanju, Kijo and Twins (TheTwins): purple arrow and 36-stud tilt guide. Flight prediction is unverified.",72)
    ui:chips({"Toggle Direction ESP"},function() vb:toggleJinkoDirection();ui:sync() end,1,function() return if vb.jinkoDirection.enabled then "Toggle Direction ESP" else "" end)
    local jinkoStatus=ui:note("",56)
    local function refreshJinko()
