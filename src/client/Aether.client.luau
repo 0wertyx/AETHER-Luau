@@ -119,7 +119,7 @@ end
 -- Volleyball controls are session-local and never serialized into cosmetic presets.
 do
     local ReplicatedStorage=game:GetService("ReplicatedStorage")
-    local vb={originals={},multiplierRequests={},corners={},auto=false,status="Waiting for compatible game",target=nil,tiltAim="Aim center",tiltScale=1,tiltWrites=0,tiltOverrides=0,tiltHooks=0,tiltCalls=0,tiltAttachAttempts=0,tiltAttachError=nil,tiltLastCall=nil}
+    local vb={originals={},multiplierRequests={},corners={},auto=false,status="Waiting for compatible game",target=nil,tiltAim="Correct edges",tiltScale=1,tiltWrites=0,tiltOverrides=0,tiltHooks=0,tiltCalls=0,tiltAttachAttempts=0,tiltAttachError=nil,tiltLastCall=nil}
     app.volleyball=vb
     vb.curveEnabled=false
     vb.curveStatus="Off | local special experiment"
@@ -575,9 +575,8 @@ do
             if not root or not root:IsA("BasePart") then restore(tiltKey);return end
             local origin=flatten(root.Position)
             local relative=origin-a
-            local px,pz=relative:Dot(u),relative:Dot(v)
+            local pz=relative:Dot(v)
             local half=length*.5
-            -- Prefer the actual team rather than the player's position on the map.
             local team=player.Team and tonumber(player.Team:GetAttribute("Index"))
             local side
             if vb.courtZones and (team==1 or team==2) then
@@ -587,41 +586,72 @@ do
                 if vb.side==nil or math.abs(pz-half)>1 then vb.side=if pz<half then -1 else 1 end
                 side=vb.side
             end
-            local depth=if side==-1 then length*.75 else length*.25
-            local look=flatten(root.CFrame.LookVector)
-            local dv=look:Dot(v)
-            local forward=math.abs(dv)>.15 and (depth-pz)*dv>0
-            local straightLateral=if forward then px+look:Dot(u)*(depth-pz)/dv else width*.5
-            local margin=math.min(2,width*.2)
-            local lateral=if vb.tiltAim=="Aim left" then width*.2
-                elseif vb.tiltAim=="Aim right" then width*.8
-                elseif vb.tiltAim=="Correct edges" and forward then math.clamp(straightLateral,margin,width-margin)
-                else width*.5
-            if side==1 and (vb.tiltAim=="Aim left" or vb.tiltAim=="Aim right") then lateral=width-lateral end
-            local target=a+u*lateral+v*depth
+            local attack=if side==-1 then v else -v
+            local attackRight=Vector3.new(-attack.Z,0,attack.X)
+            local center=a+u*(width*.5)+v*(if side==-1 then length*.75 else length*.25)
+            local lateralAxis,depthAxis=u,v
+            local hw,hd=width*.5,length*.25
+            local zoneName="calibrated half"
             if vb.courtZones then
                 local opposite=vb.courtZones[if side==-1 then 2 else 1]
-                local localPoint=opposite.CFrame:PointToObjectSpace(target)
-                local mx=math.min(2,opposite.Size.X*.2)
-                local mz=math.min(2,opposite.Size.Z*.2)
-                target=flatten(opposite.CFrame:PointToWorldSpace(Vector3.new(
-                    math.clamp(localPoint.X,-opposite.Size.X*.5+mx,opposite.Size.X*.5-mx),
-                    0,
-                    math.clamp(localPoint.Z,-opposite.Size.Z*.5+mz,opposite.Size.Z*.5-mz))))
+                -- Use the actual Type=Court rectangle, including its rotation.
+                center=flatten(opposite.Position)
+                local x=flatten(opposite.CFrame.RightVector).Unit
+                local z=flatten(opposite.CFrame.ZVector).Unit
+                if math.abs(x:Dot(attack))>math.abs(z:Dot(attack)) then
+                    depthAxis,lateralAxis=x,z
+                    hd,hw=opposite.Size.X*.5,opposite.Size.Z*.5
+                else
+                    depthAxis,lateralAxis=z,x
+                    hd,hw=opposite.Size.Z*.5,opposite.Size.X*.5
+                end
+                zoneName=opposite.Name
             end
+            if lateralAxis:Dot(attackRight)<0 then lateralAxis=-lateralAxis end
+            if depthAxis:Dot(attack)<0 then depthAxis=-depthAxis end
+            -- Inset both axes: avoid selecting outside or exactly on the line.
+            local margin=math.min(hw*.4,math.max(1.5,hw*.12))
+            local depthMargin=math.min(hd*.4,math.max(1.5,hd*.12))
+            local usableW,usableD=hw-margin,hd-depthMargin
+            local look=flatten(root.CFrame.LookVector)
+            if look.Magnitude<.01 then vb.status="No horizontal facing direction";return end
+            look=look.Unit
+            local right=Vector3.new(-look.Z,0,look.X)
+            local offset=origin-center
+            local ox,oz=offset:Dot(lateralAxis),offset:Dot(depthAxis)
+            local lx,lz=look:Dot(lateralAxis),look:Dot(depthAxis)
+            local desiredDepth=0
+            local t=if math.abs(lz)>.001 then (desiredDepth-oz)/lz else -1
+            local projected=if t>0 then ox+lx*t else ox
+            local desiredLateral=if vb.tiltAim=="Aim left" then -usableW
+                elseif vb.tiltAim=="Aim right" then usableW
+                elseif vb.tiltAim=="Aim center" then 0
+                else math.clamp(projected,-usableW,usableW)
+            -- Aiming at the near edge when facing away or from the side
+            -- reduces the required redirection; still inside the playing zone.
+            if t<=0 and vb.tiltAim=="Correct edges" then desiredDepth=math.clamp(oz,-usableD,usableD) end
+            local target=center+lateralAxis*desiredLateral+depthAxis*desiredDepth
             vb.target=target
             local delta=target-origin
             if delta.Magnitude<.05 then
                 releaseLocalTilt();vb.status="At target";return
             end
-            -- Requested tilt points toward the selected target in world space.
-            -- This is a direction heuristic; it cannot guarantee a landing point.
-            if vb.tiltAim=="Correct edges" and forward and math.abs(lateral-straightLateral)<.04 then
-                releaseLocalTilt();vb.status="Straight heading inside target; manual tilt retained";return
+            local desired=delta.Unit
+            local angle=math.atan2(desired:Dot(right),desired:Dot(look))
+            -- Convert angular miss to lateral tilt input. Saturate rather than
+            -- reducing the sideways component to that of a long target vector.
+            -- Gain is a heuristic, not a measured server curve model.
+            local correction=math.clamp(angle/math.rad(22.5),-1,1)*vb.tiltScale
+            local horizontal=right*correction
+            local facing=desired:Dot(look)
+            if facing<0 then
+                -- A backwards target cannot be guaranteed by sideways curve alone.
+                horizontal=desired*vb.tiltScale
             end
-            vb.requestedTilt=delta.Unit*vb.tiltScale+Vector3.yAxis
+            vb.requestedTilt=horizontal+Vector3.yAxis
             vb.tiltFresh=os.clock()
-            vb.status=string.format("Opponent target X %.1f Z %.1f | direction estimate | team %s",target.X,target.Z,tostring(team or "?"))
+            local miss=math.max(0,math.abs(projected)-usableW)
+            vb.status=string.format("%s | X %.1f Z %.1f | tilt %+.0f%% | projected miss %.1f%s",zoneName,target.X,target.Z,correction*100,miss,if facing<0 then " | facing away" else "")
         end)
         if not ok then
             vb.auto=false
