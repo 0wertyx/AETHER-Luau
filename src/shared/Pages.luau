@@ -873,7 +873,10 @@ function E.render(a,tab,ui)
    end)
    ui:watch(function() if not strength:IsFocused() then strength.Text=tostring(vb.tiltScale) end end)
    local status=ui:note("",80)
-   local diagnostic=ui:note("",96)
+   ui:title("TILT DEBUG / LIVE")
+   local diagnostic=ui:note("",192)
+   diagnostic.TextXAlignment=Enum.TextXAlignment.Left
+   diagnostic.TextYAlignment=Enum.TextYAlignment.Top
    local function refreshTilt()
     status.Text=(if vb.auto then "AUTO TILT ON | " else "AUTO TILT OFF | ")..vb.status
     diagnostic.Text=vb:tiltDebug()

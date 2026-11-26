@@ -119,7 +119,7 @@ end
 -- Volleyball controls are session-local and never serialized into cosmetic presets.
 do
     local ReplicatedStorage=game:GetService("ReplicatedStorage")
-    local vb={originals={},multiplierRequests={},corners={},auto=false,status="Waiting for compatible game",target=nil,tiltAim="Correct edges",tiltScale=1,tiltWrites=0,tiltOverrides=0}
+    local vb={originals={},multiplierRequests={},corners={},auto=false,status="Waiting for compatible game",target=nil,tiltAim="Correct edges",tiltScale=1,tiltWrites=0,tiltOverrides=0,tiltHooks=0,tiltCalls=0,tiltAttachAttempts=0,tiltAttachError=nil,tiltLastCall=nil}
     app.volleyball=vb
     vb.curveEnabled=false
     vb.curveStatus="Off | local special experiment"
@@ -272,6 +272,8 @@ do
         originalTilt=pt._handleTilt
         local original=originalTilt
         wrappedTilt=function(...)
+            vb.tiltCalls+=1
+            vb.tiltLastCall=os.clock()
             local result=table.pack(original(...))
             local manual=ht.Values.TiltDirection
             local desired=vb.requestedTilt
@@ -302,7 +304,11 @@ do
             if typeof(v)~="Vector3" then return "-" end
             return string.format("%.3f, %.3f, %.3f",v.X,v.Y,v.Z)
         end
-        return string.format("Local tilt: %s\nRequested: %s\nWrites: %d | jump ticks: %d",fmt(current),fmt(self.requestedTilt),self.tiltWrites,self.tiltHooks or 0)
+        local h,p=gameModules()
+        local connected=wrappedTilt~=nil and physics~=nil and physics._handleTilt==wrappedTilt
+        local last=if self.tiltLastCall then string.format("%.1fs ago",os.clock()-self.tiltLastCall) else "never"
+        local state=if connected then "CONNECTED" elseif self.tiltAttachError then "FAILED" else "NOT ATTACHED"
+        return string.format("Hook: %s | attempts: %d\nHandlers: %s | Jump.Physics: %s\nCalls: %d | last: %s\nEligible ticks: %d | Writes: %d\nLocal tilt: %s\nRequested: %s\nIn game: %s | Error: %s",state,self.tiltAttachAttempts,if h then "found" else "missing",if p then "found" else "missing",self.tiltCalls,last,self.tiltHooks,self.tiltWrites,fmt(current),fmt(self.requestedTilt),tostring(player:GetAttribute("Gameplay_InGame")),self.tiltAttachError or "-")
     end
     local function write(key,value)
         local current=player:GetAttribute(key)
@@ -497,9 +503,12 @@ do
             if not self:detectCourt() then return end
             if not geometry() then self.status=self:calibrationStatus();return end
         end
+        self.tiltAttachAttempts+=1
+        self.tiltAttachError=nil
+        self.tiltCalls=0;self.tiltLastCall=nil;self.tiltWrites=0;self.tiltHooks=0
         local ok,err=pcall(attachTilt)
-        if not ok then detachTilt();self.status="Tilt module unavailable: "..tostring(err);return end
-        self.tiltWrites=0;self.tiltHooks=0;self.requestedTilt=nil
+        if not ok then self.tiltAttachError=tostring(err);detachTilt();self.status="Tilt module unavailable: "..self.tiltAttachError;return end
+        self.requestedTilt=nil
         self.auto=true;self.status="Local tilt correction enabled; ball response depends on style"
     end
     local elapsed=0
@@ -546,6 +555,7 @@ do
         end
         if not vb.auto then return end
         if not available() or not physics or physics._handleTilt~=wrappedTilt then
+            vb.tiltAttachError="Module missing or hook no longer installed"
             vb.auto=false;detachTilt();vb.status="Tilt module changed; re-enable";return
         end
         vb.requestedTilt=nil
