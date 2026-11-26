@@ -741,7 +741,7 @@ function E.render(a,tab,ui)
  elseif tab=="Cursor" then local f=ui:row(94,"CursorPreview");local host=U.frame(f,"OriginalCursorPreview",UDim2.fromScale(.5,.5),UDim2.fromOffset(60,60),nil,1);host.AnchorPoint=Vector2.new(.5,.5);a.preview={cursorHost=host};preset(ui,a,tab);ui:group(tab,{cursorTrailA=true,cursorTrailB=true});ui:title("TRAIL COLORS");ui:colorPicker("cursorTrailA");ui:colorPicker("cursorTrailB");ui:note("Cursor animation never moves its click hotspot. Enable Show hotspot marker to compare the real mouse position with the skin; use Pointer offset X/Y only for calibration. EditableImage renders desktop SVG; imports need an authorized asset ID.",57)
  elseif tab=="Interaction" then
   ui:title("AETHER PEER VISUALS")
-  ui:note("Opt in to share only avatar cosmetics with other opted-in AETHER clients on this server. No external service. Requires the AETHER server relay in this place.",54)
+  ui:note("Opt in to share avatar cosmetics in a supported place. ON requests connection; the status below confirms it. The place must have the AETHER server relay installed. Desktop relay is separate.",54)
   ui:control("peerVisuals");ui:control("peerQuality")
   local peerStatus=ui:note("",36)
   if a.peers then

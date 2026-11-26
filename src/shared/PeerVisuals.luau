@@ -32,14 +32,14 @@ end
 function P:close()
  if self.link and self.enabled then pcall(function() self.link:FireServer("leave") end) end
  if self.connection then self.connection:Disconnect();self.connection=nil end
- self.link=nil;self.joined=false;self.enabled=false;self.sent=nil;self.pending=nil;self.lastSettings=nil;self.lastPublished=nil;self:reset()
+ self.link=nil;self.joined=false;self.enabled=false;self.sent=nil;self.pending=nil;self.lastSettings=nil;self.lastPublished=nil;self.lastPhysical=nil;self.ackMode=false;self.lastAck=0;self.lastHeartbeat=0;self.sendAt=0;self.selectAt=0;self.linkAt=0;self:reset()
 end
 function P:connect(remote)
  self:close()
- self.link=remote
+ self.link=remote;self.enabled=true;self.connectAt=os.clock()
  self.connection=remote.OnClientEvent:Connect(function(op,who,packet)
-  if not self.enabled then return end
-  if op=="ready" then self.joined=true;return end
+  if not self.enabled or self.link~=remote then return end
+  if op=="ready" then self.joined=true;self.lastAck=os.clock();self.ackMode=who==2;return end
   if op=="remove" then self:drop(who);return end
   if op~="update" or typeof(who)~="Instance" or not who:IsA("Player") or who==self.player or who.Parent~=Players then return end
   local ok,settings=pcall(Schema.peerSettings,packet)
@@ -90,29 +90,33 @@ function P:step(s,gameMode,localMotion,dt)
  local now=os.clock()
  if not s.peerVisuals or not gameMode then
   if self.link then self:close() end
-  self.status="Peer visuals OFF";return
+  self.linkAt=0;self.status="Peer visuals OFF";return
  end
- if self.link and self.link.Parent~=RS then self:close() end
+ if self.link and (self.link.Parent~=RS or (not self.joined and now-self.connectAt>=8) or (self.joined and self.ackMode and now-self.lastAck>=20)) then
+  self:close();self.linkAt=now+2;self.status="Relay connection lost · retrying";return
+ end
  if not self.link then
   if now<self.linkAt then return end
   self.linkAt=now+2
   local remote=RS:FindFirstChild("AetherPeerVisualsV1")
-  if not remote or not remote:IsA("RemoteEvent") then self.status="Peer relay unavailable in this place";return end
-  self:connect(remote)
+  if not remote or not remote:IsA("RemoteEvent") then self.status="Not connected · place relay not installed";return end
+  local ok=pcall(self.connect,self,remote)
+  if not ok then self:close();self.linkAt=now+2;self.status="Relay connection failed · retrying";return end
  end
- self.enabled=true
  if now>=self.sendAt then
-  self.sendAt=now+.35
+  self.sendAt=now+(if self.joined then .35 else 1)
   local track=localMotion.replicatedTrack
   local published=track~=nil and track.IsPlaying and track.Length>0
   local physical=localMotion.physicalLift~=nil
   if self.lastSettings~=s or self.lastPublished~=published or self.lastPhysical~=physical then
-   self.lastSettings=s;self.lastPublished=published;self.lastPhysical=physical
    local ok,packet=pcall(Schema.capturePeer,s,published,physical)
-   if ok then self.pending=packet end
+   if ok then self.pending=packet;self.lastSettings=s;self.lastPublished=published;self.lastPhysical=physical
+   else self.pending=nil;self.status="Cannot encode cosmetics · retrying";return end
   end
   if self.pending and (not self.joined or not same(self.sent,self.pending) or now-self.lastHeartbeat>=8) then
-   self.link:FireServer("share",self.pending);self.sent=self.pending;self.lastHeartbeat=now
+   local ok=pcall(function() self.link:FireServer("share",self.pending) end)
+   if not ok then self:close();self.linkAt=now+2;self.status="Relay send failed · retrying";return end
+   self.sent=self.pending;self.lastHeartbeat=now
   end
  end
  local q=quality[s.peerQuality] or quality.Balanced

@@ -28,8 +28,9 @@ remote.OnServerEvent:Connect(function(player,op,data)
  active[player]={packet=packet,time=now}
  if not old then
   for other,entry in active do if other~=player and other.Parent==Players then remote:FireClient(player,"update",other,entry.packet) end end
-  remote:FireClient(player,"ready")
  end
+ -- Acknowledge every accepted share, including unchanged heartbeat packets.
+ remote:FireClient(player,"ready",2)
  if changed then
   for other in active do if other~=player and other.Parent==Players then remote:FireClient(other,"update",player,packet) end end
  end
