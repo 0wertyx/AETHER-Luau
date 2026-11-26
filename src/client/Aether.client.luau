@@ -710,14 +710,16 @@ do
         copy.CFrame=p.CFrame
         folder=Instance.new("Folder");folder.Name="AETHER_BallHitboxPreview";folder.Parent=workspace
         copy.Parent=folder
-        local guide=Instance.new("Part")
-        guide.Name="ExpandedRadius";guide.Shape=Enum.PartType.Ball;nonInteractive(guide)
-        guide.Material=Enum.Material.Neon;guide.Color=Color3.fromRGB(165,105,255);guide.Transparency=.9
-        guide.Size=base;guide.CFrame=p.CFrame;guide.Parent=folder
-        local outline=Instance.new("Highlight")
-        outline.Name="RadiusOutline";outline.Adornee=guide;outline.FillTransparency=1
-        outline.OutlineColor=guide.Color;outline.OutlineTransparency=.15;outline.DepthMode=Enum.HighlightDepthMode.Occluded
-        outline.Parent=guide
+        -- Adorn the queried part itself, not a separately sized physics part.
+        -- The box is its actual oriented bounding box, not the mesh collision hull.
+        local outline=Instance.new("SelectionBox")
+        outline.Name="ActualBallBounds";outline.Adornee=p
+        outline.Color3=Color3.fromRGB(185,125,255);outline.LineThickness=.025
+        outline.SurfaceTransparency=1;outline.Transparency=.05;outline.Parent=folder
+        local guide=Instance.new("SphereHandleAdornment")
+        guide.Name="ApproximateBallRadius";guide.Adornee=p
+        guide.Color3=outline.Color3;guide.Transparency=.94
+        guide.AlwaysOnTop=false;guide.Radius=base.X*.5;guide.Parent=folder
         entry={part=p,base=base,applied=base,ltm=p.LocalTransparencyModifier,copy=copy,guide=guide,outline=outline}
     end
     function vb:setBallRadiusFactor(value)
@@ -764,10 +766,12 @@ do
         p.LocalTransparencyModifier=1
         e.copy.Size=e.base;e.copy.CFrame=p.CFrame
         e.copy.Transparency=p.Transparency;e.copy.Color=p.Color;e.copy.Material=p.Material
-        e.guide.Size=e.applied;e.guide.CFrame=p.CFrame
-        e.guide.Transparency=if exp.show then .9 else 1
-        e.outline.Enabled=exp.show
-        exp.status=string.format("Requested %.5gx | actual %.5gx | %.2f studs",exp.factor,e.applied.X/e.base.X,e.applied.X)
+        local size=e.applied
+        local round=math.abs(size.X-size.Y)<.01 and math.abs(size.X-size.Z)<.01
+        e.guide.Radius=size.X*.5
+        e.guide.Visible=exp.show and round
+        e.outline.Visible=exp.show
+        exp.status=string.format("Requested %.5gx | actual %.5gx | bounds %.2f x %.2f x %.2f studs",exp.factor,size.X/e.base.X,size.X,size.Y,size.Z)
     end
     scope:on(RunService.RenderStepped,function()
         local ok,err=pcall(tick)
