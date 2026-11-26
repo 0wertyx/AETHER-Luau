@@ -620,16 +620,45 @@ do
             local offset=origin-center
             local ox,oz=offset:Dot(lateralAxis),offset:Dot(depthAxis)
             local lx,lz=look:Dot(lateralAxis),look:Dot(depthAxis)
+            -- Distinguish player position from estimated shot direction.
+            -- Use the real Court volumes when available, ignoring their height.
+            local inside=false
+            if vb.courtZones then
+                for _,zone in vb.courtZones do
+                    local q=zone.CFrame:PointToObjectSpace(Vector3.new(origin.X,zone.Position.Y,origin.Z))
+                    if math.abs(q.X)<=zone.Size.X*.5 and math.abs(q.Z)<=zone.Size.Z*.5 then inside=true;break end
+                end
+            else
+                local px=relative:Dot(u)
+                inside=px>=0 and px<=width and pz>=0 and pz<=length
+            end
             local desiredDepth=0
-            local t=if math.abs(lz)>.001 then (desiredDepth-oz)/lz else -1
+            local t=if math.abs(lz)>.001 then -oz/lz else -1
             local projected=if t>0 then ox+lx*t else ox
-            local desiredLateral=if vb.tiltAim=="Aim left" then -usableW
-                elseif vb.tiltAim=="Aim right" then usableW
-                elseif vb.tiltAim=="Aim center" then 0
-                else math.clamp(projected,-usableW,usableW)
-            -- Aiming at the near edge when facing away or from the side
-            -- reduces the required redirection; still inside the playing zone.
-            if t<=0 and vb.tiltAim=="Correct edges" then desiredDepth=math.clamp(oz,-usableD,usableD) end
+            local directionIn=t>0 and math.abs(projected)<=hw
+            local rescue=not inside or not directionIn
+            local aimMode=vb.tiltAim
+            local desiredLateral=0
+            if aimMode=="Aim left" then
+                desiredLateral=-usableW
+            elseif aimMode=="Aim right" then
+                desiredLateral=usableW
+            elseif aimMode=="Correct edges" then
+                if rescue then
+                    -- Recover into the interior instead of targeting the line.
+                    local safeW=math.min(usableW,hw*.6)
+                    local safeD=math.min(usableD,hd*.6)
+                    desiredLateral=math.clamp(projected,-safeW,safeW)
+                    if t<=0 then desiredDepth=math.clamp(oz,-safeD,safeD) end
+                    aimMode="RECOVER IN"
+                else
+                    -- A valid forward heading is directed to the nearest side edge.
+                    local edgeSign=if math.abs(projected)>.01 then (if projected<0 then -1 else 1)
+                        elseif ox<0 then -1 else 1
+                    desiredLateral=edgeSign*usableW
+                    aimMode="EDGE AIM"
+                end
+            end
             local target=center+lateralAxis*desiredLateral+depthAxis*desiredDepth
             vb.target=target
             local delta=target-origin
@@ -650,8 +679,7 @@ do
             end
             vb.requestedTilt=horizontal+Vector3.yAxis
             vb.tiltFresh=os.clock()
-            local miss=math.max(0,math.abs(projected)-usableW)
-            vb.status=string.format("%s | X %.1f Z %.1f | tilt %+.0f%% | projected miss %.1f%s",zoneName,target.X,target.Z,correction*100,miss,if facing<0 then " | facing away" else "")
+            vb.status=string.format("%s | %s | player %s | aim %s | tilt %+.0f%% | X %.1f Z %.1f%s",aimMode,zoneName,if inside then "IN" else "OUT",if directionIn then "IN" else "OUT",correction*100,target.X,target.Z,if facing<0 then " | facing away" else "")
         end)
         if not ok then
             vb.auto=false

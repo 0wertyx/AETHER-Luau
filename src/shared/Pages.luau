@@ -850,7 +850,7 @@ function E.render(a,tab,ui)
     if curveElapsed>=.25 then curveElapsed=0;if ui.opened then refreshCurve() end end
    end)
    ui:title("AUTO TILT / BETA")
-   ui:note("Correct edges uses the opposing Court zone (not out/service zones), inset targets, and amplified sideways tilt. Actual landing depends on the move and game physics.",96)
+   ui:note("Correct edges: player or projected aim OUT = recover inside the opposing Court; both IN = nearest side edge. Uses a heading estimate, not a confirmed ball landing point.",96)
    ui:chips({"Auto detect court"},function() vb:detectCourt();ui:sync() end,1)
    ui:chips({"Corner A","Corner B","Corner C"},function(label)
     vb:capture(if label=="Corner A" then 1 elseif label=="Corner B" then 2 else 3);ui:sync()
