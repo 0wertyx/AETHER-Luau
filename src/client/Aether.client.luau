@@ -107,7 +107,9 @@ function app:restore(bank)
     self.bank = S.bank(bank)
     self.s = self.bank.settings
     self:stopCue()
-    if self.ui and self.ui.tab then self.ui:open(self.ui.tab) end
+    if self.ui and self.ui.tab then
+        if self.ui.opened then self.ui:open(self.ui.tab) else self.ui:sync() end
+    end
 end
 function app:library(bank)
     self.bank = S.bank(bank)
@@ -227,7 +229,7 @@ do
     end
     local attrs={
         BlockPower=true,BumpPower=true,DashPower=true,DiveSpeed=true,
-        DrawPower=true,JumpPower=true,ServePower=true,SetPower=true
+        DrawPower=true,JumpPower=true,ServePower=true,SetPower=true,Speed=true
     }
     local tiltKey="Gameplay_TiltDirection"
     local rf=game:GetService("ReplicatedFirst")
@@ -624,6 +626,252 @@ do
     scope:add(function() vb:reset() end)
 end
 
+
+-- Local ball mesh radius experiment. Visual copy and guide never participate in queries.
+do
+    local vb=app.volleyball
+    local rs=game:GetService("ReplicatedStorage")
+    local tags=game:GetService("CollectionService")
+    local exp={factor=2,enabled=false,show=true,status="Off"}
+    vb.ballRadius=exp
+    local entry,folder
+    local searchAt=0
+    local function clear()
+        local e=entry;entry=nil
+        if e and e.part.Parent then
+            pcall(function()
+                if e.part.Size==e.applied then e.part.Size=e.base end
+                if e.part.LocalTransparencyModifier==1 then e.part.LocalTransparencyModifier=e.ltm end
+            end)
+        end
+        if folder then folder:Destroy();folder=nil end
+    end
+    local function reset(reason)
+        clear();searchAt=0;exp.enabled=false;exp.status=reason or "Off"
+    end
+    local function resolvePart(model)
+        if not model or not model:IsA("Model") or not model.Name:match("^CLIENT_BALL_") or not model:IsDescendantOf(workspace) then return nil end
+        local p=model.PrimaryPart
+        if p and p:IsA("MeshPart") and p.CanQuery then return p end
+        local found
+        for _,child in model:GetChildren() do
+            if child:IsA("MeshPart") and child.CanQuery then
+                if found then return nil end
+                found=child
+            end
+        end
+        return found
+    end
+    local function findPart()
+        local seen,models={},{}
+        local function add(obj)
+            if obj:IsA("BasePart") then obj=obj.Parent end
+            if obj and not seen[obj] then
+                seen[obj]=true
+                if resolvePart(obj) then table.insert(models,obj) end
+            end
+        end
+        for _,obj in tags:GetTagged("Ball") do add(obj) end
+        if #models==0 then
+            for _,obj in workspace:GetDescendants() do
+                if obj.Name:match("^CLIENT_BALL_") then add(obj) end
+            end
+        end
+        local active=rs:GetAttribute("ActiveBall")
+        if active~=nil then
+            for _,model in models do
+                if model.Name=="CLIENT_BALL_"..tostring(active) or tostring(model:GetAttribute("ServerId"))==tostring(active) then
+                    return resolvePart(model)
+                end
+            end
+        end
+        if #models==1 then return resolvePart(models[1]) end
+        return nil
+    end
+    local function nonInteractive(p)
+        p.Anchored=true;p.CanCollide=false;p.CanTouch=false;p.CanQuery=false;p.CastShadow=false
+        for _,tag in tags:GetTags(p) do tags:RemoveTag(p,tag) end
+    end
+    local function attach(p)
+        clear()
+        local base=p.Size
+        local oldArchivable=p.Archivable
+        p.Archivable=true
+        local ok,copy=pcall(function() return p:Clone() end)
+        p.Archivable=oldArchivable
+        if not ok or not copy then error("Ball visual copy unavailable") end
+        for _,child in copy:GetChildren() do
+            if not (child:IsA("SurfaceAppearance") or child:IsA("Decal") or child:IsA("Texture")) then child:Destroy() end
+        end
+        for _,obj in copy:GetDescendants() do
+            for _,tag in tags:GetTags(obj) do tags:RemoveTag(obj,tag) end
+        end
+        nonInteractive(copy);copy.Name="NormalBallVisual";copy.Size=base;copy.LocalTransparencyModifier=0
+        copy.CFrame=p.CFrame
+        folder=Instance.new("Folder");folder.Name="AETHER_BallHitboxPreview";folder.Parent=workspace
+        copy.Parent=folder
+        -- Adorn the queried part itself, not a separately sized physics part.
+        -- The box is its actual oriented bounding box, not the mesh collision hull.
+        local outline=Instance.new("SelectionBox")
+        outline.Name="ActualBallBounds";outline.Adornee=p
+        outline.Color3=Color3.fromRGB(185,125,255);outline.LineThickness=.025
+        outline.SurfaceTransparency=1;outline.Transparency=.05;outline.Parent=folder
+        local guide=Instance.new("SphereHandleAdornment")
+        guide.Name="ApproximateBallRadius";guide.Adornee=p
+        guide.Color3=outline.Color3;guide.Transparency=.94
+        guide.AlwaysOnTop=false;guide.Radius=base.X*.5;guide.Parent=folder
+        entry={part=p,base=base,applied=base,ltm=p.LocalTransparencyModifier,copy=copy,guide=guide,outline=outline}
+    end
+    function vb:setBallRadiusFactor(value)
+        assert(type(value)=="number" and value==value and value>=1 and value<math.huge,"Enter a finite number >= 1")
+        exp.factor=value
+    end
+    function vb:toggleBallRadiusGuide() exp.show=not exp.show end
+    function vb:toggleBallRadius()
+        if exp.enabled then reset();return end
+        if app.mode~="Game" then exp.status="Switch to Game mode";return end
+        exp.enabled=true;exp.status="Waiting for match ball";searchAt=0
+    end
+    local oldReset=vb.reset
+    function vb:reset()
+        reset()
+        oldReset(self)
+    end
+    local function tick()
+        if not exp.enabled then return end
+        if app.stopping or not gui.Parent or app.mode~="Game" then reset("Off | left Game mode");return end
+        if player:GetAttribute("Gameplay_InGame")~=true then
+            if entry then reset("Off | match ended") else exp.status="Waiting for match" end
+            return
+        end
+        if entry and (not entry.part:IsDescendantOf(workspace) or not entry.part.CanQuery or not folder or not folder.Parent) then
+            clear();searchAt=0
+        end
+        if os.clock()>=searchAt then
+            searchAt=os.clock()+.5
+            local p=findPart()
+            if entry and p~=entry.part then clear() end
+            if p and not entry then attach(p) end
+        end
+        if not entry then exp.status="Waiting for one identifiable queryable ball mesh";return end
+        local e=entry
+        local p=e.part
+        if p.Size~=e.applied then e.base=p.Size end
+        if p.LocalTransparencyModifier~=1 then e.ltm=p.LocalTransparencyModifier end
+        local target=e.base*exp.factor
+        if target.X>=math.huge or target.Y>=math.huge or target.Z>=math.huge then error("Size exceeds numeric range") end
+        -- Remember the engine readback so clamped dimensions never compound.
+        if e.requested~=target or p.Size~=e.applied then p.Size=target;e.requested=target end
+        e.applied=p.Size
+        p.LocalTransparencyModifier=1
+        e.copy.Size=e.base;e.copy.CFrame=p.CFrame
+        e.copy.Transparency=p.Transparency;e.copy.Color=p.Color;e.copy.Material=p.Material
+        local size=e.applied
+        local round=math.abs(size.X-size.Y)<.01 and math.abs(size.X-size.Z)<.01
+        e.guide.Radius=size.X*.5
+        e.guide.Visible=exp.show and round
+        e.outline.Visible=exp.show
+        exp.status=string.format("Requested %.5gx | actual %.5gx | bounds %.2f x %.2f x %.2f studs",exp.factor,size.X/e.base.X,size.X,size.Y,size.Z)
+    end
+    scope:on(RunService.RenderStepped,function()
+        local ok,err=pcall(tick)
+        if not ok then reset("Ball hitbox error: "..tostring(err)) end
+    end)
+    scope:add(function() reset() end)
+end
+
+-- Multi-style beta: visualize the replicated horizontal tilt vector only.
+-- This does not expose input, predict a hit, or modify the game state.
+do
+    local vb=app.volleyball
+    local esp={enabled=false,status="Off"}
+    vb.jinkoDirection=esp
+    local entries={}
+    local folder=nil
+    local elapsed=0
+    local tint=Color3.fromRGB(190,150,255)
+    local projectionLength=36 -- Direction guide in studs, not a ball flight model.
+    -- Public names and observed internal aliases. Both Twins variants are admitted
+    -- until the exact Okuro variant ID is confirmed in a live test.
+    local supported={Jester=true,Jinko=true,Rintaro=true,Sanju=true,Sanu=true,Kijo=true,Okuro=true,Twin1=true,Twin2=true}
+    local function clear()
+        if folder then folder:Destroy();folder=nil end
+        table.clear(entries)
+    end
+    local function part(parent)
+        local p=Instance.new("Part")
+        p.Name="TiltArrow";p.Anchored=true;p.CanCollide=false;p.CanTouch=false;p.CanQuery=false
+        p.CastShadow=false;p.Material=Enum.Material.Neon;p.Color=tint;p.Parent=parent
+        return p
+    end
+    local function make()
+        if not folder then
+            folder=Instance.new("Folder");folder.Name="AETHER_JinkoTiltBeta";folder.Parent=workspace
+        end
+        local model=Instance.new("Folder");model.Parent=folder
+        local guide=part(model);guide.Name="TiltProjection";guide.Transparency=.3
+        return {model=model,shaft=part(model),left=part(model),right=part(model),guide=guide}
+    end
+    local function segment(p,a,b,width)
+        local delta=b-a
+        local w=width or .12
+        p.Size=Vector3.new(w,w,delta.Magnitude)
+        p.CFrame=CFrame.lookAt((a+b)*.5,b)
+    end
+    function vb:toggleJinkoDirection()
+        esp.enabled=not esp.enabled
+        clear()
+        esp.status=if esp.enabled then "Waiting for supported style tilt" else "Off"
+    end
+    local function tick(dt)
+        elapsed+=dt
+        if elapsed<.05 then return end
+        elapsed=0
+        if not esp.enabled or app.stopping or not gui.Parent or app.mode~="Game" then
+            if folder then clear() end
+            return
+        end
+        if folder and not folder.Parent then clear() end
+        local camera=workspace.CurrentCamera
+        local seen={}
+        local count=0
+        for _,other in Players:GetPlayers() do
+            if other==player or other:GetAttribute("Gameplay_InGame")~=true then continue end
+            local style=other:GetAttribute("Gameplay_Style")
+            local special=other:GetAttribute("Gameplay_Special")
+            if not supported[style] and not supported[special] then continue end
+            local v=other:GetAttribute("Gameplay_TiltDirection")
+            if typeof(v)~="Vector3" then continue end
+            local planar=Vector3.new(v.X,0,v.Z)
+            local mag=planar.Magnitude
+            if mag~=mag or mag<.05 or mag>10 then continue end
+            local char=other.Character
+            local root=char and char:FindFirstChild("HumanoidRootPart")
+            local hum=char and char:FindFirstChildOfClass("Humanoid")
+            if not root or not root:IsA("BasePart") or not hum or hum.Health<=0 or not camera then continue end
+            if (root.Position-camera.CFrame.Position).Magnitude>150 then continue end
+            local dir=planar.Unit
+            local right=Vector3.new(-dir.Z,0,dir.X)
+            local start=root.Position+Vector3.new(0,2.6,0)
+            local tip=start+dir*6
+            local back=tip-dir*1.35
+            local entry=entries[other]
+            if not entry then entry=make();entries[other]=entry end
+            segment(entry.guide,start,start+dir*projectionLength,.2)
+            segment(entry.shaft,start,tip)
+            segment(entry.left,tip,back+right*.75)
+            segment(entry.right,tip,back-right*.75)
+            seen[other]=true;count+=1
+            if count>=16 then break end
+        end
+        for other,entry in entries do
+            if not seen[other] then entry.model:Destroy();entries[other]=nil end
+        end
+        esp.status=if count>0 then string.format("%d active | 36-stud tilt guide | flight unverified",count) else "Waiting for supported style tilt"
+    end
+    scope:on(RunService.Heartbeat,tick)
+    scope:add(clear)
+end
 
 -- Read-only trajectory preview. Prefer existing controller velocity and retain
 -- position sampling as fallback. No network events or ball state are modified.
@@ -1074,7 +1322,7 @@ function app:drag(input, key, widget, frame, source)
     end)
 end
 
-local hud = Hud.new(scope, overlay, false, function(tab) app.ui:open(tab) end,nil,function(key) app:set(key,false) end)
+local hud = Hud.new(scope, overlay, false, function(tab) app.ui:openShortcut(tab) end,nil,function(key) app:set(key,false) end)
 local avatar = Avatar.new(workspace, false)
 local walkMotion = WalkMotion.new()
 app.walkMotion = walkMotion

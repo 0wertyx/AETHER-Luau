@@ -741,7 +741,7 @@ function E.render(a,tab,ui)
  elseif tab=="Cursor" then local f=ui:row(94,"CursorPreview");local host=U.frame(f,"OriginalCursorPreview",UDim2.fromScale(.5,.5),UDim2.fromOffset(60,60),nil,1);host.AnchorPoint=Vector2.new(.5,.5);a.preview={cursorHost=host};preset(ui,a,tab);ui:group(tab,{cursorTrailA=true,cursorTrailB=true});ui:title("TRAIL COLORS");ui:colorPicker("cursorTrailA");ui:colorPicker("cursorTrailB");ui:note("Cursor animation never moves its click hotspot. Enable Show hotspot marker to compare the real mouse position with the skin; use Pointer offset X/Y only for calibration. EditableImage renders desktop SVG; imports need an authorized asset ID.",57)
  elseif tab=="Interaction" then
   ui:title("AETHER PEER VISUALS")
-  ui:note("Opt in to share only avatar cosmetics with other opted-in AETHER clients on this server. No external service. Requires the AETHER server relay in this place.",54)
+  ui:note("Opt in to share avatar cosmetics in a supported place. ON requests connection; the status below confirms it. The place must have the AETHER server relay installed. Desktop relay is separate.",54)
   ui:control("peerVisuals");ui:control("peerQuality")
   local peerStatus=ui:note("",36)
   if a.peers then
@@ -756,7 +756,7 @@ function E.render(a,tab,ui)
    local availability=ui:note("",64)
    ui:watch(function() availability.Text=vb:availabilityStatus() end)
    ui:note("Session only. Values are written locally; server acceptance is not guaranteed. Controls remain visible while waiting for game attributes.",64)
-   for _,name in {"BlockPower","BumpPower","DashPower","DiveSpeed","DrawPower","JumpPower","ServePower","SetPower"} do
+   for _,name in {"BlockPower","BumpPower","DashPower","DiveSpeed","DrawPower","JumpPower","ServePower","SetPower","Speed"} do
     local key="Multiplier_"..name
     local field=ui:box(name,tostring(lp:GetAttribute(key) or ""),32,function(value)
      vb:setMultiplier(name,assert(tonumber(value),"Enter a number"))
@@ -779,6 +779,24 @@ function E.render(a,tab,ui)
     end)
    end
    ui:chips({"Restore original values"},function() vb:reset();ui:sync() end,1)
+   ui:title("BALL HITBOX EXPANDER / BETA")
+   ui:note("Purple box shows the actual oriented bounds of the queryable mesh; the faint sphere is an approximation. Mesh bounds do not guarantee hit acceptance.",72)
+   local radiusField=ui:box("Ball size factor (>=1)",tostring(vb.ballRadius.factor),32,function(raw)
+    vb:setBallRadiusFactor(assert(tonumber(raw),"Enter a number"))
+   end)
+   ui:chips({"Toggle Ball Expander"},function() vb:toggleBallRadius();ui:sync() end,1,function() return if vb.ballRadius.enabled then "Toggle Ball Expander" else "" end)
+   ui:chips({"Show Hitbox"},function() vb:toggleBallRadiusGuide();ui:sync() end,1,function() return if vb.ballRadius.show then "Show Hitbox" else "" end)
+   local radiusStatus=ui:note("",72)
+   local function refreshRadius()
+    if not radiusField:IsFocused() then radiusField.Text=tostring(vb.ballRadius.factor) end
+    radiusStatus.Text=(if vb.ballRadius.enabled then "ON | " else "OFF | ")..vb.ballRadius.status.." | Guide: "..(if vb.ballRadius.show then "ON" else "OFF")
+   end
+   ui:watch(refreshRadius)
+   local radiusElapsed=0
+   ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
+    radiusElapsed+=dt
+    if radiusElapsed>=.25 then radiusElapsed=0;if ui.opened then refreshRadius() end end
+   end)
    ui:title("TRAJECTORY ESP / BETA")
    ui:note("Controller velocity when available; position sampling fallback. Green = IN, red = OUT, amber = obstacle or unknown court. Prediction stops at first contact; unreplicated curve effects remain estimates.",76)
    ui:chips({"Toggle Trajectory ESP"},function() vb:toggleTrajectory();ui:sync() end,1,function() return if vb.trajectory.enabled then "Toggle Trajectory ESP" else "" end)
@@ -791,6 +809,19 @@ function E.render(a,tab,ui)
    ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
     trajectoryElapsed+=dt
     if trajectoryElapsed>=.25 then trajectoryElapsed=0;if ui.opened then refreshTrajectory() end end
+   end)
+   ui:title("DIRECTION ESP / BETA")
+   ui:note("Jinko, Sanju, Kijo and Twins (Okuro beta): purple arrow and 36-stud tilt guide. Both Twins variants are included pending exact ID confirmation. Flight prediction is unverified.",72)
+   ui:chips({"Toggle Direction ESP"},function() vb:toggleJinkoDirection();ui:sync() end,1,function() return if vb.jinkoDirection.enabled then "Toggle Direction ESP" else "" end)
+   local jinkoStatus=ui:note("",56)
+   local function refreshJinko()
+    jinkoStatus.Text=(if vb.jinkoDirection.enabled then "ON | " else "OFF | ")..vb.jinkoDirection.status
+   end
+   ui:watch(refreshJinko)
+   local jinkoElapsed=0
+   ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
+    jinkoElapsed+=dt
+    if jinkoElapsed>=.25 then jinkoElapsed=0;if ui.opened then refreshJinko() end end
    end)
    ui:title("JINKO STYLE / LOCAL PREVIEW")
    ui:note("Uses the game's local style observer, including its animation and special refresh. No account slot or server multiplier is changed. Turn off to restore the original selection.",84)

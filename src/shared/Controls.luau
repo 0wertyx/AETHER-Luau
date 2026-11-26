@@ -53,7 +53,7 @@ function UI.new(app,gui,scope)
  self.updateChip.TextSize=10;self.updateChip.ZIndex=self.top.ZIndex+2
  self.updateChip.BackgroundTransparency=.15
  self.updateRim=U.stroke(self.updateChip,Color3.fromRGB(166,138,255),.45)
- scope:on(self.updateChip.Activated,function() self:open("Updates") end)
+ scope:on(self.updateChip.Activated,function() self:openShortcut("Updates") end)
  scope:on(self.topButtons[1].Activated,function() self:show(not self.opened) end)
  self.rail,self.railRim,self.railButtons,self.railCollapse=U.railPanel(self.stage)
  local coreOriginal,coreApplied={},{}
@@ -66,7 +66,7 @@ function UI.new(app,gui,scope)
   local button=self.railButtons[index]
   scope:on(button.Activated,function()
    self:action(function()
-    if item[2]==Enum.CoreGuiType.PlayerList then self:open("List");return end
+    if item[2]==Enum.CoreGuiType.PlayerList then self:openShortcut("List");return end
     if item[2]==Enum.CoreGuiType.Chat then
      local config=Chat:FindFirstChildOfClass("ChatWindowConfiguration")
      if config then if chatConfig~=config then chatConfig=config;chatOriginal=config.Enabled end;config.Enabled=not config.Enabled;chatApplied=config.Enabled;button.BackgroundTransparency=if config.Enabled then .12 else .6;return end
@@ -105,7 +105,7 @@ function UI.new(app,gui,scope)
  self.place=U.label(self.panel,"PLACE  /  "..tostring(game.PlaceId),10,nil,nil);self.place.TextColor3=dim
  self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
  self.pageBox=U.new("Frame",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
- self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Interaction","Fonts","Simulator","Scripts","Profiles","Updates","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
+ self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Interaction","Fonts","Simulator","Scripts","Profiles","Updates","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() if self.opened and os.clock()>=(self.tabInputAfter or 0) then self:open(name) end end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
  function self:layout()
   local sz=self.stage.AbsoluteSize
   if sz.X<2 or sz.Y<2 then return end
@@ -330,6 +330,17 @@ function UI:animateBackground(t)
 end
 function UI:begin(i,fn,origin) if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end;local v=Vector2.new(i.Position.X,i.Position.Y);self.drag={i=i,start=v,fn=fn,origin=origin};fn(v,v,origin) end
 function UI:show(on)
+ if not on and self.opened then
+  self.lastClosedTab=self.tab
+  self.lastClosedPage=self.sc
+  self.lastClosedScroll=self.sc and self.sc.CanvasPosition or nil
+  self.tabInputAfter=os.clock()+.3
+ elseif on and not self.opened then
+  self.tabInputAfter=math.max(self.tabInputAfter or 0,os.clock()+.12)
+  if self.lastClosedTab==self.tab and self.lastClosedPage==self.sc and self.sc and self.sc.Parent and self.lastClosedScroll then
+   self.sc.CanvasPosition=self.lastClosedScroll
+  end
+ end
  self.opened=on
  self.panel.Interactable=on
  if on then self.panel.Visible=true end
@@ -343,6 +354,11 @@ function UI:show(on)
  if self.app.onMenu then self.app:onMenu(on) end
 end
 function UI:message(s) self.status.Text=s end
+-- Ignore click-through shortcuts during the close transition, but keep intentional shortcuts.
+function UI:openShortcut(tab)
+ if os.clock()<(self.tabInputAfter or 0) then return end
+ self:open(tab)
+end
 function UI:open(tab)
  if tab=="Camera" then tab="Interaction" end
  self.app.bindingLockKey=false

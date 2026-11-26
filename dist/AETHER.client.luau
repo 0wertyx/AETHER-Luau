@@ -916,7 +916,7 @@ function UI.new(app,gui,scope)
  self.updateChip.TextSize=10;self.updateChip.ZIndex=self.top.ZIndex+2
  self.updateChip.BackgroundTransparency=.15
  self.updateRim=U.stroke(self.updateChip,Color3.fromRGB(166,138,255),.45)
- scope:on(self.updateChip.Activated,function() self:open("Updates") end)
+ scope:on(self.updateChip.Activated,function() self:openShortcut("Updates") end)
  scope:on(self.topButtons[1].Activated,function() self:show(not self.opened) end)
  self.rail,self.railRim,self.railButtons,self.railCollapse=U.railPanel(self.stage)
  local coreOriginal,coreApplied={},{}
@@ -929,7 +929,7 @@ function UI.new(app,gui,scope)
   local button=self.railButtons[index]
   scope:on(button.Activated,function()
    self:action(function()
-    if item[2]==Enum.CoreGuiType.PlayerList then self:open("List");return end
+    if item[2]==Enum.CoreGuiType.PlayerList then self:openShortcut("List");return end
     if item[2]==Enum.CoreGuiType.Chat then
      local config=Chat:FindFirstChildOfClass("ChatWindowConfiguration")
      if config then if chatConfig~=config then chatConfig=config;chatOriginal=config.Enabled end;config.Enabled=not config.Enabled;chatApplied=config.Enabled;button.BackgroundTransparency=if config.Enabled then .12 else .6;return end
@@ -968,7 +968,7 @@ function UI.new(app,gui,scope)
  self.place=U.label(self.panel,"PLACE  /  "..tostring(game.PlaceId),10,nil,nil);self.place.TextColor3=dim
  self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
  self.pageBox=U.new("Frame",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
- self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Interaction","Fonts","Simulator","Scripts","Profiles","Updates","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() self:open(name) end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
+ self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Interaction","Fonts","Simulator","Scripts","Profiles","Updates","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() if self.opened and os.clock()>=(self.tabInputAfter or 0) then self:open(name) end end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
  function self:layout()
   local sz=self.stage.AbsoluteSize
   if sz.X<2 or sz.Y<2 then return end
@@ -1193,6 +1193,17 @@ function UI:animateBackground(t)
 end
 function UI:begin(i,fn,origin) if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end;local v=Vector2.new(i.Position.X,i.Position.Y);self.drag={i=i,start=v,fn=fn,origin=origin};fn(v,v,origin) end
 function UI:show(on)
+ if not on and self.opened then
+  self.lastClosedTab=self.tab
+  self.lastClosedPage=self.sc
+  self.lastClosedScroll=self.sc and self.sc.CanvasPosition or nil
+  self.tabInputAfter=os.clock()+.3
+ elseif on and not self.opened then
+  self.tabInputAfter=math.max(self.tabInputAfter or 0,os.clock()+.12)
+  if self.lastClosedTab==self.tab and self.lastClosedPage==self.sc and self.sc and self.sc.Parent and self.lastClosedScroll then
+   self.sc.CanvasPosition=self.lastClosedScroll
+  end
+ end
  self.opened=on
  self.panel.Interactable=on
  if on then self.panel.Visible=true end
@@ -1206,6 +1217,11 @@ function UI:show(on)
  if self.app.onMenu then self.app:onMenu(on) end
 end
 function UI:message(s) self.status.Text=s end
+-- Ignore click-through shortcuts during the close transition, but keep intentional shortcuts.
+function UI:openShortcut(tab)
+ if os.clock()<(self.tabInputAfter or 0) then return end
+ self:open(tab)
+end
 function UI:open(tab)
  if tab=="Camera" then tab="Interaction" end
  self.app.bindingLockKey=false
@@ -4578,7 +4594,7 @@ function E.render(a,tab,ui)
  elseif tab=="Cursor" then local f=ui:row(94,"CursorPreview");local host=U.frame(f,"OriginalCursorPreview",UDim2.fromScale(.5,.5),UDim2.fromOffset(60,60),nil,1);host.AnchorPoint=Vector2.new(.5,.5);a.preview={cursorHost=host};preset(ui,a,tab);ui:group(tab,{cursorTrailA=true,cursorTrailB=true});ui:title("TRAIL COLORS");ui:colorPicker("cursorTrailA");ui:colorPicker("cursorTrailB");ui:note("Cursor animation never moves its click hotspot. Enable Show hotspot marker to compare the real mouse position with the skin; use Pointer offset X/Y only for calibration. EditableImage renders desktop SVG; imports need an authorized asset ID.",57)
  elseif tab=="Interaction" then
   ui:title("AETHER PEER VISUALS")
-  ui:note("Opt in to share only avatar cosmetics with other opted-in AETHER clients on this server. No external service. Requires the AETHER server relay in this place.",54)
+  ui:note("Opt in to share avatar cosmetics in a supported place. ON requests connection; the status below confirms it. The place must have the AETHER server relay installed. Desktop relay is separate.",54)
   ui:control("peerVisuals");ui:control("peerQuality")
   local peerStatus=ui:note("",36)
   if a.peers then
@@ -4593,7 +4609,7 @@ function E.render(a,tab,ui)
    local availability=ui:note("",64)
    ui:watch(function() availability.Text=vb:availabilityStatus() end)
    ui:note("Session only. Values are written locally; server acceptance is not guaranteed. Controls remain visible while waiting for game attributes.",64)
-   for _,name in {"BlockPower","BumpPower","DashPower","DiveSpeed","DrawPower","JumpPower","ServePower","SetPower"} do
+   for _,name in {"BlockPower","BumpPower","DashPower","DiveSpeed","DrawPower","JumpPower","ServePower","SetPower","Speed"} do
     local key="Multiplier_"..name
     local field=ui:box(name,tostring(lp:GetAttribute(key) or ""),32,function(value)
      vb:setMultiplier(name,assert(tonumber(value),"Enter a number"))
@@ -4616,6 +4632,24 @@ function E.render(a,tab,ui)
     end)
    end
    ui:chips({"Restore original values"},function() vb:reset();ui:sync() end,1)
+   ui:title("BALL HITBOX EXPANDER / BETA")
+   ui:note("Purple box shows the actual oriented bounds of the queryable mesh; the faint sphere is an approximation. Mesh bounds do not guarantee hit acceptance.",72)
+   local radiusField=ui:box("Ball size factor (>=1)",tostring(vb.ballRadius.factor),32,function(raw)
+    vb:setBallRadiusFactor(assert(tonumber(raw),"Enter a number"))
+   end)
+   ui:chips({"Toggle Ball Expander"},function() vb:toggleBallRadius();ui:sync() end,1,function() return if vb.ballRadius.enabled then "Toggle Ball Expander" else "" end)
+   ui:chips({"Show Hitbox"},function() vb:toggleBallRadiusGuide();ui:sync() end,1,function() return if vb.ballRadius.show then "Show Hitbox" else "" end)
+   local radiusStatus=ui:note("",72)
+   local function refreshRadius()
+    if not radiusField:IsFocused() then radiusField.Text=tostring(vb.ballRadius.factor) end
+    radiusStatus.Text=(if vb.ballRadius.enabled then "ON | " else "OFF | ")..vb.ballRadius.status.." | Guide: "..(if vb.ballRadius.show then "ON" else "OFF")
+   end
+   ui:watch(refreshRadius)
+   local radiusElapsed=0
+   ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
+    radiusElapsed+=dt
+    if radiusElapsed>=.25 then radiusElapsed=0;if ui.opened then refreshRadius() end end
+   end)
    ui:title("TRAJECTORY ESP / BETA")
    ui:note("Controller velocity when available; position sampling fallback. Green = IN, red = OUT, amber = obstacle or unknown court. Prediction stops at first contact; unreplicated curve effects remain estimates.",76)
    ui:chips({"Toggle Trajectory ESP"},function() vb:toggleTrajectory();ui:sync() end,1,function() return if vb.trajectory.enabled then "Toggle Trajectory ESP" else "" end)
@@ -4628,6 +4662,19 @@ function E.render(a,tab,ui)
    ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
     trajectoryElapsed+=dt
     if trajectoryElapsed>=.25 then trajectoryElapsed=0;if ui.opened then refreshTrajectory() end end
+   end)
+   ui:title("DIRECTION ESP / BETA")
+   ui:note("Jinko, Sanju, Kijo and Twins (Okuro beta): purple arrow and 36-stud tilt guide. Both Twins variants are included pending exact ID confirmation. Flight prediction is unverified.",72)
+   ui:chips({"Toggle Direction ESP"},function() vb:toggleJinkoDirection();ui:sync() end,1,function() return if vb.jinkoDirection.enabled then "Toggle Direction ESP" else "" end)
+   local jinkoStatus=ui:note("",56)
+   local function refreshJinko()
+    jinkoStatus.Text=(if vb.jinkoDirection.enabled then "ON | " else "OFF | ")..vb.jinkoDirection.status
+   end
+   ui:watch(refreshJinko)
+   local jinkoElapsed=0
+   ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
+    jinkoElapsed+=dt
+    if jinkoElapsed>=.25 then jinkoElapsed=0;if ui.opened then refreshJinko() end end
    end)
    ui:title("JINKO STYLE / LOCAL PREVIEW")
    ui:note("Uses the game's local style observer, including its animation and special refresh. No account slot or server multiplier is changed. Turn off to restore the original selection.",84)
@@ -4861,6 +4908,9 @@ local function same(a,b)
  for k,v in b do if a[k]~=v then return false end end
  return true
 end
+local function validAngle(n)
+ return type(n)=="number" and n==n and n>=-360 and n<=360
+end
 local quality={Low={radius=90,count=4,hz=15,pose=15},Balanced={radius=160,count=8,hz=30,pose=30},High={radius=240,count=12,hz=60,pose=60}}
 function P.new(player,scope)
  local self=setmetatable({player=player,scope=scope,peers={},active={},status="Peer visuals OFF",sendAt=0,selectAt=0,linkAt=0,lastHeartbeat=0},P)
@@ -4880,16 +4930,24 @@ end
 function P:close()
  if self.link and self.enabled then pcall(function() self.link:FireServer("leave") end) end
  if self.connection then self.connection:Disconnect();self.connection=nil end
- self.link=nil;self.joined=false;self.enabled=false;self.sent=nil;self.pending=nil;self.lastSettings=nil;self.lastPublished=nil;self:reset()
+ self.link=nil;self.joined=false;self.enabled=false;self.sent=nil;self.pending=nil;self.lastSettings=nil;self.lastPublished=nil;self.lastPhysical=nil;self.ackMode=false;self.tiltMode=false;self.tiltAt=0;self.tiltX=0;self.tiltZ=0;self.lastAck=0;self.lastHeartbeat=0;self.sendAt=0;self.selectAt=0;self.linkAt=0;self:reset()
 end
 function P:connect(remote)
  self:close()
- self.link=remote
- self.connection=remote.OnClientEvent:Connect(function(op,who,packet)
-  if not self.enabled then return end
-  if op=="ready" then self.joined=true;return end
+ self.link=remote;self.enabled=true;self.connectAt=os.clock()
+ self.connection=remote.OnClientEvent:Connect(function(op,who,packet,poseCharacter)
+  if not self.enabled or self.link~=remote then return end
+  if op=="ready" then self.joined=true;self.lastAck=os.clock();self.ackMode=who==2 or who==3;self.tiltMode=who==3;return end
   if op=="remove" then self:drop(who);return end
-  if op~="update" or typeof(who)~="Instance" or not who:IsA("Player") or who==self.player or who.Parent~=Players then return end
+  if typeof(who)~="Instance" or not who:IsA("Player") or who==self.player or who.Parent~=Players then return end
+  if op=="tilt" then
+   local entry=self.peers[who]
+   if entry and poseCharacter and who.Character==poseCharacter and type(packet)=="table" and validAngle(packet.x) and validAngle(packet.z) then
+    entry.tilt=Vector2.new(math.rad(packet.x),math.rad(packet.z));entry.tiltAt=os.clock();entry.tiltCharacter=poseCharacter
+   end
+   return
+  end
+  if op~="update" then return end
   local ok,settings=pcall(Schema.peerSettings,packet)
   if not ok then return end
   local entry=self.peers[who]
@@ -4938,30 +4996,51 @@ function P:step(s,gameMode,localMotion,dt)
  local now=os.clock()
  if not s.peerVisuals or not gameMode then
   if self.link then self:close() end
-  self.status="Peer visuals OFF";return
+  self.linkAt=0;self.status="Peer visuals OFF";return
  end
- if self.link and self.link.Parent~=RS then self:close() end
+ if self.link and (self.link.Parent~=RS or (not self.joined and now-self.connectAt>=8) or (self.joined and self.ackMode and now-self.lastAck>=20)) then
+  self:close();self.linkAt=now+2;self.status="Relay connection lost · retrying";return
+ end
  if not self.link then
   if now<self.linkAt then return end
   self.linkAt=now+2
   local remote=RS:FindFirstChild("AetherPeerVisualsV1")
-  if not remote or not remote:IsA("RemoteEvent") then self.status="Peer relay unavailable in this place";return end
-  self:connect(remote)
+  if not remote or not remote:IsA("RemoteEvent") then self.status="Not connected · place relay not installed";return end
+  local ok=pcall(self.connect,self,remote)
+  if not ok then self:close();self.linkAt=now+2;self.status="Relay connection failed · retrying";return end
  end
- self.enabled=true
  if now>=self.sendAt then
-  self.sendAt=now+.35
+  self.sendAt=now+(if self.joined then .35 else 1)
   local track=localMotion.replicatedTrack
   local published=track~=nil and track.IsPlaying and track.Length>0
   local physical=localMotion.physicalLift~=nil
   if self.lastSettings~=s or self.lastPublished~=published or self.lastPhysical~=physical then
-   self.lastSettings=s;self.lastPublished=published;self.lastPhysical=physical
    local ok,packet=pcall(Schema.capturePeer,s,published,physical)
-   if ok then self.pending=packet end
+   if ok then self.pending=packet;self.lastSettings=s;self.lastPublished=published;self.lastPhysical=physical
+   else self.pending=nil;self.status="Cannot encode cosmetics · retrying";return end
   end
   if self.pending and (not self.joined or not same(self.sent,self.pending) or now-self.lastHeartbeat>=8) then
-   self.link:FireServer("share",self.pending);self.sent=self.pending;self.lastHeartbeat=now
+   local ok=pcall(function() self.link:FireServer("share",self.pending) end)
+   if not ok then self:close();self.linkAt=now+2;self.status="Relay send failed · retrying";return end
+   self.sent=self.pending;self.lastHeartbeat=now
   end
+ end
+ -- Share only quantized cosmetic joint angles, not movement inputs or physics.
+ if self.joined and self.tiltMode and now>=(self.tiltAt or 0) then
+  self.tiltAt=now+.1
+  local angles=localMotion.airTiltAngles
+  local x,z=0,0
+  local char=self.player.Character
+  local hum=char and char:FindFirstChildOfClass("Humanoid")
+  if not s.reduce and s.airControl and char and hum and hum.Health>0 and not hum.Sit and localMotion.character==char and typeof(angles)=="Vector2" then
+   x=math.clamp(math.round(math.deg(angles.X)),-360,360)
+   z=math.clamp(math.round(math.deg(angles.Y)),-360,360)
+  end
+  if x~=0 or z~=0 or self.tiltX~=0 or self.tiltZ~=0 then
+   local ok=pcall(function() self.link:FireServer("tilt",{x=x,z=z}) end)
+   if not ok then self:close();self.linkAt=now+2;self.status="Relay send failed · retrying";return end
+  end
+  self.tiltX=x;self.tiltZ=z
  end
  local q=quality[s.peerQuality] or quality.Balanced
  if now>=self.selectAt or self.lastQuality~=q then self.selectAt=now+.4;self.lastQuality=q;self:select(q) end
@@ -4986,7 +5065,13 @@ end
 function P:animate(dt)
  for _,entry in self.active do
   if entry.fx and entry.char and entry.char.Parent then
-   local ok=pcall(entry.motion.liveStep,entry.motion,entry.char,entry.settings,dt)
+   local ok=pcall(function()
+    entry.motion:liveStep(entry.char,entry.settings,dt)
+    local hum=entry.hum
+    local fresh=entry.tiltCharacter==entry.char and entry.tiltAt and os.clock()-entry.tiltAt<=.6
+    local target=if fresh and hum and hum.Health>0 and not hum.Sit and not entry.settings.reduce then entry.tilt else Vector2.zero
+    entry.motion:applyPeerAirTilt(entry.char,target,dt)
+   end)
    if not ok then entry.motion:restoreLive() end
   end
  end
@@ -7353,6 +7438,17 @@ function W:applyAirTilt(character,direction,dt,degrees,preview)
   local angle=math.rad(math.fmod(degrees,360))
   target=Vector2.new(planar.Y*angle,-planar.X*angle)
  end
+ self:layerAirTilt(joint,target,dt,preview)
+end
+-- Observer-side cosmetic pose. No character physics or remote joint authority.
+function W:applyPeerAirTilt(character,target,dt)
+ if not self.peer or not character or self.character~=character then return end
+ local joint=self.motors.Root
+ if not joint or not joint.Parent then return end
+ if joint:IsA("AnimationConstraint") and (not joint.Enabled or not joint.IsKinematic) then return end
+ self:layerAirTilt(joint,target or Vector2.zero,dt,false)
+end
+function W:layerAirTilt(joint,target,dt,preview)
  local current=self.airTiltAngles or Vector2.zero
  current=current:Lerp(target,1-math.exp(-math.clamp(dt,0,.1)*16))
  if current.Magnitude<.0001 then current=Vector2.zero end
@@ -7526,7 +7622,9 @@ function app:restore(bank)
     self.bank = S.bank(bank)
     self.s = self.bank.settings
     self:stopCue()
-    if self.ui and self.ui.tab then self.ui:open(self.ui.tab) end
+    if self.ui and self.ui.tab then
+        if self.ui.opened then self.ui:open(self.ui.tab) else self.ui:sync() end
+    end
 end
 function app:library(bank)
     self.bank = S.bank(bank)
@@ -7646,7 +7744,7 @@ do
     end
     local attrs={
         BlockPower=true,BumpPower=true,DashPower=true,DiveSpeed=true,
-        DrawPower=true,JumpPower=true,ServePower=true,SetPower=true
+        DrawPower=true,JumpPower=true,ServePower=true,SetPower=true,Speed=true
     }
     local tiltKey="Gameplay_TiltDirection"
     local rf=game:GetService("ReplicatedFirst")
@@ -8043,6 +8141,252 @@ do
     scope:add(function() vb:reset() end)
 end
 
+
+-- Local ball mesh radius experiment. Visual copy and guide never participate in queries.
+do
+    local vb=app.volleyball
+    local rs=game:GetService("ReplicatedStorage")
+    local tags=game:GetService("CollectionService")
+    local exp={factor=2,enabled=false,show=true,status="Off"}
+    vb.ballRadius=exp
+    local entry,folder
+    local searchAt=0
+    local function clear()
+        local e=entry;entry=nil
+        if e and e.part.Parent then
+            pcall(function()
+                if e.part.Size==e.applied then e.part.Size=e.base end
+                if e.part.LocalTransparencyModifier==1 then e.part.LocalTransparencyModifier=e.ltm end
+            end)
+        end
+        if folder then folder:Destroy();folder=nil end
+    end
+    local function reset(reason)
+        clear();searchAt=0;exp.enabled=false;exp.status=reason or "Off"
+    end
+    local function resolvePart(model)
+        if not model or not model:IsA("Model") or not model.Name:match("^CLIENT_BALL_") or not model:IsDescendantOf(workspace) then return nil end
+        local p=model.PrimaryPart
+        if p and p:IsA("MeshPart") and p.CanQuery then return p end
+        local found
+        for _,child in model:GetChildren() do
+            if child:IsA("MeshPart") and child.CanQuery then
+                if found then return nil end
+                found=child
+            end
+        end
+        return found
+    end
+    local function findPart()
+        local seen,models={},{}
+        local function add(obj)
+            if obj:IsA("BasePart") then obj=obj.Parent end
+            if obj and not seen[obj] then
+                seen[obj]=true
+                if resolvePart(obj) then table.insert(models,obj) end
+            end
+        end
+        for _,obj in tags:GetTagged("Ball") do add(obj) end
+        if #models==0 then
+            for _,obj in workspace:GetDescendants() do
+                if obj.Name:match("^CLIENT_BALL_") then add(obj) end
+            end
+        end
+        local active=rs:GetAttribute("ActiveBall")
+        if active~=nil then
+            for _,model in models do
+                if model.Name=="CLIENT_BALL_"..tostring(active) or tostring(model:GetAttribute("ServerId"))==tostring(active) then
+                    return resolvePart(model)
+                end
+            end
+        end
+        if #models==1 then return resolvePart(models[1]) end
+        return nil
+    end
+    local function nonInteractive(p)
+        p.Anchored=true;p.CanCollide=false;p.CanTouch=false;p.CanQuery=false;p.CastShadow=false
+        for _,tag in tags:GetTags(p) do tags:RemoveTag(p,tag) end
+    end
+    local function attach(p)
+        clear()
+        local base=p.Size
+        local oldArchivable=p.Archivable
+        p.Archivable=true
+        local ok,copy=pcall(function() return p:Clone() end)
+        p.Archivable=oldArchivable
+        if not ok or not copy then error("Ball visual copy unavailable") end
+        for _,child in copy:GetChildren() do
+            if not (child:IsA("SurfaceAppearance") or child:IsA("Decal") or child:IsA("Texture")) then child:Destroy() end
+        end
+        for _,obj in copy:GetDescendants() do
+            for _,tag in tags:GetTags(obj) do tags:RemoveTag(obj,tag) end
+        end
+        nonInteractive(copy);copy.Name="NormalBallVisual";copy.Size=base;copy.LocalTransparencyModifier=0
+        copy.CFrame=p.CFrame
+        folder=Instance.new("Folder");folder.Name="AETHER_BallHitboxPreview";folder.Parent=workspace
+        copy.Parent=folder
+        -- Adorn the queried part itself, not a separately sized physics part.
+        -- The box is its actual oriented bounding box, not the mesh collision hull.
+        local outline=Instance.new("SelectionBox")
+        outline.Name="ActualBallBounds";outline.Adornee=p
+        outline.Color3=Color3.fromRGB(185,125,255);outline.LineThickness=.025
+        outline.SurfaceTransparency=1;outline.Transparency=.05;outline.Parent=folder
+        local guide=Instance.new("SphereHandleAdornment")
+        guide.Name="ApproximateBallRadius";guide.Adornee=p
+        guide.Color3=outline.Color3;guide.Transparency=.94
+        guide.AlwaysOnTop=false;guide.Radius=base.X*.5;guide.Parent=folder
+        entry={part=p,base=base,applied=base,ltm=p.LocalTransparencyModifier,copy=copy,guide=guide,outline=outline}
+    end
+    function vb:setBallRadiusFactor(value)
+        assert(type(value)=="number" and value==value and value>=1 and value<math.huge,"Enter a finite number >= 1")
+        exp.factor=value
+    end
+    function vb:toggleBallRadiusGuide() exp.show=not exp.show end
+    function vb:toggleBallRadius()
+        if exp.enabled then reset();return end
+        if app.mode~="Game" then exp.status="Switch to Game mode";return end
+        exp.enabled=true;exp.status="Waiting for match ball";searchAt=0
+    end
+    local oldReset=vb.reset
+    function vb:reset()
+        reset()
+        oldReset(self)
+    end
+    local function tick()
+        if not exp.enabled then return end
+        if app.stopping or not gui.Parent or app.mode~="Game" then reset("Off | left Game mode");return end
+        if player:GetAttribute("Gameplay_InGame")~=true then
+            if entry then reset("Off | match ended") else exp.status="Waiting for match" end
+            return
+        end
+        if entry and (not entry.part:IsDescendantOf(workspace) or not entry.part.CanQuery or not folder or not folder.Parent) then
+            clear();searchAt=0
+        end
+        if os.clock()>=searchAt then
+            searchAt=os.clock()+.5
+            local p=findPart()
+            if entry and p~=entry.part then clear() end
+            if p and not entry then attach(p) end
+        end
+        if not entry then exp.status="Waiting for one identifiable queryable ball mesh";return end
+        local e=entry
+        local p=e.part
+        if p.Size~=e.applied then e.base=p.Size end
+        if p.LocalTransparencyModifier~=1 then e.ltm=p.LocalTransparencyModifier end
+        local target=e.base*exp.factor
+        if target.X>=math.huge or target.Y>=math.huge or target.Z>=math.huge then error("Size exceeds numeric range") end
+        -- Remember the engine readback so clamped dimensions never compound.
+        if e.requested~=target or p.Size~=e.applied then p.Size=target;e.requested=target end
+        e.applied=p.Size
+        p.LocalTransparencyModifier=1
+        e.copy.Size=e.base;e.copy.CFrame=p.CFrame
+        e.copy.Transparency=p.Transparency;e.copy.Color=p.Color;e.copy.Material=p.Material
+        local size=e.applied
+        local round=math.abs(size.X-size.Y)<.01 and math.abs(size.X-size.Z)<.01
+        e.guide.Radius=size.X*.5
+        e.guide.Visible=exp.show and round
+        e.outline.Visible=exp.show
+        exp.status=string.format("Requested %.5gx | actual %.5gx | bounds %.2f x %.2f x %.2f studs",exp.factor,size.X/e.base.X,size.X,size.Y,size.Z)
+    end
+    scope:on(RunService.RenderStepped,function()
+        local ok,err=pcall(tick)
+        if not ok then reset("Ball hitbox error: "..tostring(err)) end
+    end)
+    scope:add(function() reset() end)
+end
+
+-- Multi-style beta: visualize the replicated horizontal tilt vector only.
+-- This does not expose input, predict a hit, or modify the game state.
+do
+    local vb=app.volleyball
+    local esp={enabled=false,status="Off"}
+    vb.jinkoDirection=esp
+    local entries={}
+    local folder=nil
+    local elapsed=0
+    local tint=Color3.fromRGB(190,150,255)
+    local projectionLength=36 -- Direction guide in studs, not a ball flight model.
+    -- Public names and observed internal aliases. Both Twins variants are admitted
+    -- until the exact Okuro variant ID is confirmed in a live test.
+    local supported={Jester=true,Jinko=true,Rintaro=true,Sanju=true,Sanu=true,Kijo=true,Okuro=true,Twin1=true,Twin2=true}
+    local function clear()
+        if folder then folder:Destroy();folder=nil end
+        table.clear(entries)
+    end
+    local function part(parent)
+        local p=Instance.new("Part")
+        p.Name="TiltArrow";p.Anchored=true;p.CanCollide=false;p.CanTouch=false;p.CanQuery=false
+        p.CastShadow=false;p.Material=Enum.Material.Neon;p.Color=tint;p.Parent=parent
+        return p
+    end
+    local function make()
+        if not folder then
+            folder=Instance.new("Folder");folder.Name="AETHER_JinkoTiltBeta";folder.Parent=workspace
+        end
+        local model=Instance.new("Folder");model.Parent=folder
+        local guide=part(model);guide.Name="TiltProjection";guide.Transparency=.3
+        return {model=model,shaft=part(model),left=part(model),right=part(model),guide=guide}
+    end
+    local function segment(p,a,b,width)
+        local delta=b-a
+        local w=width or .12
+        p.Size=Vector3.new(w,w,delta.Magnitude)
+        p.CFrame=CFrame.lookAt((a+b)*.5,b)
+    end
+    function vb:toggleJinkoDirection()
+        esp.enabled=not esp.enabled
+        clear()
+        esp.status=if esp.enabled then "Waiting for supported style tilt" else "Off"
+    end
+    local function tick(dt)
+        elapsed+=dt
+        if elapsed<.05 then return end
+        elapsed=0
+        if not esp.enabled or app.stopping or not gui.Parent or app.mode~="Game" then
+            if folder then clear() end
+            return
+        end
+        if folder and not folder.Parent then clear() end
+        local camera=workspace.CurrentCamera
+        local seen={}
+        local count=0
+        for _,other in Players:GetPlayers() do
+            if other==player or other:GetAttribute("Gameplay_InGame")~=true then continue end
+            local style=other:GetAttribute("Gameplay_Style")
+            local special=other:GetAttribute("Gameplay_Special")
+            if not supported[style] and not supported[special] then continue end
+            local v=other:GetAttribute("Gameplay_TiltDirection")
+            if typeof(v)~="Vector3" then continue end
+            local planar=Vector3.new(v.X,0,v.Z)
+            local mag=planar.Magnitude
+            if mag~=mag or mag<.05 or mag>10 then continue end
+            local char=other.Character
+            local root=char and char:FindFirstChild("HumanoidRootPart")
+            local hum=char and char:FindFirstChildOfClass("Humanoid")
+            if not root or not root:IsA("BasePart") or not hum or hum.Health<=0 or not camera then continue end
+            if (root.Position-camera.CFrame.Position).Magnitude>150 then continue end
+            local dir=planar.Unit
+            local right=Vector3.new(-dir.Z,0,dir.X)
+            local start=root.Position+Vector3.new(0,2.6,0)
+            local tip=start+dir*6
+            local back=tip-dir*1.35
+            local entry=entries[other]
+            if not entry then entry=make();entries[other]=entry end
+            segment(entry.guide,start,start+dir*projectionLength,.2)
+            segment(entry.shaft,start,tip)
+            segment(entry.left,tip,back+right*.75)
+            segment(entry.right,tip,back-right*.75)
+            seen[other]=true;count+=1
+            if count>=16 then break end
+        end
+        for other,entry in entries do
+            if not seen[other] then entry.model:Destroy();entries[other]=nil end
+        end
+        esp.status=if count>0 then string.format("%d active | 36-stud tilt guide | flight unverified",count) else "Waiting for supported style tilt"
+    end
+    scope:on(RunService.Heartbeat,tick)
+    scope:add(clear)
+end
 
 -- Read-only trajectory preview. Prefer existing controller velocity and retain
 -- position sampling as fallback. No network events or ball state are modified.
@@ -8493,7 +8837,7 @@ function app:drag(input, key, widget, frame, source)
     end)
 end
 
-local hud = Hud.new(scope, overlay, false, function(tab) app.ui:open(tab) end,nil,function(key) app:set(key,false) end)
+local hud = Hud.new(scope, overlay, false, function(tab) app.ui:openShortcut(tab) end,nil,function(key) app:set(key,false) end)
 local avatar = Avatar.new(workspace, false)
 local walkMotion = WalkMotion.new()
 app.walkMotion = walkMotion
