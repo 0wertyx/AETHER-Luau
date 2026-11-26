@@ -776,6 +776,17 @@ function W:applyAirTilt(character,direction,dt,degrees,preview)
   local angle=math.rad(math.fmod(degrees,360))
   target=Vector2.new(planar.Y*angle,-planar.X*angle)
  end
+ self:layerAirTilt(joint,target,dt,preview)
+end
+-- Observer-side cosmetic pose. No character physics or remote joint authority.
+function W:applyPeerAirTilt(character,target,dt)
+ if not self.peer or not character or self.character~=character then return end
+ local joint=self.motors.Root
+ if not joint or not joint.Parent then return end
+ if joint:IsA("AnimationConstraint") and (not joint.Enabled or not joint.IsKinematic) then return end
+ self:layerAirTilt(joint,target or Vector2.zero,dt,false)
+end
+function W:layerAirTilt(joint,target,dt,preview)
  local current=self.airTiltAngles or Vector2.zero
  current=current:Lerp(target,1-math.exp(-math.clamp(dt,0,.1)*16))
  if current.Magnitude<.0001 then current=Vector2.zero end
