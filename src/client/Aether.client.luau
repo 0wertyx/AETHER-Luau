@@ -107,7 +107,9 @@ function app:restore(bank)
     self.bank = S.bank(bank)
     self.s = self.bank.settings
     self:stopCue()
-    if self.ui and self.ui.tab then self.ui:open(self.ui.tab) end
+    if self.ui and self.ui.tab then
+        if self.ui.opened then self.ui:open(self.ui.tab) else self.ui:sync() end
+    end
 end
 function app:library(bank)
     self.bank = S.bank(bank)
@@ -711,7 +713,7 @@ do
         local guide=Instance.new("Part")
         guide.Name="ExpandedRadius";guide.Shape=Enum.PartType.Ball;nonInteractive(guide)
         guide.Material=Enum.Material.Neon;guide.Color=Color3.fromRGB(165,105,255);guide.Transparency=.9
-        guide.Size=base*exp.factor;guide.CFrame=p.CFrame;guide.Parent=folder
+        guide.Size=base;guide.CFrame=p.CFrame;guide.Parent=folder
         local outline=Instance.new("Highlight")
         outline.Name="RadiusOutline";outline.Adornee=guide;outline.FillTransparency=1
         outline.OutlineColor=guide.Color;outline.OutlineTransparency=.15;outline.DepthMode=Enum.HighlightDepthMode.Occluded
@@ -719,7 +721,7 @@ do
         entry={part=p,base=base,applied=base,ltm=p.LocalTransparencyModifier,copy=copy,guide=guide,outline=outline}
     end
     function vb:setBallRadiusFactor(value)
-        assert(type(value)=="number" and value==value and value>=1 and value<=5,"Enter 1 to 5")
+        assert(type(value)=="number" and value==value and value>=1 and value<math.huge,"Enter a finite number >= 1")
         exp.factor=value
     end
     function vb:toggleBallRadiusGuide() exp.show=not exp.show end
@@ -755,7 +757,9 @@ do
         if p.Size~=e.applied then e.base=p.Size end
         if p.LocalTransparencyModifier~=1 then e.ltm=p.LocalTransparencyModifier end
         local target=e.base*exp.factor
-        if p.Size~=target then p.Size=target end
+        if target.X>=math.huge or target.Y>=math.huge or target.Z>=math.huge then error("Size exceeds numeric range") end
+        -- Remember the engine readback so clamped dimensions never compound.
+        if e.requested~=target or p.Size~=e.applied then p.Size=target;e.requested=target end
         e.applied=p.Size
         p.LocalTransparencyModifier=1
         e.copy.Size=e.base;e.copy.CFrame=p.CFrame
@@ -763,7 +767,7 @@ do
         e.guide.Size=e.applied;e.guide.CFrame=p.CFrame
         e.guide.Transparency=if exp.show then .9 else 1
         e.outline.Enabled=exp.show
-        exp.status=string.format("%.2fx | %.2f studs | local only",exp.factor,e.applied.X)
+        exp.status=string.format("Requested %.5gx | actual %.5gx | %.2f studs",exp.factor,e.applied.X/e.base.X,e.applied.X)
     end
     scope:on(RunService.RenderStepped,function()
         local ok,err=pcall(tick)
@@ -1314,7 +1318,7 @@ function app:drag(input, key, widget, frame, source)
     end)
 end
 
-local hud = Hud.new(scope, overlay, false, function(tab) app.ui:open(tab) end,nil,function(key) app:set(key,false) end)
+local hud = Hud.new(scope, overlay, false, function(tab) app.ui:openShortcut(tab) end,nil,function(key) app:set(key,false) end)
 local avatar = Avatar.new(workspace, false)
 local walkMotion = WalkMotion.new()
 app.walkMotion = walkMotion
