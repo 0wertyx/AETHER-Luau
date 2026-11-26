@@ -4593,7 +4593,7 @@ function E.render(a,tab,ui)
    local availability=ui:note("",64)
    ui:watch(function() availability.Text=vb:availabilityStatus() end)
    ui:note("Session only. Values are written locally; server acceptance is not guaranteed. Controls remain visible while waiting for game attributes.",64)
-   for _,name in {"BlockPower","BumpPower","DashPower","DiveSpeed","DrawPower","JumpPower","ServePower","SetPower"} do
+   for _,name in {"BlockPower","BumpPower","DashPower","DiveSpeed","DrawPower","JumpPower","ServePower","SetPower","Speed"} do
     local key="Multiplier_"..name
     local field=ui:box(name,tostring(lp:GetAttribute(key) or ""),32,function(value)
      vb:setMultiplier(name,assert(tonumber(value),"Enter a number"))
@@ -7708,7 +7708,7 @@ do
     end
     local attrs={
         BlockPower=true,BumpPower=true,DashPower=true,DiveSpeed=true,
-        DrawPower=true,JumpPower=true,ServePower=true,SetPower=true
+        DrawPower=true,JumpPower=true,ServePower=true,SetPower=true,Speed=true
     }
     local tiltKey="Gameplay_TiltDirection"
     local rf=game:GetService("ReplicatedFirst")

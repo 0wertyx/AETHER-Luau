@@ -227,7 +227,7 @@ do
     end
     local attrs={
         BlockPower=true,BumpPower=true,DashPower=true,DiveSpeed=true,
-        DrawPower=true,JumpPower=true,ServePower=true,SetPower=true
+        DrawPower=true,JumpPower=true,ServePower=true,SetPower=true,Speed=true
     }
     local tiltKey="Gameplay_TiltDirection"
     local rf=game:GetService("ReplicatedFirst")
