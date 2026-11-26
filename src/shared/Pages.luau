@@ -792,9 +792,9 @@ function E.render(a,tab,ui)
     trajectoryElapsed+=dt
     if trajectoryElapsed>=.25 then trajectoryElapsed=0;if ui.opened then refreshTrajectory() end end
    end)
-   ui:title("JINKO DIRECTION ESP / BETA")
-   ui:note("Purple arrow and 36-stud line show the replicated horizontal tilt direction for Jester (Jinko). This is a straight direction guide, not a verified ball flight or landing prediction.",72)
-   ui:chips({"Toggle Jinko Direction ESP"},function() vb:toggleJinkoDirection();ui:sync() end,1,function() return if vb.jinkoDirection.enabled then "Toggle Jinko Direction ESP" else "" end)
+   ui:title("DIRECTION ESP / BETA")
+   ui:note("Jinko, Sanju, Kijo and Twins (Okuro beta): purple arrow and 36-stud tilt guide. Both Twins variants are included pending exact ID confirmation. Flight prediction is unverified.",72)
+   ui:chips({"Toggle Direction ESP"},function() vb:toggleJinkoDirection();ui:sync() end,1,function() return if vb.jinkoDirection.enabled then "Toggle Direction ESP" else "" end)
    local jinkoStatus=ui:note("",56)
    local function refreshJinko()
     jinkoStatus.Text=(if vb.jinkoDirection.enabled then "ON | " else "OFF | ")..vb.jinkoDirection.status

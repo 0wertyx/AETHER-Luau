@@ -4629,9 +4629,9 @@ function E.render(a,tab,ui)
     trajectoryElapsed+=dt
     if trajectoryElapsed>=.25 then trajectoryElapsed=0;if ui.opened then refreshTrajectory() end end
    end)
-   ui:title("JINKO DIRECTION ESP / BETA")
-   ui:note("Purple arrow and 36-stud line show the replicated horizontal tilt direction for Jester (Jinko). This is a straight direction guide, not a verified ball flight or landing prediction.",72)
-   ui:chips({"Toggle Jinko Direction ESP"},function() vb:toggleJinkoDirection();ui:sync() end,1,function() return if vb.jinkoDirection.enabled then "Toggle Jinko Direction ESP" else "" end)
+   ui:title("DIRECTION ESP / BETA")
+   ui:note("Jinko, Sanju, Kijo and Twins (Okuro beta): purple arrow and 36-stud tilt guide. Both Twins variants are included pending exact ID confirmation. Flight prediction is unverified.",72)
+   ui:chips({"Toggle Direction ESP"},function() vb:toggleJinkoDirection();ui:sync() end,1,function() return if vb.jinkoDirection.enabled then "Toggle Direction ESP" else "" end)
    local jinkoStatus=ui:note("",56)
    local function refreshJinko()
     jinkoStatus.Text=(if vb.jinkoDirection.enabled then "ON | " else "OFF | ")..vb.jinkoDirection.status
@@ -8106,7 +8106,7 @@ do
 end
 
 
--- Jinko beta: visualize the replicated horizontal tilt vector only.
+-- Multi-style beta: visualize the replicated horizontal tilt vector only.
 -- This does not expose input, predict a hit, or modify the game state.
 do
     local vb=app.volleyball
@@ -8117,6 +8117,9 @@ do
     local elapsed=0
     local tint=Color3.fromRGB(190,150,255)
     local projectionLength=36 -- Direction guide in studs, not a ball flight model.
+    -- Public names and observed internal aliases. Both Twins variants are admitted
+    -- until the exact Okuro variant ID is confirmed in a live test.
+    local supported={Jester=true,Jinko=true,Rintaro=true,Sanju=true,Sanu=true,Kijo=true,Okuro=true,Twin1=true,Twin2=true}
     local function clear()
         if folder then folder:Destroy();folder=nil end
         table.clear(entries)
@@ -8144,7 +8147,7 @@ do
     function vb:toggleJinkoDirection()
         esp.enabled=not esp.enabled
         clear()
-        esp.status=if esp.enabled then "Waiting for active Jinko tilt" else "Off"
+        esp.status=if esp.enabled then "Waiting for supported style tilt" else "Off"
     end
     local function tick(dt)
         elapsed+=dt
@@ -8162,7 +8165,7 @@ do
             if other==player or other:GetAttribute("Gameplay_InGame")~=true then continue end
             local style=other:GetAttribute("Gameplay_Style")
             local special=other:GetAttribute("Gameplay_Special")
-            if style~="Jester" and special~="Jester" then continue end
+            if not supported[style] and not supported[special] then continue end
             local v=other:GetAttribute("Gameplay_TiltDirection")
             if typeof(v)~="Vector3" then continue end
             local planar=Vector3.new(v.X,0,v.Z)
@@ -8190,7 +8193,7 @@ do
         for other,entry in entries do
             if not seen[other] then entry.model:Destroy();entries[other]=nil end
         end
-        esp.status=if count>0 then string.format("%d active | 36-stud tilt guide | flight unverified",count) else "Waiting for active Jinko tilt"
+        esp.status=if count>0 then string.format("%d active | 36-stud tilt guide | flight unverified",count) else "Waiting for supported style tilt"
     end
     scope:on(RunService.Heartbeat,tick)
     scope:add(clear)
