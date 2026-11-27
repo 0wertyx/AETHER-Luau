@@ -133,6 +133,7 @@ range("Interface","moduleFadeMs","Quick menu fade duration (ms)",220,80,800)
 -- Appearance roles are persisted separately from the inherited global theme.
 S.appearance={
  {"Root","Root node","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Appearance","Appearance node","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
  {"Main","Main branch","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
  {"Visuals","Visuals branch","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
  {"Utility","Utility branch","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
@@ -177,9 +178,10 @@ end
 for _,mode in {"GUI","Nodes"} do
  local prefix="ws"..mode
  range("Interface",prefix.."Zoom","Workspace zoom %",100,35,180)
+ toggle("Interface",prefix.."AppearanceCustom","Custom appearance node position",false)
  for _,axis in {"X","Y"} do
   range("Interface",prefix.."Pan"..axis,"Workspace camera "..axis,0,-1000000,1000000)
-  for _,node in {"Root","Main","Visuals","Utility","Interface","Page"} do
+  for _,node in {"Root","Main","Visuals","Utility","Interface","Page","Appearance"} do
    range("Interface",prefix..node..axis,"Workspace "..node.." "..axis,0,-1000000,1000000)
   end
  end

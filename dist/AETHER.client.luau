@@ -899,7 +899,8 @@ local function workspacePrefix(s) return "ws"..s.workspaceMode end
 local function layoutKey(s)
  local prefix=workspacePrefix(s)
  local values={s.topX,s.topY,tostring(s.topCustom),s.topScale,tostring(s.layoutCustom),s.layoutX,s.layoutY,s.layoutW,s.layoutH,s.navWidth,s.workspaceMode}
- for _,node in {"Root","Main","Visuals","Utility","Interface","Page"} do
+ values[#values+1]=tostring(s[prefix.."AppearanceCustom"])
+ for _,node in {"Root","Main","Visuals","Utility","Interface","Page","Appearance"} do
   values[#values+1]=s[prefix..node.."X"];values[#values+1]=s[prefix..node.."Y"]
  end
  return table.concat(values,":")
@@ -908,6 +909,13 @@ local function workspaceOffset(self,node)
  local draft=self.workspaceNodeDraft
  if draft and draft.node==node then return draft.offset end
  local s=self.app.s;local prefix=workspacePrefix(s)..node
+ if node=="Appearance" and not s[prefix.."Custom"] then
+  local y=0
+  for _,branch in branches do
+   if s["branch"..branch.name] then y+=(self.branchTitleH or 24)+#branch.tabs*(self.branchRowH or 30)+16 end
+  end
+  return Vector2.new(0,y)
+ end
  return Vector2.new(s[prefix.."X"],s[prefix.."Y"])
 end
 local function chevron(parent)
@@ -1382,7 +1390,7 @@ function UI.new(app,gui,scope)
  end
  self.linkPool={};self.portPool={}
  local nativePaths=true
- for i=1,5 do
+ for i=1,6 do
   local path
   local ok=pcall(function()
    path=Instance.new("Path2D");path.Name="NodeWire";path.Thickness=2;path.ZIndex=2;path.Visible=false;path.Parent=self.workspaceLinks
@@ -1398,7 +1406,7 @@ function UI.new(app,gui,scope)
   table.clear(self.linkPool)
  end
  self.nativeWorkspacePaths=nativePaths
- for i=1,10 do
+ for i=1,12 do
   local port=U.frame(self.workspaceLinks,"NodePort",nil,UDim2.fromOffset(7,7),Color3.new(1,1,1),.06)
   port.AnchorPoint=Vector2.new(.5,.5);port.Active=false;port.Interactable=false;port.ZIndex=2;port.Visible=false;U.corner(port,9);self.portPool[i]=port
  end
@@ -1414,28 +1422,32 @@ function UI.new(app,gui,scope)
  end
  self.rootDrag=integratedHeader("AETHER / MOVE")
  self.pageDrag=integratedHeader("MOVE PANEL")
- -- Clickable style samples below the Interface branch, not part of its clipped card.
+ -- Independent glass node with its own saved position in both workspaces.
  self.appearancePanel=U.frame(self.branchStack,"AppearanceSamples",nil,UDim2.new(1,0,0,0),nil,1)
  self.appearancePanel.ZIndex=4;self.appearancePanel.Visible=false
- local caption=U.label(self.appearancePanel,"APPEARANCE / SELECT",10,UDim2.fromOffset(4,0),UDim2.new(1,-8,0,22));caption.ZIndex=5
+ U.corner(self.appearancePanel,16)
+ self.appearancePanel.Active=true
+ self.appearanceDrag=U.label(self.appearancePanel,"APPEARANCE / MOVE",11,UDim2.fromOffset(9,4),UDim2.new(1,-18,0,24))
+ self.appearanceDrag.ZIndex=6;self.appearanceDrag.Active=true;self.appearanceDrag.TextXAlignment=Enum.TextXAlignment.Center
+ local rule=U.frame(self.appearancePanel,"HeaderDivider",UDim2.fromOffset(9,29),UDim2.new(1,-18,0,1),Color3.new(1,1,1),.82)
+ rule.ZIndex=5;rule.Active=false;rule.Interactable=false
  self.appearanceSamples={}
- local all=U.button(self.appearancePanel,"ALL SETTINGS");all.Size=UDim2.new(1,-4,0,25);all.Position=UDim2.fromOffset(2,24);all.ZIndex=5;all.TextSize=10
+ local all=U.button(self.appearancePanel,"ALL SETTINGS");all.Size=UDim2.new(1,-16,0,25);all.Position=UDim2.fromOffset(8,36);all.ZIndex=5;all.TextSize=10
  scope:on(all.Activated,function() self:open("Interface") end)
  for i,d in S.appearance do
   local b=U.button(self.appearancePanel,d[2]);b.Name="Style_"..d[1];b.ZIndex=5;b.TextSize=10;b.AutoButtonColor=false
-  b.Position=UDim2.new(((i-1)%2)*.5,2,0,54+math.floor((i-1)/2)*29)
-  b.Size=UDim2.new(.5,-4,0,25);b.TextTruncate=Enum.TextTruncate.AtEnd
+  b.Position=UDim2.new(((i-1)%2)*.5,if i%2==1 then 8 else 2,0,67+math.floor((i-1)/2)*29)
+  b.Size=UDim2.new(.5,-10,0,25);b.TextTruncate=Enum.TextTruncate.AtEnd
   b:SetAttribute("AETHERKeepFontColor",true)
   U.stroke(b,Color3.new(1,1,1),1)
   self.appearanceSamples[d[1]]=b
   scope:on(b.Activated,function() if self.opened then self:open("Interface",d[1]) end end)
  end
- self.appearancePanel.Size=UDim2.new(1,0,0,54+math.ceil(#S.appearance/2)*29)
+ self.appearancePanel.Size=UDim2.new(1,0,0,72+math.ceil(#S.appearance/2)*29)
  function self:layoutAppearance()
-  local card=self.branchCards.Interface
-  self.appearancePanel.Visible=card.expanded
-  local p=card.targetPosition or card.frame.Position
-  self.appearancePanel.Position=UDim2.fromOffset(p.X.Offset,p.Y.Offset+(card.height or 0)+8)
+  self.appearancePanel.Visible=self.branchCards.Interface.expanded
+  local pos=workspaceOffset(self,"Appearance")
+  self.appearancePanel.Position=UDim2.fromOffset(pos.X,pos.Y)
  end
  function self:refreshAppearanceSamples()
   local s=self.app.s
@@ -1711,7 +1723,7 @@ function UI.new(app,gui,scope)
  end
  function self:applyWorkspaceNode(node,offset)
   self.workspaceNodeDraft={node=node,offset=Vector2.new(math.clamp(offset.X,-1000000,1000000),math.clamp(offset.Y,-1000000,1000000)),mode=self.app.s.workspaceMode}
-  if node=="Root" or node=="Page" then self:layout() else self:refreshBranches(true) end
+  if node=="Appearance" then self:layoutAppearance() elseif node=="Root" or node=="Page" then self:layout() else self:refreshBranches(true) end
  end
  function self:finishWorkspaceNode(discard)
   local draft=self.workspaceNodeDraft
@@ -1719,7 +1731,9 @@ function UI.new(app,gui,scope)
   if not draft then return end
   if not discard then
    local prefix="ws"..draft.mode..draft.node
-   self.app:patch({[prefix.."X"]=math.round(draft.offset.X),[prefix.."Y"]=math.round(draft.offset.Y)})
+   local patch={[prefix.."X"]=math.round(draft.offset.X),[prefix.."Y"]=math.round(draft.offset.Y)}
+   if draft.node=="Appearance" then patch[prefix.."Custom"]=true end
+   self.app:patch(patch)
   end
   self:layout()
  end
@@ -1732,7 +1746,7 @@ function UI.new(app,gui,scope)
   if self.app.s.reduce or not self.opened then return end
   local speed=slide.velocity.Magnitude*self.workspaceScale.Scale
   if speed<65 then return end
-  local target=if slide.node=="Root" then self.rootDrag elseif slide.node=="Page" then self.pageDrag else self.branchCards[slide.node].title
+  local target=if slide.node=="Root" then self.rootDrag elseif slide.node=="Page" then self.pageDrag elseif slide.node=="Appearance" then self.appearanceDrag else self.branchCards[slide.node].title
   if not target or not target.Visible or not target.Parent.Visible then return end
   local direction=slide.velocity.Unit
   local tangent=Vector2.new(-direction.Y,direction.X)
@@ -1795,7 +1809,8 @@ function UI.new(app,gui,scope)
   local prefix=workspacePrefix(self.app.s)
   local patch={[prefix.."Zoom"]=100,[prefix.."PanX"]=0,[prefix.."PanY"]=0}
   if all then
-   for _,node in {"Root","Main","Visuals","Utility","Interface","Page"} do patch[prefix..node.."X"]=0;patch[prefix..node.."Y"]=0 end
+   for _,node in {"Root","Main","Visuals","Utility","Interface","Page","Appearance"} do patch[prefix..node.."X"]=0;patch[prefix..node.."Y"]=0 end
+   patch[prefix.."AppearanceCustom"]=false
   end
   self.app:patch(patch)
  end
@@ -1858,6 +1873,9 @@ function UI.new(app,gui,scope)
    local outerRight=point(self.branchCards[group].frame,1,0).X
    local destination=point(self.pageBox,0,.08)
    pairsToDraw[#pairsToDraw+1]={Vector2.new(outerRight,source.Y),Vector2.new(point(self.contentGlass,0,0).X,destination.Y)}
+  end
+  if self.appearancePanel.Visible and self.branchCards.Interface.frame.Visible then
+   pairsToDraw[#pairsToDraw+1]={point(self.branchCards.Interface.frame,1,.90),point(self.appearancePanel,0,.035)}
   end
   local signature={s.accent}
   for _,pair in pairsToDraw do for _,v in pair do signature[#signature+1]=v.X;signature[#signature+1]=v.Y end end
@@ -2070,6 +2088,7 @@ function UI.new(app,gui,scope)
  end
  scope:on(self.rootDrag.InputBegan,function(i) beginWorkspaceNode(i,"Root") end)
  scope:on(self.pageDrag.InputBegan,function(i) beginWorkspaceNode(i,"Page") end)
+ scope:on(self.appearanceDrag.InputBegan,function(i) beginWorkspaceNode(i,"Appearance") end)
  for name,r in self.branchCards do
   r.title.Active=true
   scope:on(r.title.InputBegan,function(i) beginWorkspaceNode(i,name) end)
@@ -2670,9 +2689,10 @@ function UI:sync()
  local themeKey=table.concat(themeParts,":")
  if not self.themeDirty and self.themeKey==themeKey then return end
  self.themeDirty=false;self.themeKey=themeKey
- for _,entry in {{self.navGlass,"Root"},{self.contentGlass,"Page"},{self.header,"Header"},{self.top,"Top"},{self.bindPanel,"Keybind"},{self.modeBar,"Modes"},{self.catalogHost,"Catalog"},{self.catalogHost and self.sc,"Catalog"}} do if entry[1] then glassSurface(entry[1],st,entry[2]) end end
+ for _,entry in {{self.navGlass,"Root"},{self.appearancePanel,"Appearance"},{self.contentGlass,"Page"},{self.header,"Header"},{self.top,"Top"},{self.bindPanel,"Keybind"},{self.modeBar,"Modes"},{self.catalogHost,"Catalog"},{self.catalogHost and self.sc,"Catalog"}} do if entry[1] then glassSurface(entry[1],st,entry[2]) end end
  for id,r in self.branchCards do glassSurface(r.frame,st,id) end
  self:refreshAppearanceSamples()
+ self.appearancePanel.HeaderDivider.BackgroundColor3=U.hex(st.uiStrokeColor)
  local edge=U.hex(st.uiStrokeColor)
  U.applyBlock(self.search,st,"Search",U.hex(st.uiRowColor),.53,edge,1,1.15)
  for id,r in self.branchButtons do
@@ -6941,6 +6961,7 @@ range("Interface","moduleFadeMs","Quick menu fade duration (ms)",220,80,800)
 -- Appearance roles are persisted separately from the inherited global theme.
 S.appearance={
  {"Root","Root node","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Appearance","Appearance node","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
  {"Main","Main branch","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
  {"Visuals","Visuals branch","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
  {"Utility","Utility branch","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
@@ -6985,9 +7006,10 @@ end
 for _,mode in {"GUI","Nodes"} do
  local prefix="ws"..mode
  range("Interface",prefix.."Zoom","Workspace zoom %",100,35,180)
+ toggle("Interface",prefix.."AppearanceCustom","Custom appearance node position",false)
  for _,axis in {"X","Y"} do
   range("Interface",prefix.."Pan"..axis,"Workspace camera "..axis,0,-1000000,1000000)
-  for _,node in {"Root","Main","Visuals","Utility","Interface","Page"} do
+  for _,node in {"Root","Main","Visuals","Utility","Interface","Page","Appearance"} do
    range("Interface",prefix..node..axis,"Workspace "..node.." "..axis,0,-1000000,1000000)
   end
  end
