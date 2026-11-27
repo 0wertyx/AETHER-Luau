@@ -6,7 +6,7 @@ local branches={
  {name="Main",tabs={"Dashboard","Profiles","Diagnostics"}},
  {name="Visuals",tabs={"Character","Wings","Halos","Ambient","Indicators","Cursor"}},
  {name="Utility",tabs={"Interaction","Volleyball"}},
- {name="Interface",tabs={"Interface","HUD","Fonts"}},
+ {name="Interface",tabs={"Interface","Clock","FPS","Top Panel","Input Display","Reticle","Keybinds","Quick Menu","Practice Display","Fonts"}},
 }
 local tabBranch={}
 for _,branch in branches do for _,tab in branch.tabs do tabBranch[tab]=branch.name end end
@@ -61,10 +61,10 @@ local searchSections={
  {"Dashboard","THEMES"},
  {"Dashboard","CONSTELLATION COLORS"},
  {"Dashboard","MOTION"},
- {"HUD","TOP PANEL"},
- {"HUD","HUD MOTION"},
- {"HUD","Edit HUD on screen"},
- {"HUD","Reset panel position"},
+ {"Top Panel","TOP PANEL"},
+ {"Interface","WIDGET TRANSITIONS"},
+ {"Interface","Edit HUD on screen"},
+ {"Top Panel","Reset panel position"},
  {"Character","AETHER MOTION STUDIO V12.14"},
  {"Halos","HALO COLLECTION"},
  {"Wings","WING COLLECTION"},
@@ -639,7 +639,15 @@ function UI.new(app,gui,scope)
  for _,k in S.order do
   local d=S.defs[k]
   if type(d)~="table" or type(d.group)~="string" or k:match("^ws[GN]") or k=="hp" or k:match("^hp[A-Z]") or k:match("^heart") or k=="hudShine" or k=="hudReaction" or k=="compact" or k=="robloxRail" or k=="railCustom" or k=="railX" or k=="railY" then continue end
-  local tab=if d.group=="Theme" or d.group=="Motion" then "Interface" elseif d.group=="Camera" then "Interaction" else d.group
+  local tab=if d.group=="Theme" or d.group=="Motion" or d.group=="HUD" then "Interface" elseif d.group=="Camera" then "Interaction" else d.group
+  if k=="clockGlass" or k=="clockText" or k:match("^clock") then tab="Clock"
+  elseif k=="fpsGlass" or k=="fpsText" or k:match("^profile") then tab="FPS"
+  elseif k:match("^top") then tab="Top Panel"
+  elseif k:match("^input") then tab="Input Display"
+  elseif k:match("^cross") or k:match("^reticle") or k=="lockReticle" then tab="Reticle"
+  elseif k:match("^keybind") then tab="Keybinds"
+  elseif k:match("^quick") or k:match("^module") then tab="Quick Menu"
+  elseif k:match("^wallhop") then tab="Practice Display" end
   if not self.buttons[tab] then continue end
   local label=if type(d.label)=="string" and d.label~="" then d.label elseif k=="players" then "Per-player override" else tostring(k)
   table.insert(self.searchIndex,{tab=tab,label=label,key=k,term=(label.." "..tostring(k).." "..tab):lower()})
@@ -998,7 +1006,7 @@ function UI.new(app,gui,scope)
   for i=portIndex+1,#self.portPool do self.portPool[i].Visible=false end
  end
  function self:workspacePageVisible()
-  if not self.opened or not self.pageBox.Visible then return false end
+  if not self.opened or self.afkScreen.Visible or not self.pageBox.Visible then return false end
   local p=self.pageBox.AbsolutePosition;local size=self.pageBox.AbsoluteSize;local a=self.stage.AbsolutePosition;local b=a+self.stage.AbsoluteSize
   return self.workspaceScale.Scale>=.45 and p.X+size.X>a.X and p.Y+size.Y>a.Y and p.X<b.X and p.Y<b.Y
  end
@@ -1048,7 +1056,7 @@ function UI.new(app,gui,scope)
   self.branchStack.Position=UDim2.fromOffset(x+rail+gap,y)
   self.branchStack.Size=UDim2.fromOffset(branchW,workH)
   self.branchTitleH=math.clamp(math.floor(workH/20),10,24)
-  self.branchRowH=math.clamp(math.floor((workH-4*(self.branchTitleH+6)-30)/14),8,36)
+  self.branchRowH=math.clamp(math.floor((workH-4*(self.branchTitleH+6)-30)/21),24,36)
   self:refreshBranches(true)
   local pageOffset=workspaceOffset(self,"Page");local pageX,pageY=contentX+pageOffset.X,y+pageOffset.Y
   local inset=math.min(8,math.floor((bodyW-1)/2))
@@ -1723,6 +1731,7 @@ function UI:jumpTo(item)
 end
 local visualTabs={Halos=true,Wings=true,Ambient=true}
 function UI:open(tab,appearance)
+ if tab=="HUD" then tab="Clock" end
  self.appearanceSelection=if tab=="Interface" and S.appearanceById[appearance] then appearance else nil
  if tab=="Camera" then tab="Interaction" end
  if self.search then self.search.Text="" end

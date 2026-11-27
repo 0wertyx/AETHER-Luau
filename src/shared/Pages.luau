@@ -8,9 +8,11 @@ local function names(t) local a=U.keys(t);return a end
 local function preset(ui,a,group)
  local p=S.presets[group];if p then ui:title("PRESETS");ui:chips(names(p),function(n) a:patch(p[n]);a:log("Preset",n) end,3) end
 end
-local function preview(ui,a,showPanels)
+local function preview(ui,a,showPanels,focus)
  local f=ui:row(if showPanels then 210 else 149,"LivePreview");f.ClipsDescendants=true;f.BackgroundTransparency=0;U.gradient(f,Color3.fromRGB(105,87,145),Color3.fromRGB(49,46,94),36)
- local h=Hud.new(ui.page,f,true,function(tab) ui:open(tab) end,function(i,k,n,v,source) a:drag(i,k,n,v,source) end,nil,showPanels);a.preview={hud=h}
+ local h=Hud.new(ui.page,f,true,function(tab) ui:open(tab) end,function(i,k,n,v,source) a:drag(i,k,n,v,source) end,nil,showPanels)
+ h.previewScale=function() return ui.workspaceScale and ui.workspaceScale.Scale or 1 end
+ h.previewFocus=focus;a.preview={hud=h}
  if showPanels then
   h:layoutPreview(a.s)
   ui.page:on(f:GetPropertyChangedSignal("AbsoluteSize"),function() h:layoutPreview(a.s) end)
@@ -964,6 +966,9 @@ function E.render(a,tab,ui)
   ui:control("moduleFadeMs");ui:control("moduleBackgroundOpacity")
   for _,k in {"modulePanelColor","moduleRowColor","moduleAccentColor","moduleStrokeColor","moduleTextColor","moduleMutedColor","moduleToggleOnColor","moduleToggleOffColor"} do ui:colorPicker(k) end
   ui:title("LAYOUT & WIDGETS")
+  ui:control("layoutMode");ui:control("locked");ui:control("movePanels")
+  ui:title("WIDGET TRANSITIONS");ui:control("hudMotion");ui:control("hudSmoothness")
+  ui:note("Enabled styles use fade only. Off disables transitions. No idle floating or pulsing.",38)
   ui:chips({"Edit GUI size / position"},function() ui:editLayout(true) end,1)
   ui:chips({"Edit HUD size / position"},function() a:set("movePanels",true);a:editHUD(true) end,1)
   ui:chips({"Reset GUI layout","Save configuration"},function(n)
@@ -977,9 +982,39 @@ function E.render(a,tab,ui)
   for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end
   for _,k in {"menuGeometry","menuShape","menuDensity","menuMotion","menuOpacity","constellationLinks","constellationDistance","constellationThickness","constellationSize","constellationAngle","screenParticles","screenParticleOpacity"} do ui:control(k) end
   ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
- elseif tab=="HUD" then preview(ui,a,true);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:title("TOP PANEL");for _,v in {"movePanels","topScale"} do ui:control(v) end;ui:note("Enable moving panels to drag the AETHER capsule.",34);ui:chips({"Reset panel position"},function() a:patch({topCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness"} do ui:control(k) end;ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);local widgets={"clock","profile","top"};if not table.find(widgets,a.hudTab) then a.hudTab="clock" end;ui:chips(widgets,function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
-  if k=="top" then for _,v in {k.."Custom",k.."X",k.."Y"} do ui:control(v) end
-  else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
+ elseif tab=="Clock" or tab=="FPS" or tab=="Top Panel" or tab=="Input Display" or tab=="Reticle" or tab=="Keybinds" or tab=="Quick Menu" or tab=="Practice Display" then
+  local focus=({Clock="clock",FPS="profile",["Top Panel"]="top",["Input Display"]="input",Reticle="cross",["Practice Display"]="wallhop"})[tab]
+  if focus then preview(ui,a,focus=="top",focus) end
+  ui:title(tab:upper())
+  ui:chips({"Edit widget positions"},function()
+   if tab=="Keybinds" or tab=="Quick Menu" then a:editHUD(true,"Volleyball",false) else a:editHUD(true) end
+  end,1)
+  local role=({Clock="Clock",FPS="FPS",["Top Panel"]="Top",["Input Display"]="Input",["Keybinds"]="Keybind",["Quick Menu"]="Quick",["Practice Display"]="Wallhop"})[tab]
+  if role then ui:chips({"Edit appearance"},function() ui:open("Interface",role) end,1) end
+  if tab=="Clock" or tab=="FPS" then
+   local k=if tab=="Clock" then "clock" else "profile"
+   ui:control("layoutMode");ui:control("locked")
+   for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end
+   ui:colorPicker(if k=="clock" then "clockGlass" else "fpsGlass")
+   ui:colorPicker(if k=="clock" then "clockText" else "fpsText")
+  elseif tab=="Top Panel" then
+   for _,k in {"topCapsule","movePanels","topScale","topCustom","topX","topY"} do ui:control(k) end
+   ui:chips({"Reset panel position"},function() a:patch({topCustom=false}) end,1)
+  elseif tab=="Input Display" then
+   for _,k in {"inputOverlay","inputMouse","inputX","inputY","inputScale","inputOpacity"} do ui:control(k) end
+   ui:colorPicker("inputColor")
+  elseif tab=="Reticle" then
+   for _,k in {"cross","crossScale","crossAlpha","lockReticle","reticleSize","reticleStroke","reticleRainbow","reticleMotion","reticleSpeed","reticleNeon","reticleGlow","reticleGlowRadius","reticleGlowPulse"} do ui:control(k) end
+   ui:colorPicker("reticleColor")
+  elseif tab=="Keybinds" then
+   for _,k in {"keybindWidget","keybindCustom","keybindX","keybindY"} do ui:control(k) end
+  elseif tab=="Quick Menu" then
+   for _,k in {"quickCustom","quickX","quickY","moduleFadeMs","moduleBackgroundOpacity"} do ui:control(k) end
+   for _,k in {"modulePanelColor","moduleRowColor","moduleAccentColor","moduleStrokeColor","moduleTextColor","moduleMutedColor","moduleToggleOnColor","moduleToggleOffColor"} do ui:colorPicker(k) end
+  else
+   ui:note("Read-only practice display.",32)
+   for _,k in {"wallhopHelper","wallhopX","wallhopY","wallhopScale","wallhopOpacity"} do ui:control(k) end
+  end
  elseif tab=="Character" then
   ui:title("AETHER MOTION STUDIO V12.14")
   MotionStudio.mount(ui,a)

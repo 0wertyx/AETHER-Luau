@@ -869,7 +869,7 @@ local branches={
  {name="Main",tabs={"Dashboard","Profiles","Diagnostics"}},
  {name="Visuals",tabs={"Character","Wings","Halos","Ambient","Indicators","Cursor"}},
  {name="Utility",tabs={"Interaction","Volleyball"}},
- {name="Interface",tabs={"Interface","HUD","Fonts"}},
+ {name="Interface",tabs={"Interface","Clock","FPS","Top Panel","Input Display","Reticle","Keybinds","Quick Menu","Practice Display","Fonts"}},
 }
 local tabBranch={}
 for _,branch in branches do for _,tab in branch.tabs do tabBranch[tab]=branch.name end end
@@ -924,10 +924,10 @@ local searchSections={
  {"Dashboard","THEMES"},
  {"Dashboard","CONSTELLATION COLORS"},
  {"Dashboard","MOTION"},
- {"HUD","TOP PANEL"},
- {"HUD","HUD MOTION"},
- {"HUD","Edit HUD on screen"},
- {"HUD","Reset panel position"},
+ {"Top Panel","TOP PANEL"},
+ {"Interface","WIDGET TRANSITIONS"},
+ {"Interface","Edit HUD on screen"},
+ {"Top Panel","Reset panel position"},
  {"Character","AETHER MOTION STUDIO V12.14"},
  {"Halos","HALO COLLECTION"},
  {"Wings","WING COLLECTION"},
@@ -1502,7 +1502,15 @@ function UI.new(app,gui,scope)
  for _,k in S.order do
   local d=S.defs[k]
   if type(d)~="table" or type(d.group)~="string" or k:match("^ws[GN]") or k=="hp" or k:match("^hp[A-Z]") or k:match("^heart") or k=="hudShine" or k=="hudReaction" or k=="compact" or k=="robloxRail" or k=="railCustom" or k=="railX" or k=="railY" then continue end
-  local tab=if d.group=="Theme" or d.group=="Motion" then "Interface" elseif d.group=="Camera" then "Interaction" else d.group
+  local tab=if d.group=="Theme" or d.group=="Motion" or d.group=="HUD" then "Interface" elseif d.group=="Camera" then "Interaction" else d.group
+  if k=="clockGlass" or k=="clockText" or k:match("^clock") then tab="Clock"
+  elseif k=="fpsGlass" or k=="fpsText" or k:match("^profile") then tab="FPS"
+  elseif k:match("^top") then tab="Top Panel"
+  elseif k:match("^input") then tab="Input Display"
+  elseif k:match("^cross") or k:match("^reticle") or k=="lockReticle" then tab="Reticle"
+  elseif k:match("^keybind") then tab="Keybinds"
+  elseif k:match("^quick") or k:match("^module") then tab="Quick Menu"
+  elseif k:match("^wallhop") then tab="Practice Display" end
   if not self.buttons[tab] then continue end
   local label=if type(d.label)=="string" and d.label~="" then d.label elseif k=="players" then "Per-player override" else tostring(k)
   table.insert(self.searchIndex,{tab=tab,label=label,key=k,term=(label.." "..tostring(k).." "..tab):lower()})
@@ -1861,7 +1869,7 @@ function UI.new(app,gui,scope)
   for i=portIndex+1,#self.portPool do self.portPool[i].Visible=false end
  end
  function self:workspacePageVisible()
-  if not self.opened or not self.pageBox.Visible then return false end
+  if not self.opened or self.afkScreen.Visible or not self.pageBox.Visible then return false end
   local p=self.pageBox.AbsolutePosition;local size=self.pageBox.AbsoluteSize;local a=self.stage.AbsolutePosition;local b=a+self.stage.AbsoluteSize
   return self.workspaceScale.Scale>=.45 and p.X+size.X>a.X and p.Y+size.Y>a.Y and p.X<b.X and p.Y<b.Y
  end
@@ -1911,7 +1919,7 @@ function UI.new(app,gui,scope)
   self.branchStack.Position=UDim2.fromOffset(x+rail+gap,y)
   self.branchStack.Size=UDim2.fromOffset(branchW,workH)
   self.branchTitleH=math.clamp(math.floor(workH/20),10,24)
-  self.branchRowH=math.clamp(math.floor((workH-4*(self.branchTitleH+6)-30)/14),8,36)
+  self.branchRowH=math.clamp(math.floor((workH-4*(self.branchTitleH+6)-30)/21),24,36)
   self:refreshBranches(true)
   local pageOffset=workspaceOffset(self,"Page");local pageX,pageY=contentX+pageOffset.X,y+pageOffset.Y
   local inset=math.min(8,math.floor((bodyW-1)/2))
@@ -2586,6 +2594,7 @@ function UI:jumpTo(item)
 end
 local visualTabs={Halos=true,Wings=true,Ambient=true}
 function UI:open(tab,appearance)
+ if tab=="HUD" then tab="Clock" end
  self.appearanceSelection=if tab=="Interface" and S.appearanceById[appearance] then appearance else nil
  if tab=="Camera" then tab="Interaction" end
  if self.search then self.search.Text="" end
@@ -3220,9 +3229,13 @@ function H.new(scope,parent,preview,go,drag,close,showPanels)
  end
  return self
 end
+function H:logicalViewport()
+ local z=if self.preview and self.previewScale then math.max(.01,self.previewScale()) else 1
+ return self.view.AbsoluteSize/z,z
+end
 function H:layoutPreview(s)
  if not self.previewPanels then return end
- local vp=self.view.AbsoluteSize
+ local vp,z=self:logicalViewport()
  if vp.X<2 or vp.Y<2 then return end
  for _,key in {"top"} do
   local item=self.previewPanels[key]
@@ -3240,7 +3253,7 @@ function H:layoutPreview(s)
   panel.AnchorPoint=Vector2.zero
   panel.Size=UDim2.fromOffset(originalW,originalH)
   panel.Position=UDim2.fromOffset(math.clamp(x,0,math.max(0,vp.X-w)),math.clamp(y,0,math.max(0,vp.Y-height)))
-  panel.Visible=s.topCapsule
+  panel.Visible=if self.previewFocus then self.previewFocus=="top" else s.topCapsule
   item.rim.Color=U.hex(s.uiStrokeColor)
   item.rim.Transparency=if key=="top" then .42 else .48
   item.rim.Thickness=1
@@ -3257,7 +3270,7 @@ function H:layoutPreview(s)
    -- Panel positions are set directly, so the drag target can follow without waiting
    -- for AbsolutePosition propagation during the current input event.
    if isPanel then local factor=self.previewPanels[key].scale.Scale;item.p.Position=item.target.Position;item.p.Size=UDim2.fromOffset(item.target.Size.X.Offset*factor,item.target.Size.Y.Offset*factor)
-   else local xy=item.target.AbsolutePosition-self.view.AbsolutePosition;item.p.Position=UDim2.fromOffset(xy.X,xy.Y);item.p.Size=UDim2.fromOffset(item.target.AbsoluteSize.X,item.target.AbsoluteSize.Y) end
+   else local xy=(item.target.AbsolutePosition-self.view.AbsolutePosition)/z;item.p.Position=UDim2.fromOffset(xy.X,xy.Y);item.p.Size=UDim2.fromOffset(item.target.AbsoluteSize.X/z,item.target.AbsoluteSize.Y/z) end
   end
  end
 end
@@ -3276,7 +3289,8 @@ function H:placement(s,k)
  return .5,.5,0,0
 end
 function H:setStyle(s)
- local factor=if self.preview then math.clamp(self.view.AbsoluteSize.X/850,.43,.74) else math.clamp(self.view.AbsoluteSize.X/770,.66,1)
+ local vp=self:logicalViewport()
+ local factor=if self.preview then math.clamp(math.min(vp.X/850,vp.Y/240),.30,.74) else math.clamp(vp.X/770,.66,1)
  self.factor=factor
  local accent=U.hex(s.accent)
  local a,b=U.hex(s.glassColor),Color3.fromRGB(17,16,30)
@@ -3287,8 +3301,7 @@ function H:setStyle(s)
   w.p.Position=UDim2.new(x,ox,y,oy)
   w.p.Rotation=s[k.."Turn"]
   w.scale.Scale=if k=="cross" then 1 else factor*s[k.."Scale"]/100
-  if w.p:IsA("CanvasGroup") then w.p.GroupTransparency=1-s[k.."Alpha"]/100 end
-  w.p.Visible=s[k]
+  if k=="cross" then w.p.Visible=s[k] end
   local role=if k=="clock" then "Clock" elseif k=="profile" then "FPS" else "Dock"
   local base=if k=="clock" then U.hex(s.clockGlass) elseif k=="profile" then U.hex(s.fpsGlass) else a
   local tint,fill,edge,edgeAlpha,width=U.blockStyle(s,role,base,1-s.glass/100,U.hex(s.uiStrokeColor),1-s.rim/100,1.15)
@@ -3315,7 +3328,7 @@ function H:setStyle(s)
   grad.Enabled=s.fontGradient
  end
  self.settings=s
- self.width=self.view.AbsoluteSize.X
+ self.viewport=vp
 end
 function H:reticle(s,f,t)
  local widget=self.widgets.cross
@@ -3392,39 +3405,31 @@ function H:reticle(s,f,t)
  end
 end
 function H:animateWidgets(s,f,dt,t)
- local enabled=not s.reduce and s.hudMotion~="Off"
- local strength=s.hudMotionStrength/100
+ local animate=not self.preview and not s.reduce and s.hudMotion~="Off"
  local dur=math.max(.08,s.hudSmoothness/1000*100/s.speed)
- local time=t*s.speed/100
- for index,key in {"clock","profile","dock"} do
+ for _,key in {"clock","profile","dock"} do
   local w=self.widgets[key]
   local want=s[key]
   local target=if want then 1 else 0
-  local progress=w.motion or 0
-  if not enabled then progress=target
-  else progress=math.clamp(progress+dt/dur*(if want then 1 else -1),0,1) end
+  local progress=w.motion
+  if progress==nil then progress=target end
+  if not animate then progress=target
+  else progress=math.clamp(progress+(if want then 1 else -1)*math.min(dt,.1)/dur,0,1) end
   w.motion=progress
-  local q=U.ease(progress,s.ease)
+  local q=U.ease(progress,"Sine")
   w.p.Visible=want or progress>0
   if not w.p.Visible then continue end
   w.p.GroupTransparency=1-q*s[key.."Alpha"]/100
   local x,y,ox,oy=self:placement(s,key)
-  local idle=enabled and want and not self.preview and not f.editingHUD
-  local phase=time*1.8+index*.8
-  local bob=if idle and s.hudMotion=="Float" then math.sin(phase)*3*strength else 0
-  local pulse=if idle and s.hudMotion=="Pulse" then math.sin(phase)*.025*strength else 0
-  local entry=if enabled then (1-q)*strength else 0
-  w.p.Position=UDim2.new(x,ox,y,oy+bob+(if y>.5 then 1 else -1)*entry*14)
-  w.scale.Scale=self.factor*s[key.."Scale"]/100*(1-entry*.08+pulse)
-  local glow=if idle and s.hudMotion~="Off" then (.5+.5*math.sin(phase))*.18*strength else 0
+  w.p.Position=UDim2.new(x,ox,y,oy)
+  w.scale.Scale=self.factor*s[key.."Scale"]/100
   local role=if key=="clock" then "Clock" elseif key=="profile" then "FPS" else "Dock"
   local _,_,edge,edgeAlpha,width=U.blockStyle(s,role,Color3.new(),0,U.hex(s.uiStrokeColor),1-s.rim/100,1.15)
   w.rim.Enabled=width>0 and edgeAlpha<1;w.rim.Thickness=width
-  w.rim.Transparency=if s["appearance"..role.."Custom"] then edgeAlpha else 1-math.clamp(1-edgeAlpha+glow,0,1)
-  w.rim.Color=if s["appearance"..role.."Custom"] then edge else edge:Lerp(U.hex(s.secondary),glow*2)
-  w.g.Rotation=if idle and s.hudMotion=="Glass" then 90+math.sin(phase*.5)*18*strength else 90
+  w.rim.Transparency=edgeAlpha;w.rim.Color=edge
+  w.g.Rotation=90
  end
- self.profileDot.BackgroundTransparency=if enabled then .12+.16*(1-math.sin(time*1.7)) else 0
+ self.profileDot.BackgroundTransparency=0
 end
 function H:marker(id)
  local root=U.frame(self.layer,"Marker_"..id,nil,UDim2.fromOffset(40,40),nil,1);root.AnchorPoint=Vector2.new(.5,.5);local glyph=Symbol.new(root,"Soft Triangle",30)
@@ -3432,7 +3437,7 @@ function H:marker(id)
  local m={root=root,glyph=glyph,label=label,fade=0};self.markers[id]=m;return m
 end
 function H:directions(s,f,dt,t,paint)
- self.serial=(self.serial or 0)+1;local view=self.view.AbsoluteSize;local w,h=view.X,view.Y
+ self.serial=(self.serial or 0)+1;local view=self:logicalViewport();local w,h=view.X,view.Y
  if s.indicators and w>0 and h>0 then for _,p in f.targets do if p.visible or p.distance>s.reach then continue end;local id=p.id;local m=self.markers[id] or self:marker(id);m.serial=self.serial;local custom=s.players[id];m.glyph:shape(if custom then custom.shape else s.shape,s.corners)
   local dir=Vector2.new(p.x*w,p.y*h);if dir.Magnitude<.001 then dir=Vector2.yAxis end;dir=dir.Unit;local sz=s.size*self.factor*math.clamp(1.35/(1+p.distance*.002),.65,1.35);local px=math.max(sz*.7,w*s.edge/100);local py=math.max(sz*.7+(if s.labels=="Off" then 0 else 12),h*s.edge/100);local d=math.max(0,math.min((w/2-px)/math.max(.0001,math.abs(dir.X)),(h/2-py)/math.max(.0001,math.abs(dir.Y))));local dest=view*.5+dir*d
   local k=if s.reduce or s.turn==0 then 1 else 1-math.exp(-dt*4500/s.turn);local angle=math.deg(math.atan2(dir.X,-dir.Y));m.pos=(m.pos or dest):Lerp(dest,k);m.angle=m.angle or angle;m.angle+=((angle-m.angle+180)%360-180)*k;m.root.Position=UDim2.fromOffset(m.pos.X,m.pos.Y);m.glyph.root.Rotation=m.angle
@@ -3443,14 +3448,27 @@ function H:directions(s,f,dt,t,paint)
  for id,m in self.markers do if m.serial~=self.serial then m.fade=if s.reduce then 0 else math.max(0,m.fade-dt*7) end;if m.fade<=0 then m.root:Destroy();self.markers[id]=nil else local alpha=1-m.fade*s.arrowAlpha/100;m.glyph:opacity(alpha);m.label.TextTransparency=alpha end end
 end
 function H:step(s,f,dt)
- if self.settings~=s or self.width~=self.view.AbsoluteSize.X then self:setStyle(s) end;self.time+=dt;local t=self.time;local paint=t>=self.paintAt;if paint then self.paintAt=t+.075 end
+ if self.previewFocus then
+  if self.focusSettingsSource~=s then
+   self.focusSettingsSource=s
+   local copy=table.clone(s)
+   for _,key in {"clock","profile","dock","cross"} do copy[key]=self.previewFocus==key end
+   copy.inputOverlay=self.previewFocus=="input";copy.wallhopHelper=self.previewFocus=="wallhop"
+   copy.sparkles=false;copy.indicators=false
+   self.focusSettings=copy
+  end
+  s=self.focusSettings
+ end
+ local vp=self:logicalViewport()
+ if self.settings~=s or not self.viewport or (self.viewport-vp).Magnitude>.5 then self:setStyle(s) end
+ self.time+=dt;local t=self.time;local paint=t>=self.paintAt;if paint then self.paintAt=t+.075 end
  self:reticle(s,f,t);self:animateWidgets(s,f,dt,t);self:directions(s,f,dt,t,paint)
  local overlay=self.inputRoot
  overlay.Visible=s.inputOverlay
  if overlay.Visible then
   local k=s.inputScale/100*(if self.preview then self.factor else 1)
   local w,h=172*k,(if s.inputMouse then 156 else 114)*k
-  local vp=self.view.AbsoluteSize
+  local vp=self:logicalViewport()
   overlay.Size=UDim2.fromOffset(172,if s.inputMouse then 156 else 114)
   if not self.inputScale then self.inputScale=U.new("UIScale",{},overlay) end
   self.inputScale.Scale=k
@@ -3475,7 +3493,7 @@ function H:step(s,f,dt)
  wh.Visible=s.wallhopHelper
  if wh.Visible then
   U.applyBlock(wh,s,"Wallhop",Color3.fromRGB(28,22,44),.15,Color3.fromRGB(177,146,255),.35,1)
-  local vp=self.view.AbsoluteSize
+  local vp=self:logicalViewport()
   local scale=s.wallhopScale/100*(if self.preview then self.factor else 1)
   self.wallhopScale.Scale=scale;wh.GroupTransparency=1-s.wallhopOpacity/100
   local halfW,halfH=105*scale,43*scale
@@ -5148,9 +5166,11 @@ local function names(t) local a=U.keys(t);return a end
 local function preset(ui,a,group)
  local p=S.presets[group];if p then ui:title("PRESETS");ui:chips(names(p),function(n) a:patch(p[n]);a:log("Preset",n) end,3) end
 end
-local function preview(ui,a,showPanels)
+local function preview(ui,a,showPanels,focus)
  local f=ui:row(if showPanels then 210 else 149,"LivePreview");f.ClipsDescendants=true;f.BackgroundTransparency=0;U.gradient(f,Color3.fromRGB(105,87,145),Color3.fromRGB(49,46,94),36)
- local h=Hud.new(ui.page,f,true,function(tab) ui:open(tab) end,function(i,k,n,v,source) a:drag(i,k,n,v,source) end,nil,showPanels);a.preview={hud=h}
+ local h=Hud.new(ui.page,f,true,function(tab) ui:open(tab) end,function(i,k,n,v,source) a:drag(i,k,n,v,source) end,nil,showPanels)
+ h.previewScale=function() return ui.workspaceScale and ui.workspaceScale.Scale or 1 end
+ h.previewFocus=focus;a.preview={hud=h}
  if showPanels then
   h:layoutPreview(a.s)
   ui.page:on(f:GetPropertyChangedSignal("AbsoluteSize"),function() h:layoutPreview(a.s) end)
@@ -6104,6 +6124,9 @@ function E.render(a,tab,ui)
   ui:control("moduleFadeMs");ui:control("moduleBackgroundOpacity")
   for _,k in {"modulePanelColor","moduleRowColor","moduleAccentColor","moduleStrokeColor","moduleTextColor","moduleMutedColor","moduleToggleOnColor","moduleToggleOffColor"} do ui:colorPicker(k) end
   ui:title("LAYOUT & WIDGETS")
+  ui:control("layoutMode");ui:control("locked");ui:control("movePanels")
+  ui:title("WIDGET TRANSITIONS");ui:control("hudMotion");ui:control("hudSmoothness")
+  ui:note("Enabled styles use fade only. Off disables transitions. No idle floating or pulsing.",38)
   ui:chips({"Edit GUI size / position"},function() ui:editLayout(true) end,1)
   ui:chips({"Edit HUD size / position"},function() a:set("movePanels",true);a:editHUD(true) end,1)
   ui:chips({"Reset GUI layout","Save configuration"},function(n)
@@ -6117,9 +6140,39 @@ function E.render(a,tab,ui)
   for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end
   for _,k in {"menuGeometry","menuShape","menuDensity","menuMotion","menuOpacity","constellationLinks","constellationDistance","constellationThickness","constellationSize","constellationAngle","screenParticles","screenParticleOpacity"} do ui:control(k) end
   ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
- elseif tab=="HUD" then preview(ui,a,true);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:title("TOP PANEL");for _,v in {"movePanels","topScale"} do ui:control(v) end;ui:note("Enable moving panels to drag the AETHER capsule.",34);ui:chips({"Reset panel position"},function() a:patch({topCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness"} do ui:control(k) end;ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);local widgets={"clock","profile","top"};if not table.find(widgets,a.hudTab) then a.hudTab="clock" end;ui:chips(widgets,function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
-  if k=="top" then for _,v in {k.."Custom",k.."X",k.."Y"} do ui:control(v) end
-  else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
+ elseif tab=="Clock" or tab=="FPS" or tab=="Top Panel" or tab=="Input Display" or tab=="Reticle" or tab=="Keybinds" or tab=="Quick Menu" or tab=="Practice Display" then
+  local focus=({Clock="clock",FPS="profile",["Top Panel"]="top",["Input Display"]="input",Reticle="cross",["Practice Display"]="wallhop"})[tab]
+  if focus then preview(ui,a,focus=="top",focus) end
+  ui:title(tab:upper())
+  ui:chips({"Edit widget positions"},function()
+   if tab=="Keybinds" or tab=="Quick Menu" then a:editHUD(true,"Volleyball",false) else a:editHUD(true) end
+  end,1)
+  local role=({Clock="Clock",FPS="FPS",["Top Panel"]="Top",["Input Display"]="Input",["Keybinds"]="Keybind",["Quick Menu"]="Quick",["Practice Display"]="Wallhop"})[tab]
+  if role then ui:chips({"Edit appearance"},function() ui:open("Interface",role) end,1) end
+  if tab=="Clock" or tab=="FPS" then
+   local k=if tab=="Clock" then "clock" else "profile"
+   ui:control("layoutMode");ui:control("locked")
+   for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end
+   ui:colorPicker(if k=="clock" then "clockGlass" else "fpsGlass")
+   ui:colorPicker(if k=="clock" then "clockText" else "fpsText")
+  elseif tab=="Top Panel" then
+   for _,k in {"topCapsule","movePanels","topScale","topCustom","topX","topY"} do ui:control(k) end
+   ui:chips({"Reset panel position"},function() a:patch({topCustom=false}) end,1)
+  elseif tab=="Input Display" then
+   for _,k in {"inputOverlay","inputMouse","inputX","inputY","inputScale","inputOpacity"} do ui:control(k) end
+   ui:colorPicker("inputColor")
+  elseif tab=="Reticle" then
+   for _,k in {"cross","crossScale","crossAlpha","lockReticle","reticleSize","reticleStroke","reticleRainbow","reticleMotion","reticleSpeed","reticleNeon","reticleGlow","reticleGlowRadius","reticleGlowPulse"} do ui:control(k) end
+   ui:colorPicker("reticleColor")
+  elseif tab=="Keybinds" then
+   for _,k in {"keybindWidget","keybindCustom","keybindX","keybindY"} do ui:control(k) end
+  elseif tab=="Quick Menu" then
+   for _,k in {"quickCustom","quickX","quickY","moduleFadeMs","moduleBackgroundOpacity"} do ui:control(k) end
+   for _,k in {"modulePanelColor","moduleRowColor","moduleAccentColor","moduleStrokeColor","moduleTextColor","moduleMutedColor","moduleToggleOnColor","moduleToggleOffColor"} do ui:colorPicker(k) end
+  else
+   ui:note("Read-only practice display.",32)
+   for _,k in {"wallhopHelper","wallhopX","wallhopY","wallhopScale","wallhopOpacity"} do ui:control(k) end
+  end
  elseif tab=="Character" then
   ui:title("AETHER MOTION STUDIO V12.14")
   MotionStudio.mount(ui,a)
@@ -6782,7 +6835,7 @@ toggle("Motion","reduce","Reduce motion",false);range("Motion","speed","Animatio
 toggle("Theme","menuGeometry","Animated geometric background",true);choice("Theme","menuShape","Background style","Mixed",{"Mixed","Rings","Crystals","Triangles","Hexagons","Squares","Stars","Dots","Rounded Star","Soft Star","Sparkle","Long Sparkle","Six Point Star","Eight Point Star","Circle","Rounded Square","Diamond","Rounded Triangle","Rounded Hexagon","Rounded Pentagon","Heart"});range("Theme","menuDensity","Background density",14,4,24);range("Theme","menuMotion","Background speed %",65,0,180);range("Theme","menuOpacity","Background intensity %",55,0,100);
 range("Theme","constellationLinks","Maximum connections",100,0,100);range("Theme","constellationDistance","Connection distance (px)",115,25,220);range("Theme","constellationThickness","Line width (tenths of px)",7,3,20);range("Theme","constellationSize","Figure size (px)",5,2,14);range("Theme","constellationAngle","Background gradient angle",45,0,360);color("Theme","constellationBgA","Background start","10091C");color("Theme","constellationBgB","Background end","35204D");color("Theme","constellationLineA","Line start","ECE0FF");color("Theme","constellationLineB","Line end","A66AFF");color("Theme","constellationNodeA","Figure start","FFFFFF");color("Theme","constellationNodeB","Figure end","BE8AFF");toggle("Theme","screenParticles","Menu screen particles",true);choice("Theme","screenParticleStyle","Screen particle style","Mixed",{"Mixed","Stars","Dust","Diamonds"});range("Theme","screenParticleCount","Screen particle count",24,8,48);range("Theme","screenParticleOpacity","Screen particle intensity %",55,0,100);toggle("Theme","robloxRail","Roblox shortcuts rail",true);toggle("Theme","topCapsule","Top AETHER title",true)
 choice("Theme","menuDock","Menu docking side","Left",{"Left","Right","Top","Bottom","Floating"});range("Theme","menuWidth","Menu width (px)",438,280,1600);range("Theme","menuHeight","Menu height (px)",600,260,1200);toggle("Theme","menuDrag","Drag / snap menu",true);toggle("Theme","menuResize","Resize with corner grip",true);range("Theme","menuFloatX","Floating horizontal %",35,0,100);range("Theme","menuFloatY","Floating vertical %",40,0,100)
-toggle("HUD","locked","Lock widget positions",true);toggle("HUD","movePanels","Allow moving top and left panels",false);toggle("HUD","topCustom","Custom top panel position",false);range("HUD","topX","Top panel X %",50,0,100);range("HUD","topY","Top panel Y %",2,0,100);toggle("HUD","railCustom","Custom left panel position",false);range("HUD","railX","Left panel X %",1,0,100);range("HUD","railY","Left panel Y %",46,0,100);toggle("HUD","keybindWidget","Show keybind widget",true);toggle("HUD","keybindCustom","Custom keybind position",false);range("HUD","keybindX","Keybind widget X %",2,0,100);range("HUD","keybindY","Keybind widget Y %",12,0,100);toggle("HUD","quickCustom","Custom quick menu position",false);range("HUD","quickX","Quick menu X %",50,0,100);range("HUD","quickY","Quick menu Y %",12,0,100);toggle("HUD","compact","Compact health panel",true);choice("HUD","layoutMode","HUD layout","Sketch",{"Sketch","Custom"});choice("HUD","hudMotion","Widget animation","Glass",{"Glass","Float","Pulse","Off"});range("HUD","hudMotionStrength","Widget motion intensity %",65,0,100);toggle("HUD","hudShine","Health bar shimmer",true);toggle("HUD","hudReaction","Damage and healing glow",true);range("HUD","hudSmoothness","HUD smoothing (ms)",320,100,900)
+toggle("HUD","locked","Lock widget positions",true);toggle("HUD","movePanels","Allow moving top and left panels",false);toggle("HUD","topCustom","Custom top panel position",false);range("HUD","topX","Top panel X %",50,0,100);range("HUD","topY","Top panel Y %",2,0,100);toggle("HUD","railCustom","Custom left panel position",false);range("HUD","railX","Left panel X %",1,0,100);range("HUD","railY","Left panel Y %",46,0,100);toggle("HUD","keybindWidget","Show keybind widget",true);toggle("HUD","keybindCustom","Custom keybind position",false);range("HUD","keybindX","Keybind widget X %",2,0,100);range("HUD","keybindY","Keybind widget Y %",12,0,100);toggle("HUD","quickCustom","Custom quick menu position",false);range("HUD","quickX","Quick menu X %",50,0,100);range("HUD","quickY","Quick menu Y %",12,0,100);toggle("HUD","compact","Compact health panel",true);choice("HUD","layoutMode","HUD layout","Sketch",{"Sketch","Custom"});choice("HUD","hudMotion","Widget transition","Glass",{"Glass","Float","Pulse","Off"});range("HUD","hudMotionStrength","Widget motion intensity %",65,0,100);toggle("HUD","hudShine","Health bar shimmer",true);toggle("HUD","hudReaction","Damage and healing glow",true);range("HUD","hudSmoothness","HUD smoothing (ms)",320,100,900)
 choice("HUD","heartPalette","Heart gradient","Adaptive",{"Adaptive","Aurora","Amethyst","Ocean","Sakura","Sunset","Ember","Mint","Ice","Galaxy","Rainbow","Custom"});choice("HUD","heartDirection","Heart gradient direction","Vertical",{"Vertical","Horizontal","Diagonal","Reverse","Orbit"});range("HUD","heartGradientSpeed","Heart gradient speed %",60,0,150);color("HUD","heartA","Heart custom start","BA99FF");color("HUD","heartMid","Heart custom middle","F8CCFF");color("HUD","heartB","Heart custom end","69D9FA");range("HUD","heartGlow","Heart glow %",65,0,100)
 for _,row in {{"hp","Health",3,9},{"clock","Clock",3,96},{"profile","Player card",97,9},{"dock","AETHER menu button",50,96},{"cross","Reticle",50,50}} do
  local k,t=row[1],row[2];toggle("HUD",k,t,true); range("HUD",k.."X",t.." · horizontal %",row[3],0,100);range("HUD",k.."Y",t.." · vertical %",row[4],0,100)
@@ -6838,7 +6891,7 @@ for _,name in S.vbMultiplierNames do
 end
 -- Interface settings use the existing validated, persistent profile schema.
 for _,name in {"Main","Visuals","Utility","Interface"} do toggle("Interface","branch"..name,"Expand "..name,name=="Visuals") end
-choice("Interface","lastPage","Last page","Halos",{"Dashboard","Profiles","Diagnostics","Character","Wings","Halos","Ambient","Indicators","Cursor","Interaction","Volleyball","Interface","HUD","Fonts"})
+choice("Interface","lastPage","Last page","Halos",{"Dashboard","Profiles","Diagnostics","Character","Wings","Halos","Ambient","Indicators","Cursor","Interaction","Volleyball","HUD","Interface","Clock","FPS","Top Panel","Input Display","Reticle","Keybinds","Quick Menu","Practice Display","Fonts"})
 color("Interface","uiPanelColor","Panel tint","211B36")
 color("Interface","uiButtonColor","Button tint","382B50")
 color("Interface","uiHoverColor","Selected button tint","7154A6")
@@ -6947,6 +7000,7 @@ function S.value(k,v)
  -- Deprecated effects stay readable in old banks but cannot be enabled in this edition.
  if (k=="neon" or k=="aura" or k=="trail" or k=="visualBloom" or k=="dock") and type(v)=="boolean" then return false end
  if k=="topCapsule" and type(v)=="boolean" then return true end
+ if k=="lastPage" and v=="HUD" then return "Clock" end
  local d=S.defs[k];if not d then error("Unknown setting: "..tostring(k),0) end
  local a=d.kind
  if a=="bool" and type(v)=="boolean" then return v end
