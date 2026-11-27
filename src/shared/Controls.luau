@@ -2,6 +2,16 @@ local StarterGui=game:GetService("StarterGui");local Input=game:GetService("User
 local Constellation=require(script.Parent.Constellation)
 local UI={};UI.__index=UI
 local bg=Color3.fromRGB(19,16,32);local dim=Color3.fromRGB(173,163,197);local soft=Color3.fromRGB(43,35,60)
+local function chevron(parent)
+ local glyph=U.frame(parent,"Chevron",UDim2.fromScale(.5,.5),UDim2.fromOffset(18,12),nil,1)
+ glyph.AnchorPoint=Vector2.new(.5,.5);glyph.Active=false;glyph.Interactable=false;glyph.ZIndex=parent.ZIndex+1
+ for i=1,2 do
+  local line=U.frame(glyph,"Stroke"..i,UDim2.new(.5,if i==1 then -3 else 3,.5,0),UDim2.fromOffset(9,2),Color3.fromRGB(231,217,255),0)
+  line.AnchorPoint=Vector2.new(.5,.5);line.Rotation=if i==1 then 45 else -45
+  line.Active=false;line.Interactable=false;line.ZIndex=glyph.ZIndex;U.corner(line,2)
+ end
+ return glyph
+end
 local searchSections={
  {"Dashboard","THEMES"},
  {"Dashboard","CONSTELLATION COLORS"},
@@ -242,65 +252,20 @@ function UI.new(app,gui,scope)
   table.insert(self.searchIndex,{tab=item[1],label=item[2],term=(item[2].." "..item[1]):lower()})
  end
  self.quickOpen=false
- self.quickArrow=U.button(self.top,"⌄")
+ self.quickArrow=U.button(self.top,"")
  self.quickArrow.Name="VolleyballDropdown";self.quickArrow.AnchorPoint=Vector2.new(.5,0)
- self.quickArrow.Size=UDim2.fromOffset(36,22);self.quickArrow.Position=UDim2.new(.5,0,1,32)
+ self.quickArrow.Size=UDim2.fromOffset(36,24);self.quickArrow.Position=UDim2.new(.5,0,1,32)
  self.top.ZIndex=25;self.topButtons[1].ZIndex=26;self.updateChip.ZIndex=27;self.quickArrow.ZIndex=27
- self.quick=U.new("Frame",{Name="VolleyballQuickPanel",AnchorPoint=Vector2.new(.5,0),Position=UDim2.new(.5,0,1,58),Size=UDim2.fromOffset(268,300),BackgroundColor3=bg,BackgroundTransparency=.10,BorderSizePixel=0,Visible=false,Active=true,ZIndex=28},self.top)
+ self.quickGlyph=chevron(self.quickArrow)
+ self.quick=U.new("Frame",{Name="VolleyballQuickPanel",AnchorPoint=Vector2.new(.5,0),Position=UDim2.new(.5,0,1,58),Size=UDim2.fromOffset(324,380),BackgroundColor3=bg,BackgroundTransparency=.10,BorderSizePixel=0,Visible=false,Active=true,ZIndex=28},self.top)
  U.corner(self.quick,13);self.quickRim=U.stroke(self.quick,Color3.fromRGB(166,138,255),.3)
- local title=U.label(self.quick,"VOLLEYBALL / QUICK ACCESS",12,UDim2.fromOffset(12,5),UDim2.new(1,-24,0,22));title.ZIndex=29
- local scroll=U.new("ScrollingFrame",{Name="QuickFunctions",Position=UDim2.fromOffset(8,32),Size=UDim2.new(1,-16,1,-40),BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3,ZIndex=29},self.quick)
- U.new("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder},scroll)
- self.quickButtons={}
- local function quickButton(label,section)
-  local b=U.button(scroll,label.."  ›");b.Size=UDim2.new(1,-5,0,30);b.ZIndex=30;b.TextXAlignment=Enum.TextXAlignment.Left
-  U.new("UIPadding",{PaddingLeft=UDim.new(0,9)},b)
-  b.LayoutOrder=#self.quickButtons+1;table.insert(self.quickButtons,b)
-  scope:on(b.Activated,function()
-   if not self.quickOpen then return end
-   self:setQuick(false);self:jumpTo({tab="Volleyball",label=section})
-  end)
- end
- quickButton("All volleyball settings","VOLLEYBALL MODIFIERS / BETA")
- local function quickToggle(label,read,change)
-  local b=U.button(scroll,label.."  ·  OFF")
-  b.Size=UDim2.new(1,-5,0,30);b.ZIndex=30;b.TextXAlignment=Enum.TextXAlignment.Left
-  U.new("UIPadding",{PaddingLeft=UDim.new(0,9)},b)
-  b.LayoutOrder=#self.quickButtons+1;table.insert(self.quickButtons,b)
-  local function refresh()
-   local vb=self.app.volleyball
-   if not vb then return end
-   local on=read(vb)==true
-   b.Text=label..(if on then "  ·  ON" else "  ·  OFF")
-   b.BackgroundColor3=if on then Color3.fromRGB(98,68,150) else soft
-  end
-  table.insert(self.quickRefresh,refresh)
-  scope:on(b.Activated,function()
-   if not self.quickOpen or not self.app.volleyball then return end
-   self:action(function() change(self.app.volleyball);refresh();self:sync() end)
-  end)
- end
- self.quickRefresh={}
- quickToggle("Auto Set",function(v) return v.play.set end,function(v) v:togglePlay("Set") end)
- quickToggle("Auto Spike",function(v) return v.play.spike end,function(v) v:togglePlay("Spike") end)
- quickToggle("Auto Dive",function(v) return v.play.dive end,function(v) v:togglePlay("Dive") end)
- quickToggle("Auto Serve",function(v) return v.play.serve end,function(v) v:togglePlay("Serve") end)
- quickToggle("Auto Tilt",function(v) return v.auto end,function(v) v:toggleAuto() end)
- quickToggle("Ball Expander",function(v) return v.ballRadius.enabled end,function(v) v:toggleBallRadius() end)
- quickToggle("Shot Arc",function(v) return v.shotArc.enabled end,function(v) v:toggleShotArc() end)
- quickToggle("Ball Touch Info",function(v) return v.ballTouchInfo.enabled end,function(v) v:toggleBallTouchInfo() end)
- quickToggle("Trajectory ESP",function(v) return v.trajectory.enabled end,function(v) v:toggleTrajectory() end)
- quickToggle("Direction ESP",function(v) return v.jinkoDirection.enabled end,function(v) v:toggleJinkoDirection() end)
- quickButton("Auto Play","AUTO PLAY / BETA")
- quickButton("Hitbox Expander","BALL HITBOX EXPANDER / BETA")
- quickButton("Shot Arc","SHOT ARC / BETA")
- quickButton("Ball Touch Info","BALL TOUCH INFO")
- quickButton("Trajectory","TRAJECTORY ESP / BETA")
- quickButton("Direction","DIRECTION ESP / BETA")
- quickButton("Auto Tilt","AUTO TILT / BETA")
- quickButton("Spike Camera","SPIKE CAMERA")
- quickButton("Consecutive Touch","CONSECUTIVE TOUCH / BETA")
- quickButton("Style / Curve","JINKO STYLE / LOCAL PREVIEW")
+ local title=U.label(self.quick,"VOLLEYBALL / MODULES",12,UDim2.fromOffset(12,5),UDim2.new(1,-24,0,22));title.ZIndex=29
+ self.quickScroll=U.new("ScrollingFrame",{Name="QuickFunctions",Position=UDim2.fromOffset(8,32),Size=UDim2.new(1,-16,1,-60),BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3,ZIndex=29},self.quick)
+ U.new("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder},self.quickScroll)
+ self.quickStatus=U.label(self.quick,"Tap a module to expand",10,UDim2.new(0,10,1,-24),UDim2.new(1,-20,0,20))
+ self.quickStatus.ZIndex=29
+ self.quickExpanded={}
+ scope:add(function() if self.quickPage then self.quickPage:clear();self.quickPage=nil end end)
  scope:on(self.quickArrow.Activated,function()
   if not self.app.volleyball or self.app.editingHUD then return end
   local on=not self.quickOpen
@@ -365,7 +330,7 @@ function UI.new(app,gui,scope)
   self.search.Position=UDim2.fromOffset(10,111);self.search.Size=UDim2.new(1,-20,0,30)
   self.pageBox.Position=UDim2.fromOffset(10,148);self.pageBox.Size=UDim2.new(1,-20,1,-179)
   self.searchResults.Position=self.pageBox.Position;self.searchResults.Size=self.pageBox.Size
-  self.quick.Size=UDim2.fromOffset(math.min(268,math.max(140,sz.X-24)),math.clamp(sz.Y*.48,120,330))
+  self.quick.Size=UDim2.fromOffset(math.min(324,math.max(140,sz.X-24)),math.clamp(sz.Y*.58,120,440))
   self.layoutKey=table.concat({s.menuDock,s.menuWidth,s.menuHeight,s.menuFloatX,s.menuFloatY,tostring(s.menuResize),tostring(s.topCustom),s.topX,s.topY},":")
  end
  function self:finishMenuDrag(point,resize)
@@ -466,9 +431,9 @@ function UI:animateBackground(t)
  self.top.Visible=s.topCapsule
  self.quickArrow.Visible=self.app.volleyball~=nil
  self.quick.Visible=self.quickOpen and s.topCapsule and not self.app.editingHUD
- if self.quick.Visible and t>=(self.quickRefreshAt or 0) then
-  self.quickRefreshAt=t+.2
-  for _,refresh in self.quickRefresh do refresh() end
+ if self.quick.Visible and self.quickAdapter and t>=(self.quickRefreshAt or 0) then
+  self.quickRefreshAt=t+.25
+  for _,refresh in self.quickAdapter.syncs do pcall(refresh) end
  end
  local live=self.app.liveUpdate
  if live then
@@ -572,11 +537,113 @@ function UI:openShortcut(tab,explicit)
  if os.clock()<(self.tabInputAfter or 0) then return end
  self:open(tab)
 end
+-- Reuse the canonical Volleyball renderer. The small adapter only changes layout.
+local quickSwitches={
+ ["BALL HITBOX EXPANDER / BETA"]={function(v) return v.ballRadius.enabled end,function(v) v:toggleBallRadius() end,"Toggle Ball Expander"},
+ ["BALL TOUCH INFO"]={function(v) return v.ballTouchInfo.enabled end,function(v) v:toggleBallTouchInfo() end,"Show last hitter"},
+ ["SHOT ARC / BETA"]={function(v) return v.shotArc.enabled end,function(v) v:toggleShotArc() end,"Shot Arc"},
+ ["TRAJECTORY ESP / BETA"]={function(v) return v.trajectory.enabled end,function(v) v:toggleTrajectory() end,"Toggle Trajectory ESP"},
+ ["DIRECTION ESP / BETA"]={function(v) return v.jinkoDirection.enabled end,function(v) v:toggleJinkoDirection() end,"Toggle Direction ESP"},
+ ["JINKO STYLE / LOCAL PREVIEW"]={function(v) return v.styleEnabled end,function(v) v:toggleStyle() end,"Toggle Jinko preview"},
+ ["CURVE SPECIAL / EXPERIMENT"]={function(v) return v.curveEnabled end,function(v) v:toggleCurve() end,"Toggle local Curve test"},
+ ["CONSECUTIVE TOUCH / BETA"]={function(v) return v.repeatTouch.enabled end,function(v) v:toggleRepeatTouch() end,"Repeat touch test"},
+ ["AUTO TILT / BETA"]={function(v) return v.auto end,function(v) v:toggleAuto() end},
+}
+function UI:buildQuick()
+ if self.quickPage then self.quickPage:clear() end
+ local page=U.scope();self.quickPage=page
+ local owner=self
+ local q=setmetatable({app=self.app,page=page,opened=true,seq=0,syncs={},controlKeys={},colorKeys={},tab="Volleyball"},UI)
+ self.quickAdapter=q
+ local sectionCount=0
+ local current
+ local function depth(root,z)
+  if root:IsA("GuiObject") then root.ZIndex=z end
+  for _,obj in root:GetDescendants() do if obj:IsA("GuiObject") then obj.ZIndex=z+1 end end
+ end
+ function q:message(msg) owner.quickStatus.Text=tostring(msg) end
+ function q:sync()
+  for _,fn in self.syncs do
+   local ok,err=pcall(fn)
+   if not ok then owner.quickStatus.Text=tostring(err):sub(-120) end
+  end
+  owner:sync()
+ end
+ function q:row(h,name)
+  assert(current,"Quick section missing")
+  self.seq+=1
+  local f=U.frame(current.body,name or "Row",nil,UDim2.new(1,-4,0,h),soft,.47)
+  f.LayoutOrder=self.seq;f.ZIndex=32;U.corner(f,8)
+  current.height+=h+(if current.rows>0 then 5 else 0);current.rows+=1
+  current.body.Size=UDim2.new(1,-12,0,current.height)
+  current.layout()
+  page:on(f.DescendantAdded,function(obj) if obj:IsA("GuiObject") then obj.ZIndex=33 end end)
+  return f
+ end
+ function q:title(str)
+  if self.fieldTitle then return UI.title(self,str) end
+  sectionCount+=1
+  local card=page:add(U.frame(owner.quickScroll,"Module_"..sectionCount,nil,UDim2.new(1,-5,0,34),soft,.35))
+  card.LayoutOrder=sectionCount;card.ZIndex=30;U.corner(card,8)
+  local header=U.button(card,"");header.Name="ExpandModule";header.Size=UDim2.new(1,0,0,34);header.ZIndex=31
+  local spec=quickSwitches[str]
+  local title=U.label(header,str:gsub(" / BETA",""):gsub(" / EXPERIMENT",""):gsub(" / LOCAL PREVIEW",""),11,UDim2.fromOffset(9,0),UDim2.new(1,if spec then -91 else -32,1,0))
+  title.ZIndex=32;title.Active=false;title.Interactable=false
+  local expander=U.frame(header,"ArrowHolder",UDim2.new(1,-28,.5,-10),UDim2.fromOffset(24,20),nil,1);expander.ZIndex=32;expander.Active=false;expander.Interactable=false
+  local glyph=chevron(expander)
+  local body=U.frame(card,"Settings",UDim2.fromOffset(6,39),UDim2.new(1,-12,0,0),nil,1);body.ZIndex=31
+  U.new("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder},body)
+  local section={body=body,height=0,rows=0,name=str,spec=spec,expanded=owner.quickExpanded[str]==true}
+  function section.layout()
+   body.Visible=section.expanded
+   card.Size=UDim2.new(1,-5,0,if section.expanded then 44+section.height else 34)
+   glyph.Rotation=if section.expanded then 180 else 0
+  end
+  page:on(header.Activated,function()
+   section.expanded=not section.expanded;owner.quickExpanded[str]=section.expanded;section.layout()
+  end)
+  if spec then
+   local switch=U.button(card,"OFF")
+   switch.Size=UDim2.fromOffset(48,26);switch.Position=UDim2.new(1,-82,0,4);switch.ZIndex=34;switch.TextSize=11
+   local function refresh()
+    local vb=owner.app.volleyball;local enabled=vb and spec[1](vb)==true
+    switch.Text=if enabled then "ON" else "OFF"
+    switch.BackgroundColor3=if enabled then Color3.fromRGB(98,68,150) else bg
+   end
+   self:watch(refresh)
+   page:on(switch.Activated,function() self:action(function() spec[2](owner.app.volleyball);self:sync() end) end)
+  end
+  current=section;self.sc=body;section.layout()
+  return title
+ end
+ function q:box(label,initial,h,commit)
+  self.fieldTitle=true
+  local result=UI.box(self,label,initial,h,commit)
+  self.fieldTitle=false
+  return result
+ end
+ function q:chips(items,fn,cols,selected)
+  if current and current.spec and #items==1 and items[1]==current.spec[3] then return end
+  return UI.chips(self,items,fn,cols,selected)
+ end
+ -- Full Volleyball content, including all nested fields and status callbacks.
+ self.app:page("Volleyball",q)
+ q:sync()
+end
 function UI:setQuick(on)
  self.quickOpen=on==true
  self.quick.Visible=self.quickOpen and self.app.s.topCapsule
- self.quickArrow.Text=if self.quickOpen then "⌃" else "⌄"
- if self.quickOpen then for _,refresh in self.quickRefresh do refresh() end end
+ self.quickGlyph.Rotation=if self.quickOpen then 180 else 0
+ if self.quickOpen then
+  if not self.quickAdapter then
+   local ok,err=pcall(self.buildQuick,self)
+   if not ok then
+    if self.quickPage then self.quickPage:clear();self.quickPage=nil end
+    self.quickAdapter=nil;self.quickStatus.Text="Menu error: "..tostring(err):sub(-100)
+    self.app:log("Quick menu",err)
+   end
+  else self.quickAdapter.opened=true;self.quickAdapter:sync() end
+ elseif self.quickAdapter then self.quickAdapter.opened=false end
 end
 local function searchMatch(text,words)
  for _,word in words do if not text:find(word,1,true) then return false end end
