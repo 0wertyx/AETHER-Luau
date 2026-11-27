@@ -3008,7 +3008,7 @@ function app:unload()
     -- Defer destruction until the current GUI activation callback has returned.
     task.defer(function() scope:clear() end)
 end
-ui:open("Dashboard")
+ui:open("Halos")
 ui:show(false)
 app:log("Startup", "AETHER modules initialized")
 
