@@ -8150,7 +8150,7 @@ do
     local exp={factor=2,enabled=false,show=true,status="Off"}
     vb.ballRadius=exp
     local entry,folder
-    local searchAt=0
+    local searchAt,retryAt=0,0
     local function clear()
         local e=entry;entry=nil
         if e and e.part.Parent then
@@ -8162,7 +8162,7 @@ do
         if folder then folder:Destroy();folder=nil end
     end
     local function reset(reason)
-        clear();searchAt=0;exp.enabled=false;exp.status=reason or "Off"
+        clear();searchAt=0;retryAt=0;exp.enabled=false;exp.status=reason or "Off"
     end
     local function resolvePart(model)
         if not model or not model:IsA("Model") or not model.Name:match("^CLIENT_BALL_") or not model:IsDescendantOf(workspace) then return nil end
@@ -8245,7 +8245,7 @@ do
     function vb:toggleBallRadius()
         if exp.enabled then reset();return end
         if app.mode~="Game" then exp.status="Switch to Game mode";return end
-        exp.enabled=true;exp.status="Waiting for match ball";searchAt=0
+        exp.enabled=true;exp.status="Waiting for match ball";searchAt=0;retryAt=0
     end
     local oldReset=vb.reset
     function vb:reset()
@@ -8256,9 +8256,10 @@ do
         if not exp.enabled then return end
         if app.stopping or not gui.Parent or app.mode~="Game" then reset("Off | left Game mode");return end
         if player:GetAttribute("Gameplay_InGame")~=true then
-            if entry then reset("Off | match ended") else exp.status="Waiting for match" end
+            if entry then clear() end;searchAt=0;retryAt=0;exp.status="Waiting for match"
             return
         end
+        if os.clock()<retryAt then return end
         if entry and (not entry.part:IsDescendantOf(workspace) or not entry.part.CanQuery or not folder or not folder.Parent) then
             clear();searchAt=0
         end
@@ -8290,7 +8291,10 @@ do
     end
     scope:on(RunService.RenderStepped,function()
         local ok,err=pcall(tick)
-        if not ok then reset("Ball hitbox error: "..tostring(err)) end
+        if not ok then
+            clear();searchAt=0;retryAt=os.clock()+2
+            exp.status="Paused | retrying: "..tostring(err)
+        end
     end)
     scope:add(function() reset() end)
 end
