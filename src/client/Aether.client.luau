@@ -54,7 +54,7 @@ studioLayer.ZIndex=2
 
 local app = {
     bank = S.blank(), mode = "Game", logs = {}, preview = nil,
-    hudTab = "hp", scriptTab = "AETHER Lua",
+    hudTab = "clock", scriptTab = "AETHER Lua",
     grants = {widgets = false, appearance = false, events = false},
     sim = {hp = 100, max = 100, gen = 0, players = {}},
     frame = {hp = nil, max = nil, gen = 0, name = player.DisplayName, mode = "GAME", targets = {}, widgets = {}},
@@ -2778,7 +2778,7 @@ function app:drag(input, key, widget, frame, source)
             patch.layoutMode="Custom"
             local preview=source or (self.preview and self.preview.hud)
             if preview then
-                for _,other in {"hp","clock","profile","dock"} do
+                for _,other in {"clock","profile","dock"} do
                     if other~=key then
                         local w=preview.widgets[other].p
                         local nx,ny=normalized(w.AbsolutePosition-frame.AbsolutePosition,w.AbsoluteSize,false)
@@ -2899,7 +2899,7 @@ scope:on(panelToggle.Activated,function()
     app:updateEditor()
 end)
 local handles={}
-local positions={"hp","clock","profile","dock","input","wallhop","top","keybind","quick"}
+local positions={"clock","profile","dock","input","wallhop","top","keybind","quick"}
 local function isAux(key) return key=="keybind" or key=="quick" end
 local function isPanel(key) return key=="top" or isAux(key) end
 local function widgetFor(key)
@@ -2958,7 +2958,7 @@ for _,key in positions do
         local patch={}
         if app.s.layoutMode=="Sketch" and key~="input" and key~="wallhop" and not isPanel(key) then
             patch.layoutMode="Custom"
-            for _,other in {"hp","clock","profile","dock"} do
+            for _,other in {"clock","profile","dock"} do
                 local w=widgetFor(other)
                 local x,y=coord(other,w.AbsolutePosition-overlay.AbsolutePosition,w.AbsoluteSize,vp)
                 patch[other.."X"]=x;patch[other.."Y"]=y
@@ -3157,7 +3157,7 @@ local function frame(dt, now)
     peers:step(styled, app.mode=="Game", walkMotion, dt)
     if peers.statusLabel and peers.statusLabel.Parent and peers.statusLabel.Text~=peers.status then peers.statusLabel.Text=peers.status end
     world:apply(styled)
-    if app.preview then
+    if ui.opened and app.preview then
         if app.preview.hud then app.preview.hud:step(styled, result, dt) end
         if app.preview.pose then app.preview.pose(styled, dt) end
         if app.preview.avatar then app.preview.avatar:step(app.preview.rig, styled, app.preview.effectTime or now) end
@@ -3460,7 +3460,7 @@ scope:on(RunService.RenderStepped, function(dt)
     elapsed += math.min(dt, .1)
     local ok, err = pcall(frame, math.min(dt, .1), elapsed)
     -- Keep drag handles synchronized even if another cosmetic module faults.
-    if app.preview and app.preview.hud and app.preview.hud.previewPanels then
+    if ui.opened and app.preview and app.preview.hud and app.preview.hud.previewPanels then
         local good, problem=pcall(app.preview.hud.layoutPreview,app.preview.hud,app.s)
         if not good and not app.previewLayoutError then app.previewLayoutError=true;warn("AETHER preview panels:",problem) end
     end
