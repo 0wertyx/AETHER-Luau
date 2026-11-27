@@ -1051,6 +1051,44 @@ end
 function UI.new(app,gui,scope)
  local self=setmetatable({app=app,gui=gui,scope=scope,syncs={},icons={},tab="Dashboard",opened=true,seq=0,menuProgress=0,pageProgress=0,navHover={},navAmount={}},UI)
  self.stage=U.frame(gui,"StudioArea",nil,nil,nil,1)
+ -- Session-only AFK toggle. Never enabled automatically on startup.
+ self.afkEnabled=false;self.afkCommand=""
+ self.afkChip=U.label(self.stage,"AFK",11,UDim2.new(1,-12,0,12),UDim2.fromOffset(104,26))
+ self.afkChip.AnchorPoint=Vector2.new(1,0);self.afkChip.TextXAlignment=Enum.TextXAlignment.Center
+ self.afkChip.BackgroundColor3=Color3.fromRGB(25,20,45);self.afkChip.BackgroundTransparency=.35
+ self.afkChip.TextColor3=Color3.fromRGB(210,195,255);self.afkChip.ZIndex=30
+ self.afkChip.Active=false;self.afkChip.Interactable=false;self.afkChip.Visible=false;U.corner(self.afkChip,13)
+ local afkPlayer=game:GetService("Players").LocalPlayer
+ local function afkNotice(message)
+  self:message(message)
+  pcall(function() StarterGui:SetCore("SendNotification",{Title="AETHER",Text=message,Duration=3}) end)
+ end
+ function self:setAFK(on)
+  self.afkEnabled=false;self.afkCommand="";self.afkChip.Visible=false
+  if not on then afkNotice("AFK mode OFF");return end
+  if not afkPlayer or self.app.mode~="Game" then afkNotice("AFK unavailable outside game mode");return end
+  local ok,err=pcall(function()
+   self.afkVirtualUser=game:GetService("VirtualUser")
+   self.afkVirtualUser:CaptureController()
+  end)
+  if not ok then self.afkVirtualUser=nil;afkNotice("AFK unavailable: input access denied");self.app:log("AFK",tostring(err));return end
+  self.afkEnabled=true;self.afkChip.Text="AFK / ON";self.afkChip.Visible=true
+  afkNotice("AFK mode ON")
+ end
+ if afkPlayer then
+  scope:on(afkPlayer.Idled,function()
+   if not self.afkEnabled or self.app.stopping then return end
+   local ok,err=pcall(function()
+    self.afkVirtualUser:CaptureController()
+    self.afkVirtualUser:ClickButton2(Vector2.zero)
+   end)
+   if not ok then
+    self.afkEnabled=false;self.afkChip.Visible=false;self.afkVirtualUser=nil
+    afkNotice("AFK stopped: input access denied");self.app:log("AFK",tostring(err))
+   end
+  end)
+ end
+ scope:add(function() self.afkEnabled=false;self.afkVirtualUser=nil end)
  -- The backdrop is deliberately not a fullscreen CanvasGroup: each particle fades separately.
  self.screenFX=U.frame(self.stage,"MenuScreenEffects",nil,nil,nil,1)
  self.screenFX.Active=false;self.screenFX.Interactable=false
@@ -1732,8 +1770,30 @@ function UI.new(app,gui,scope)
   r.title.Active=true
   scope:on(r.title.InputBegan,function(i) beginWorkspaceNode(i,name) end)
  end
- scope:on(Input.InputBegan,function(i)
-  if not self.opened or Input:GetFocusedTextBox() then return end
+ scope:on(Input.InputBegan,function(i,processed)
+  if not self.opened or Input:GetFocusedTextBox() then self.afkCommand="";return end
+  if i.UserInputType==Enum.UserInputType.Keyboard then
+   if processed or self.layoutEditing or self.app.editingHUD or self.app.stopping or Input:IsKeyDown(Enum.KeyCode.LeftControl) or Input:IsKeyDown(Enum.KeyCode.RightControl) or Input:IsKeyDown(Enum.KeyCode.LeftAlt) or Input:IsKeyDown(Enum.KeyCode.RightAlt) then
+    self.afkCommand=""
+   else
+    local now=os.clock()
+    if now-(self.afkKeyAt or 0)>1.2 then self.afkCommand="" end
+    local key=i.KeyCode
+    local letter=if key==Enum.KeyCode.A then "A" elseif key==Enum.KeyCode.F then "F" elseif key==Enum.KeyCode.K then "K" else ""
+    local localizedOk,localized=pcall(function() return Input:GetStringForKeyCode(key) end)
+    if localizedOk then
+     if localized=="а" or localized=="А" then letter="A"
+     elseif localized=="ф" or localized=="Ф" then letter="F"
+     elseif localized=="к" or localized=="К" then letter="K" end
+    end
+    if letter=="" then self.afkCommand=""
+    else
+     self.afkCommand=(self.afkCommand..letter):sub(-3)
+     self.afkKeyAt=now
+     if self.afkCommand=="AFK" then self:setAFK(not self.afkEnabled);return end
+    end
+   end
+  end
   if i.KeyCode==Enum.KeyCode.Home then self:resetWorkspace(Input:IsKeyDown(Enum.KeyCode.LeftShift) or Input:IsKeyDown(Enum.KeyCode.RightShift));return end
   if i.UserInputType~=Enum.UserInputType.MouseButton3 or self.drag then return end
   local state=self:workspaceCamera()
@@ -1771,7 +1831,7 @@ function UI.new(app,gui,scope)
  scope:on(self.stage:GetPropertyChangedSignal("AbsoluteSize"),function() self:layout() end);self:layout()
  scope:on(Input.InputChanged,function(i) local d=self.drag;if d and (i==d.i or d.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseMovement) then d.fn(Vector2.new(i.Position.X,i.Position.Y),d.start,d.origin) end end)
  scope:on(Input.InputEnded,function(i) if self.drag and (self.drag.i==i or self.drag.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseButton1) then local d=self.drag;self.drag=nil;if d.finish then d.finish(Vector2.new(i.Position.X,i.Position.Y)) end end end)
- scope:on(Input.WindowFocusReleased,function() self.backgroundTap=nil;self.drag=nil;self.workspacePan=nil;self:finishWorkspaceNode();self:commitWorkspaceCamera();if self.menuDraft then self.menuDraft=nil end;self:layout() end);scope:add(function() if self.page then self.page:clear() end;Icons.clear() end);return self
+ scope:on(Input.WindowFocusReleased,function() self.afkCommand="";self.backgroundTap=nil;self.drag=nil;self.workspacePan=nil;self:finishWorkspaceNode();self:commitWorkspaceCamera();if self.menuDraft then self.menuDraft=nil end;self:layout() end);scope:add(function() if self.page then self.page:clear() end;Icons.clear() end);return self
 end
 function UI:animateBackground(t)
  if self.layoutPending or self.layoutViewport~=self.stage.AbsoluteSize then self:layout() end
@@ -1856,6 +1916,7 @@ function UI:animateBackground(t)
 end
 function UI:begin(i,fn,origin) if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end;self.backgroundTap=nil;if self.workspaceNodeInertia then self:finishWorkspaceNode() end;local v=Vector2.new(i.Position.X,i.Position.Y);self.drag={i=i,start=v,fn=fn,origin=origin};fn(v,v,origin) end
 function UI:show(on)
+ self.afkCommand=""
  self.backgroundTap=nil
  if on then self:setQuick(false) end
  if not on then self.workspacePan=nil;self:finishWorkspaceNode();self:clearWorkspaceSparks();self:commitWorkspaceCamera() end
