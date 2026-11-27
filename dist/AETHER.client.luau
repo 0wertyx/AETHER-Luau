@@ -4710,32 +4710,110 @@ end
 local function gallery(ui,a)
  ui:title("24 DIRECTION STYLES · HD");for i=1,#S.shapes,4 do local r=ui:row(72,"ShapeGallery");for j=0,3 do local n=S.shapes[i+j];local b=U.button(r,"");b.Name=n;b.Position=UDim2.fromScale(j/4,0);b.Size=UDim2.new(.25,-3,1,0);local g=Symbol.gallery(b,n,30);g.root.Position=UDim2.fromScale(.5,.37);g.root.Size=UDim2.fromOffset(47,47);local l=U.label(b,n,10,UDim2.fromScale(0,.65),UDim2.fromScale(1,.3));l.TextXAlignment=Enum.TextXAlignment.Center;ui.page:on(b.Activated,function() a:set("shape",n) end);ui:watch(function() b.BackgroundColor3=if a.s.shape==n then U.hex("624785") else U.hex("30273E");g:paint(U.hex(a.s.arrowA),U.hex(a.s.arrowB),a.s.ink,a.s.spread) end) end end
 end
+local function skyArt(host,row)
+ local hi,mid,ground=U.hex(row[2]),U.hex(row[3]),U.hex(row[4])
+ host.BackgroundColor3=Color3.new(1,1,1);host.BackgroundTransparency=0;host.ClipsDescendants=true
+ U.new("UIGradient",{Rotation=90,Color=ColorSequence.new({
+  ColorSequenceKeypoint.new(0,hi),ColorSequenceKeypoint.new(.60,mid),ColorSequenceKeypoint.new(1,ground)
+ })},host)
+ local night=(row[7] or 0)<65 or (row[7] or 0)>185
+ if night then
+  for i=1,9 do
+   local dot=U.frame(host,"Star",UDim2.fromScale(.07+((i*.618)%1)*.86,.07+((i*.414)%1)*.43),UDim2.fromOffset(2,2),Color3.new(1,1,1),.24+(i%4)*.16)
+   dot.Active=false;dot.Interactable=false;U.corner(dot,4)
+  end
+ end
+ local orb=U.frame(host,"CelestialDisc",UDim2.fromScale(.70,.28),UDim2.fromScale(.18,.18),ground:Lerp(Color3.new(1,1,1),.45),.12)
+ orb.AnchorPoint=Vector2.new(.5,.5);U.corner(orb,999);U.new("UIAspectRatioConstraint",{AspectRatio=1},orb)
+ for i=1,4 do
+  local mountain=U.frame(host,"HorizonSilhouette",UDim2.fromScale((i-.5)/4,.98),UDim2.fromScale(.42,.58),hi:Lerp(Color3.fromRGB(7,10,22),.45+i*.06),.04+i*.03)
+  mountain.AnchorPoint=Vector2.new(.5,.5);mountain.Rotation=45;mountain.Active=false;mountain.Interactable=false;U.corner(mountain,5)
+ end
+ local floor=U.frame(host,"Horizon",UDim2.fromScale(0,.86),UDim2.fromScale(1,.14),hi:Lerp(Color3.fromRGB(7,10,22),.75),0);floor.Active=false;floor.Interactable=false
+end
+local function cosmeticSettings(source,item,kind)
+ local s=S.copy(source)
+ s.wings=false;s.halo=false;s.neon=false;s.aura=false;s.trail=false;s.redDiamond=false;s.blueDiamond=false;s.reduce=true;s.wingDetail="Balanced";s.haloDetail="Balanced"
+ for i in S.haloV2Styles do s["haloV2"..i.."Enabled"]=false end
+ if kind=="Halos" then
+  if item.classic then s.halo=true;s.haloStyle=item.name
+  else s[item.key.."Enabled"]=true;s[item.key.."Count"]=math.min(s[item.key.."Count"] or 5,12) end
+ else s.wings=true;s.wingStyle=item.name end
+ return s
+end
+-- Generate a static 2D thumbnail from the same cosmetic geometry as the avatar.
+-- Only one temporary rig exists at a time; the cache stores plain numeric data.
+local thumbnailCache={}
+local function thumbnailGeometry(item,kind)
+ local key=kind..":"..item.id
+ if thumbnailCache[key] then return thumbnailCache[key] end
+ local folder=Instance.new("Folder")
+ local fx=Avatar.new(folder,true)
+ local data={}
+ local ok=pcall(function()
+  local rig=Avatar.mannequin(folder)
+  fx:step(rig,cosmeticSettings(S.defaults(),item,kind),0)
+  local eye=if kind=="Halos" then CFrame.lookAt(Vector3.new(5,7,9),Vector3.new(0,4,0)) else CFrame.lookAt(Vector3.new(0,3,9),Vector3.new(0,2,0))
+  local minX,maxX,minY,maxY=math.huge,-math.huge,math.huge,-math.huge
+  for _,part in fx.parts do
+   if not part.Parent or part.Transparency>=.96 then continue end
+   local cf=part.CFrame;local size=part.Size
+   local center=eye:PointToObjectSpace(cf.Position)
+   local axes={eye:VectorToObjectSpace(cf.RightVector*size.X),eye:VectorToObjectSpace(cf.UpVector*size.Y),eye:VectorToObjectSpace(cf.LookVector*size.Z)}
+   local along=Vector2.zero;local width=0
+   for _,v in axes do
+    local vv=Vector2.new(v.X,-v.Y)
+    if vv.Magnitude>along.Magnitude then width=math.max(width,along.Magnitude);along=vv else width=math.max(width,vv.Magnitude) end
+   end
+   local x,y=center.X,-center.Y
+   local radius=math.max(.025,along.Magnitude*.5+width*.25)
+   minX=math.min(minX,x-radius);maxX=math.max(maxX,x+radius)
+   minY=math.min(minY,y-radius);maxY=math.max(maxY,y+radius)
+   data[#data+1]={x=x,y=y,depth=center.Z,length=along.Magnitude,width=width,angle=math.deg(math.atan2(along.Y,along.X)),color=part.Color,alpha=part.Transparency}
+  end
+  if #data>0 then
+   local scale=84/math.max(.01,maxX-minX,maxY-minY)
+   local cx,cy=(minX+maxX)*.5,(minY+maxY)*.5
+   table.sort(data,function(a,b) return a.length>b.length end)
+   while #data>96 do table.remove(data) end
+   table.sort(data,function(a,b) return a.depth<b.depth end)
+   for _,v in data do v.x=50+(v.x-cx)*scale;v.y=50+(v.y-cy)*scale;v.length=math.max(1,v.length*scale);v.width=math.clamp(v.width*scale,1,15) end
+  end
+ end)
+ pcall(function() fx:clear() end);folder:Destroy()
+ if not ok then table.clear(data) end
+ thumbnailCache[key]=data
+ return data
+end
+local function drawThumbnail(host,canvas,item,kind)
+ canvas:ClearAllChildren()
+ host.BackgroundColor3=Color3.fromRGB(27,22,43);host.BackgroundTransparency=.33
+ if kind=="Ambient" then
+  canvas.Visible=false
+  for _,obj in host:GetChildren() do if obj~=canvas and not obj:IsA("UICorner") then obj:Destroy() end end
+  skyArt(host,item.sky)
+  return
+ end
+ canvas.Visible=true
+ local data=thumbnailGeometry(item,kind)
+ for _,v in data do
+  local edge=U.frame(canvas,"ProjectedPart",UDim2.fromOffset(v.x,v.y),UDim2.fromOffset(v.length,v.width),v.color,math.clamp(v.alpha,0,.8))
+  edge.AnchorPoint=Vector2.new(.5,.5);edge.Rotation=v.angle;edge.Active=false;edge.Interactable=false;U.corner(edge,3)
+ end
+ if #data==0 then local msg=U.label(canvas,"Preview unavailable",10);msg.TextWrapped=true;msg.TextXAlignment=Enum.TextXAlignment.Center end
+end
 -- One static low-detail 3D preview, refreshed only when relevant settings change.
 local function effectThumbnail(ui,card,a,item,kind)
  local host=U.frame(card,"EffectThumbnail",UDim2.fromOffset(4,4),UDim2.new(1,-8,0,66),Color3.fromRGB(27,22,43),0)
  host.ClipsDescendants=true;U.corner(host,7)
- if kind=="Ambient" then
-  local row=item.sky
-  U.gradient(host,U.hex(row[2]),U.hex(row[4]),90)
-  local sun=U.frame(host,"Sun",UDim2.fromScale(.67,.28),UDim2.fromOffset(16,16),Color3.fromRGB(255,241,211),.1);U.corner(sun,99)
-  return
- end
+ if kind=="Ambient" then skyArt(host,item.sky);return end
  local vp=U.new("ViewportFrame",{Name="Effect3D",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Ambient=Color3.fromRGB(165,145,200),LightColor=Color3.fromRGB(245,230,255)},host)
  local wm=U.new("WorldModel",{},vp)
  local cam=U.new("Camera",{FieldOfView=40},vp);vp.CurrentCamera=cam
  local rig=Avatar.mannequin(wm)
  local fx=Avatar.new(wm,true)
  ui.page:add(function() fx:clear() end)
- local function previewSettings()
-  local s=S.copy(a.s)
-  s.wings=false;s.halo=false;s.neon=false;s.aura=false;s.trail=false;s.reduce=true;s.wingDetail="Balanced";s.haloDetail="Balanced"
-  for i in S.haloV2Styles do s["haloV2"..i.."Enabled"]=false end
-  if kind=="Halos" then
-   if item.classic then s.halo=true;s.haloStyle=item.name
-   else s[item.key.."Enabled"]=true;s[item.key.."Count"]=math.min(s[item.key.."Count"] or 5,12) end
-  else s.wings=true;s.wingStyle=item.name end
-  return s
- end
+ local function previewSettings() return cosmeticSettings(a.s,item,kind) end
  local snapshot=a.s
  local ok,err=pcall(function() fx:step(rig,previewSettings(),0) end)
  if not ok then
@@ -4744,7 +4822,8 @@ local function effectThumbnail(ui,card,a,item,kind)
   return
  end
  local focus=if kind=="Halos" then Vector3.new(0,4.1,0) else Vector3.new(0,1.8,.5)
- local direction=if kind=="Halos" then Vector3.new(2,3,5).Unit else Vector3.new(0,1,7).Unit
+ local yaw=if kind=="Halos" then .42 else 0
+ local pitch=if kind=="Halos" then .48 else .14
  local radius=if kind=="Halos" then 2.0 else 4.1
  local function fit()
   local size=vp.AbsoluteSize
@@ -4752,9 +4831,21 @@ local function effectThumbnail(ui,card,a,item,kind)
   local halfV=math.rad(cam.FieldOfView*.5)
   local halfH=math.atan(math.tan(halfV)*size.X/size.Y)
   local distance=radius/math.sin(math.min(halfH,halfV))*1.02
+  local direction=Vector3.new(math.sin(yaw)*math.cos(pitch),math.sin(pitch),math.cos(yaw)*math.cos(pitch))
   cam.CFrame=CFrame.lookAt(focus+direction*distance,focus)
  end
  fit();ui.page:on(vp:GetPropertyChangedSignal("AbsoluteSize"),fit)
+ local hit=U.new("TextButton",{Name="OrbitInput",Text="",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,AutoButtonColor=false,ZIndex=5},host)
+ local dragging,last
+ ui.page:on(hit.InputBegan,function(input)
+  if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dragging=input;last=Vector2.new(input.Position.X,input.Position.Y) end
+ end)
+ ui.page:on(Input.InputChanged,function(input)
+  if not dragging or (input~=dragging and input.UserInputType~=Enum.UserInputType.MouseMovement) then return end
+  local pos=Vector2.new(input.Position.X,input.Position.Y);local delta=pos-last;last=pos
+  yaw-=delta.X*.012;pitch=math.clamp(pitch+delta.Y*.009,-.9,.9);fit()
+ end)
+ ui.page:on(Input.InputEnded,function(input) if dragging==input or input.UserInputType==Enum.UserInputType.MouseButton1 then dragging=nil end end)
  local pending=false
  ui:watch(function()
   if snapshot==a.s or pending then return end
@@ -4767,8 +4858,7 @@ local function effectThumbnail(ui,card,a,item,kind)
   end)
  end)
 end
--- Twelve lightweight cards are reused across pages. Only the selected effect
--- has a real 3D viewport, and selection never implicitly equips it.
+-- Reuse twelve 2D cards; only the selected effect has a persistent 3D viewport.
 local function visualsHub(a,kind,ui)
  local items={}
  if kind=="Halos" then
@@ -4806,10 +4896,25 @@ local function visualsHub(a,kind,ui)
  local grid=U.frame(host,"CardGrid",UDim2.fromOffset(9,40),UDim2.new(1,-18,1,-86),nil,1)
  U.new("UIGridLayout",{CellSize=UDim2.new(.25,-5,1/3,-5),CellPadding=UDim2.fromOffset(6,6),FillDirectionMaxCells=4,SortOrder=Enum.SortOrder.LayoutOrder},grid)
  local footer=U.frame(host,"CatalogPager",UDim2.new(0,9,1,-37),UDim2.new(1,-18,0,29),nil,1)
- local prev=U.button(footer,"‹");prev.Size=UDim2.fromOffset(34,29)
- local nextButton=U.button(footer,"›");nextButton.Position=UDim2.new(1,-34,0,0);nextButton.Size=UDim2.fromOffset(34,29)
+ local prev=U.button(footer,"<");prev.Size=UDim2.fromOffset(34,29)
+ local nextButton=U.button(footer,">");nextButton.Position=UDim2.new(1,-34,0,0);nextButton.Size=UDim2.fromOffset(34,29)
  local info=U.label(footer,"",11,UDim2.fromOffset(38,0),UDim2.new(1,-76,1,0));info.TextXAlignment=Enum.TextXAlignment.Center;info.Font=Enum.Font.Code
  local cards={}
+ local thumbGeneration=0
+ local function queueThumbnails()
+  thumbGeneration+=1;local generation=thumbGeneration
+  task.spawn(function()
+   for _,card in cards do
+    if ui.page.dead or generation~=thumbGeneration then return end
+    if card.item and card.renderId~=card.item.id then
+     local item=card.item
+     drawThumbnail(card.thumb,card.canvas,item,kind)
+     card.renderId=item.id
+     task.wait()
+    end
+   end
+  end)
+ end
  local function drawCards()
   info.Text=string.format("%d / %d   ·   %d",page,maxPage,#items)
   for i,card in cards do
@@ -4817,10 +4922,6 @@ local function visualsHub(a,kind,ui)
    card.item=item;card.button.Visible=item~=nil
    if not item then continue end
    card.name.Text=item.name
-   card.glyph.Text=if kind=="Halos" then ({"◯","◎","◇","△","✧","⬡"})[(i-1)%6+1] elseif kind=="Wings" then "❮  ❯" elseif kind=="Neon" then item.icon or "✦" else "✧"
-   card.glyph.TextColor3=if item.sky then U.hex(item.sky[4]) else U.hex(a.s.accent)
-   card.glyph.BackgroundColor3=if item.sky then U.hex(item.sky[2]) else Color3.fromRGB(32,25,56)
-   card.glyph.BackgroundTransparency=if item.sky then .06 else .45
    local on=active(item)
    card.badge.Text=if on then "EQUIPPED" else ""
    card.rim.Color=if selected==item or on then U.hex(a.s.accent) else Color3.fromRGB(138,112,189)
@@ -4839,7 +4940,7 @@ local function visualsHub(a,kind,ui)
   ed.page:on(equipButton.Activated,function() ui:action(function() equip(item,true);ui:sync() end) end)
   ed.page:on(cancel.Activated,function() ui:action(function() equip(item,false);ui:sync() end) end)
   ed:watch(function() equipButton.Text=if active(item) then "EQUIPPED" else "EQUIP" end)
-  local preview=ed:row(160,"SelectedPreview");preview.BackgroundTransparency=.3
+  local preview=ed:row(210,"SelectedPreview");preview.BackgroundTransparency=.3
   effectThumbnail(ed,preview,a,item,kind)
   local thumbnail=preview:FindFirstChild("EffectThumbnail")
   if thumbnail then thumbnail.Size=UDim2.new(1,-8,1,-8) end
@@ -4869,13 +4970,18 @@ local function visualsHub(a,kind,ui)
  for i=1,12 do
   local b=U.button(grid,"");b.Name="VisualCard"..i;b.LayoutOrder=i;b.BackgroundTransparency=.40;U.corner(b,12)
   local rim=U.stroke(b,Color3.fromRGB(138,112,189),.72)
-  local glyph=U.label(b,"",28,UDim2.fromScale(.07,.07),UDim2.fromScale(.86,.56));glyph.TextScaled=true;glyph.TextXAlignment=Enum.TextXAlignment.Center;glyph.Font=Enum.Font.Gotham;U.corner(glyph,9);glyph.Active=false;glyph.Interactable=false
-  U.new("UITextSizeConstraint",{MinTextSize=10,MaxTextSize=38},glyph)
+  local thumb=U.frame(b,"EffectThumbnail",UDim2.fromScale(.06,.06),UDim2.fromScale(.88,.60),Color3.fromRGB(27,22,43),.33);thumb.ClipsDescendants=true;thumb.Active=false;thumb.Interactable=false;U.corner(thumb,10)
+  local canvas=U.frame(thumb,"Projection",UDim2.fromScale(.5,.5),UDim2.fromOffset(100,100),nil,1);canvas.AnchorPoint=Vector2.new(.5,.5);canvas.Active=false;canvas.Interactable=false
+  local scale=U.new("UIScale",{Scale=.5},canvas)
+  local function fitThumb() local size=thumb.AbsoluteSize;scale.Scale=math.max(.08,math.min(size.X,size.Y)/100) end
+  fitThumb();ui.page:on(thumb:GetPropertyChangedSignal("AbsoluteSize"),fitThumb)
   local name=U.label(b,"",11,UDim2.fromScale(.04,.66),UDim2.fromScale(.92,.19));name.TextXAlignment=Enum.TextXAlignment.Center;name.TextScaled=true;name.Font=Enum.Font.Code;name.Active=false;name.Interactable=false
   U.new("UITextSizeConstraint",{MinTextSize=7,MaxTextSize=14},name)
   local badge=U.label(b,"",9,UDim2.fromScale(.04,.86),UDim2.fromScale(.92,.11));badge.TextScaled=true;badge.TextXAlignment=Enum.TextXAlignment.Center;badge.Active=false;badge.Interactable=false
   U.new("UITextSizeConstraint",{MinTextSize=6,MaxTextSize=10},badge)
-  local card={button=b,rim=rim,glyph=glyph,name=name,badge=badge};cards[i]=card
+  local card={button=b,rim=rim,thumb=thumb,canvas=canvas,name=name,badge=badge};cards[i]=card
+  ui.page:on(b.MouseEnter,function() if card.item and selected~=card.item then b.BackgroundTransparency=.23;rim.Transparency=.30 end end)
+  ui.page:on(b.MouseLeave,function() b.BackgroundTransparency=.40;drawCards() end)
   ui.page:on(b.Activated,function()
    if not card.item or selected==card.item then return end
    selected=card.item;a.catalogSelection[kind]=selected.id;buildEditor();ui:sync()
@@ -4884,10 +4990,10 @@ local function visualsHub(a,kind,ui)
  local function move(delta)
   local new=math.clamp(page+delta,1,maxPage)
   if new==page then return end
-  page=new;a.catalogPages[kind]=page;drawCards()
+  page=new;a.catalogPages[kind]=page;drawCards();queueThumbnails()
  end
  ui.page:on(prev.Activated,function() move(-1) end);ui.page:on(nextButton.Activated,function() move(1) end)
- ui:watch(drawCards);buildEditor()
+ ui:watch(drawCards);buildEditor();queueThumbnails()
 end
 local function configs(ui,a)
  local selected=a.configSelection
@@ -4951,18 +5057,6 @@ local function configs(ui,a)
     a:restore(S.bank(v.data));a:dirty();a.store:save();ui:message("Bank imported")
    end
   end,2)
- end
-end
-local function esc(v) return (v:gsub("&","&amp;"):gsub("<","&lt;"):gsub(">","&gt;")) end
- local syntax=ui:note("",45);syntax.RichText=true;local function highlight() local code=esc(box.Text:sub(1,280));syntax.Text=code:gsub("[%a_][%w_]*",function(w) return if table.find({"local","function","if","then","else","end","return","and","or","nil","true","false"},w) then '<font color="#CF9BFF">'..w..'</font>' else w end) end;ui.page:on(box:GetPropertyChangedSignal("Text"),highlight);highlight()
- ui:chips({"Template","Complete symbol","Select source","Check"},function(op)
-  if op=="Template" then a:set(k,S.defs[k].default);box.Text=a.s[k]
-  elseif op=="Select source" then box:CaptureFocus();box.CursorPosition=#box.Text+1;box.SelectionStart=1
-  elseif op=="Complete symbol" then local i=if box.CursorPosition>0 then box.CursorPosition else #box.Text+1;local left=box.Text:sub(1,i-1);local pre=left:match("([%w%.:_]+)$") or "";local opts=if draft then {"game:GetService","Players","Humanoid","HealthChanged","MaxHealth","CharacterAdded","workspace.CurrentCamera","Vector3.new","function","return"} else {"hud.widget","hud.animate","hud.setGlow","hud.indicator","hud.theme","hud.join","onHealthChanged","onEvent"};for _,w in opts do if w:lower():sub(1,#pre)==pre:lower() then box.Text=left:sub(1,#left-#pre)..w..box.Text:sub(i);a:set(k,box.Text);return end end;ui:message("No matching symbol")
-  else if draft then local depth={};local close={[")"]="(",["]"]="[",["}"]="{"};local clean=box.Text:gsub('"[^"\n]*"',''):gsub("'[^'\n]*'",''):gsub("%-%-[^\n]*",'');for ch in clean:gmatch("[%(%)%[%]{}]") do if close[ch] then assert(table.remove(depth)==close[ch],"Unbalanced delimiter") else table.insert(depth,ch) end end;assert(#depth==0,"Open delimiter");ui:message("Delimiters balanced · compile in Studio") else Cues.compile(box.Text);ui:message("HUD syntax OK") end end
- end,2)
- if not draft then ui:title("RUN PERMISSIONS · SESSION ONLY");ui:chips({"widgets","appearance","events"},function(p) a:stopCue();a.grants[p]=not a.grants[p];ui:sync() end,3);local report=ui:note("",26);ui:watch(function() local v={};for _,p in {"widgets","appearance","events"} do if a.grants[p] then table.insert(v,p) end end;report.Text="Granted: "..table.concat(v,", ").."   /   "..(if a.cue then "Running" else "Stopped") end)
-  ui:chips({"Run HUD script","Stop"},function(op) if op=="Stop" then a:stopCue();ui:message("Stopped") else a:set(k,box.Text);a:runCue() end;ui:sync() end,2)
  end
 end
 local function airControls(ui,a)
