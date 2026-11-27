@@ -4724,7 +4724,7 @@ function E.render(a,tab,ui)
    ui:chips({"Free zone","Court center","Off"},function(n) vb.play.cameraAim=n;vb.play.cameraTargetAt=0;vb.play.cameraPoint=nil;ui:sync() end,3,function() return vb.play.cameraAim end)
    ui:chips({"Ground prediction"},function() vb.play.groundPredict=not vb.play.groundPredict;vb.play.cameraTargetAt=0;ui:sync() end,1,function() return if vb.play.groundPredict then "Ground prediction" else "" end)
    ui:chips({"Auto Jump"},function() vb.play.autoJump=not vb.play.autoJump;vb.play.jumpPendingUntil=0;ui:sync() end,1,function() return if vb.play.autoJump then "Auto Jump" else "" end)
-   ui:note("Auto Spike only. Air: look at the opponent half. Ground: look at an estimated incoming contact point. Paused in menus.",60)
+   ui:note("Air: turn the character only; keep manual camera control. Ground: aim the camera at the predicted contact point. Paused in menus.",60)
    local playStatus=ui:note("",180)
    local function refreshPlay()
     playStatus.Text=string.format("SET %s | SPIKE %s | DIVE %s\n%s\nAttempts %d | confirmed touches %d\nCamera: %s\nJump: %s | %d\nServe: %s | %s",if vb.play.set then "ON" else "OFF",if vb.play.spike then "ON" else "OFF",if vb.play.dive then "ON" else "OFF",vb.play.status,vb.play.attempts,vb.play.hits,vb.play.cameraStatus,vb.play.jumpStatus,vb.play.jumpCount,if vb.play.serve then "ON" else "OFF",vb.play.serveStatus)
@@ -6674,18 +6674,39 @@ function V:step(s,hum,menu,dt,t,aimStep)
   local k=if s.reduce or s.follow==0 then 1 else 1-math.exp(-dt*1000/s.follow)
   if s.camera then camera.FieldOfView+=(s.fov-camera.FieldOfView)*k end
   local dest=self.offset+Vector3.new(if lock then s.shoulder/10 else 0,if s.camera then s.cameraHeight/10 else 0,0)
-  hum.CameraOffset=hum.CameraOffset:Lerp(dest,k)
   if s.cameraMode=="Orbit" then
+   hum.CameraOffset=hum.CameraOffset:Lerp(dest,k)
    self:releaseLock();camera.CameraType=Enum.CameraType.Scriptable;local center=hrp.Position+Vector3.new(0,1+s.cameraHeight/10,0);self.angle+=if s.reduce then 0 else math.rad(s.orbitSpeed)*dt
    local desired=Vector3.new(math.sin(self.angle)*s.radius,s.radius*.25,math.cos(self.angle)*s.radius);local params=self.ray or RaycastParams.new();self.ray=params;params.FilterType=Enum.RaycastFilterType.Exclude;params.FilterDescendantsInstances={hum.Parent}
    local hit=workspace:Raycast(center,desired,params);local pos=center+desired.Unit*(if hit then math.max(.4,hit.Distance-.28) else desired.Magnitude);self.orbitPos=if hit then pos else (self.orbitPos or pos):Lerp(pos,k);camera.CFrame=CFrame.lookAt(self.orbitPos,center);camera.Focus=CFrame.new(center)
   else
    if camera.CameraType~=Enum.CameraType.Custom then camera.CameraType=Enum.CameraType.Custom end;camera.CameraSubject=hum;self.orbitPos=nil
-   if aimStep and not menu then aimStep(lock) end
-   if lock then if not self.mouse then self.mouse=Enum.MouseBehavior.Default;self.lockHum=hum;self.auto=hum.AutoRotate;self.releaseFrames=nil;self.releaseWaitForButtons=nil end;Input.MouseBehavior=Enum.MouseBehavior.LockCenter;hum.AutoRotate=false;local look=camera.CFrame.LookVector*Vector3.new(1,0,1);if look.Magnitude>.01 and not hum.Sit then hrp.CFrame=CFrame.lookAt(hrp.Position,hrp.Position+look) end else self:releaseLock(native) end
+   local heading=if aimStep and not menu then aimStep(lock) else nil
+   local bodyAim=typeof(heading)=="Vector3" and heading.Magnitude>.01 and not hum.Sit
+   local cameraLook=camera.CFrame.LookVector*Vector3.new(1,0,1)
+   if lock then
+    if not self.mouse then self.mouse=Enum.MouseBehavior.Default;self.lockHum=hum;self.auto=hum.AutoRotate;self.releaseFrames=nil;self.releaseWaitForButtons=nil end
+    Input.MouseBehavior=Enum.MouseBehavior.LockCenter;hum.AutoRotate=false
+   else self:releaseLock(native) end
+   local look=if bodyAim then heading else cameraLook
+   if (lock or bodyAim) and look.Magnitude>.01 and not hum.Sit then
+    local oldWorld=hrp.CFrame:VectorToWorldSpace(hum.CameraOffset)
+    local rotation=CFrame.lookAt(Vector3.zero,look)
+    -- Shoulder offset is normally root-relative. Convert via camera yaw so
+    -- turning only the avatar cannot swing the native camera around its focus.
+    local offsetBasis=if lock and cameraLook.Magnitude>.01 then CFrame.lookAt(Vector3.zero,cameraLook) else rotation
+    local worldOffset=oldWorld:Lerp(offsetBasis:VectorToWorldSpace(dest),k)
+    hrp.CFrame=CFrame.new(hrp.Position)*rotation
+    hum.CameraOffset=rotation:VectorToObjectSpace(worldOffset)
+   else
+    hum.CameraOffset=hum.CameraOffset:Lerp(dest,k)
+   end
   end
  elseif aimStep and not nativeOwnsFollow and not menu then
-  aimStep(false)
+  local heading=aimStep(false)
+  if hrp and hum and not hum.Sit and typeof(heading)=="Vector3" and heading.Magnitude>.01 then
+   hrp.CFrame=CFrame.lookAt(hrp.Position,hrp.Position+heading)
+  end
  end
  -- Rasterization and gradient work is independent of pointer position.
  if self.previewHost and not self.pointer.Visible then self.glyph:step(s,os.clock()) end
@@ -8588,6 +8609,14 @@ do
         end
         local target=play.cameraPoint
         if not target then play.cameraStatus=if air or serveAim then "Waiting for court" else "Waiting for incoming prediction";return end
+        -- Airborne aim supplies only a body heading to View. Never rotate the camera here.
+        if air then
+            local heading=flatten(target-root.Position)
+            if heading.Magnitude<.15 then return end
+            play.cameraStatus=(if serveAim then "Serve | body aim" else "Air | body aim")..(if lockActive then " | AETHER Lock" else "")
+            play.cameraAppliedAt=os.clock()
+            return heading.Unit
+        end
         local focus=cam.Focus.Position
         local direction=target-focus
         if direction.Magnitude<.1 or flatten(direction).Magnitude<.15 then return end
@@ -10092,8 +10121,9 @@ RunService:BindToRenderStep(cameraRenderBinding,Enum.RenderPriority.Camera.Value
     local blocked=ui.opened or app.editingHUD==true
     local function aimStep(lockActive)
         if not app.volleyball then return end
-        local ok,err=pcall(app.volleyball.stepSpikeCamera,app.volleyball,blocked,lockActive)
-        if not ok then app.volleyball.play.cameraAim="Off";app.volleyball.play.cameraStatus="Camera error: "..tostring(err);app:log("Spike camera",err) end
+        local ok,result=pcall(app.volleyball.stepSpikeCamera,app.volleyball,blocked,lockActive)
+        if not ok then app.volleyball.play.cameraAim="Off";app.volleyball.play.cameraStatus="Aim error: "..tostring(result);app:log("Spike aim",result);return nil end
+        return result
     end
     local ok,err=pcall(view.step,view,styled,if app.mode=="Game" then humanoid else nil,blocked,math.min(dt,.1),os.clock(),aimStep)
     if not ok then

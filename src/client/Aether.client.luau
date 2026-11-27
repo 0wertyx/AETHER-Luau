@@ -1035,6 +1035,14 @@ do
         end
         local target=play.cameraPoint
         if not target then play.cameraStatus=if air or serveAim then "Waiting for court" else "Waiting for incoming prediction";return end
+        -- Airborne aim supplies only a body heading to View. Never rotate the camera here.
+        if air then
+            local heading=flatten(target-root.Position)
+            if heading.Magnitude<.15 then return end
+            play.cameraStatus=(if serveAim then "Serve | body aim" else "Air | body aim")..(if lockActive then " | AETHER Lock" else "")
+            play.cameraAppliedAt=os.clock()
+            return heading.Unit
+        end
         local focus=cam.Focus.Position
         local direction=target-focus
         if direction.Magnitude<.1 or flatten(direction).Magnitude<.15 then return end
@@ -2539,8 +2547,9 @@ RunService:BindToRenderStep(cameraRenderBinding,Enum.RenderPriority.Camera.Value
     local blocked=ui.opened or app.editingHUD==true
     local function aimStep(lockActive)
         if not app.volleyball then return end
-        local ok,err=pcall(app.volleyball.stepSpikeCamera,app.volleyball,blocked,lockActive)
-        if not ok then app.volleyball.play.cameraAim="Off";app.volleyball.play.cameraStatus="Camera error: "..tostring(err);app:log("Spike camera",err) end
+        local ok,result=pcall(app.volleyball.stepSpikeCamera,app.volleyball,blocked,lockActive)
+        if not ok then app.volleyball.play.cameraAim="Off";app.volleyball.play.cameraStatus="Aim error: "..tostring(result);app:log("Spike aim",result);return nil end
+        return result
     end
     local ok,err=pcall(view.step,view,styled,if app.mode=="Game" then humanoid else nil,blocked,math.min(dt,.1),os.clock(),aimStep)
     if not ok then

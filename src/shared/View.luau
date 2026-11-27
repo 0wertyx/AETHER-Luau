@@ -235,18 +235,39 @@ function V:step(s,hum,menu,dt,t,aimStep)
   local k=if s.reduce or s.follow==0 then 1 else 1-math.exp(-dt*1000/s.follow)
   if s.camera then camera.FieldOfView+=(s.fov-camera.FieldOfView)*k end
   local dest=self.offset+Vector3.new(if lock then s.shoulder/10 else 0,if s.camera then s.cameraHeight/10 else 0,0)
-  hum.CameraOffset=hum.CameraOffset:Lerp(dest,k)
   if s.cameraMode=="Orbit" then
+   hum.CameraOffset=hum.CameraOffset:Lerp(dest,k)
    self:releaseLock();camera.CameraType=Enum.CameraType.Scriptable;local center=hrp.Position+Vector3.new(0,1+s.cameraHeight/10,0);self.angle+=if s.reduce then 0 else math.rad(s.orbitSpeed)*dt
    local desired=Vector3.new(math.sin(self.angle)*s.radius,s.radius*.25,math.cos(self.angle)*s.radius);local params=self.ray or RaycastParams.new();self.ray=params;params.FilterType=Enum.RaycastFilterType.Exclude;params.FilterDescendantsInstances={hum.Parent}
    local hit=workspace:Raycast(center,desired,params);local pos=center+desired.Unit*(if hit then math.max(.4,hit.Distance-.28) else desired.Magnitude);self.orbitPos=if hit then pos else (self.orbitPos or pos):Lerp(pos,k);camera.CFrame=CFrame.lookAt(self.orbitPos,center);camera.Focus=CFrame.new(center)
   else
    if camera.CameraType~=Enum.CameraType.Custom then camera.CameraType=Enum.CameraType.Custom end;camera.CameraSubject=hum;self.orbitPos=nil
-   if aimStep and not menu then aimStep(lock) end
-   if lock then if not self.mouse then self.mouse=Enum.MouseBehavior.Default;self.lockHum=hum;self.auto=hum.AutoRotate;self.releaseFrames=nil;self.releaseWaitForButtons=nil end;Input.MouseBehavior=Enum.MouseBehavior.LockCenter;hum.AutoRotate=false;local look=camera.CFrame.LookVector*Vector3.new(1,0,1);if look.Magnitude>.01 and not hum.Sit then hrp.CFrame=CFrame.lookAt(hrp.Position,hrp.Position+look) end else self:releaseLock(native) end
+   local heading=if aimStep and not menu then aimStep(lock) else nil
+   local bodyAim=typeof(heading)=="Vector3" and heading.Magnitude>.01 and not hum.Sit
+   local cameraLook=camera.CFrame.LookVector*Vector3.new(1,0,1)
+   if lock then
+    if not self.mouse then self.mouse=Enum.MouseBehavior.Default;self.lockHum=hum;self.auto=hum.AutoRotate;self.releaseFrames=nil;self.releaseWaitForButtons=nil end
+    Input.MouseBehavior=Enum.MouseBehavior.LockCenter;hum.AutoRotate=false
+   else self:releaseLock(native) end
+   local look=if bodyAim then heading else cameraLook
+   if (lock or bodyAim) and look.Magnitude>.01 and not hum.Sit then
+    local oldWorld=hrp.CFrame:VectorToWorldSpace(hum.CameraOffset)
+    local rotation=CFrame.lookAt(Vector3.zero,look)
+    -- Shoulder offset is normally root-relative. Convert via camera yaw so
+    -- turning only the avatar cannot swing the native camera around its focus.
+    local offsetBasis=if lock and cameraLook.Magnitude>.01 then CFrame.lookAt(Vector3.zero,cameraLook) else rotation
+    local worldOffset=oldWorld:Lerp(offsetBasis:VectorToWorldSpace(dest),k)
+    hrp.CFrame=CFrame.new(hrp.Position)*rotation
+    hum.CameraOffset=rotation:VectorToObjectSpace(worldOffset)
+   else
+    hum.CameraOffset=hum.CameraOffset:Lerp(dest,k)
+   end
   end
  elseif aimStep and not nativeOwnsFollow and not menu then
-  aimStep(false)
+  local heading=aimStep(false)
+  if hrp and hum and not hum.Sit and typeof(heading)=="Vector3" and heading.Magnitude>.01 then
+   hrp.CFrame=CFrame.lookAt(hrp.Position,hrp.Position+heading)
+  end
  end
  -- Rasterization and gradient work is independent of pointer position.
  if self.previewHost and not self.pointer.Visible then self.glyph:step(s,os.clock()) end
