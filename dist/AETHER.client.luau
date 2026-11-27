@@ -1394,23 +1394,9 @@ function UI.new(app,gui,scope)
   self.slideSparkPool[i]={frame=spark,age=0,life=0}
  end
  self.linkPool={};self.portPool={}
- local nativePaths=true
- for i=1,7 do
-  local path
-  local ok=pcall(function()
-   path=Instance.new("Path2D");path.Name="NodeWire";path.Thickness=2;path.ZIndex=2;path.Visible=false;path.Parent=self.workspaceLinks
-  end)
-  if not ok then
-   if path then path:Destroy() end
-   nativePaths=false;break
-  end
-  self.linkPool[i]=path
- end
- if not nativePaths then
-  for _,path in self.linkPool do path:Destroy() end
-  table.clear(self.linkPool)
- end
- self.nativeWorkspacePaths=nativePaths
+ -- Use pooled GUI segments for all wires. Path2D can lose its rendered
+ -- geometry after a CanvasGroup fade or a change of the viewport.
+ self.workspaceLinks.ClipsDescendants=true
  for i=1,14 do
   local port=U.frame(self.workspaceLinks,"NodePort",nil,UDim2.fromOffset(7,7),Color3.new(1,1,1),.06)
   port.AnchorPoint=Vector2.new(.5,.5);port.Active=false;port.Interactable=false;port.ZIndex=2;port.Visible=false;U.corner(port,9);self.portPool[i]=port
@@ -1975,7 +1961,7 @@ function UI.new(app,gui,scope)
   self.workspaceLinks.Visible=s.workspaceMode=="Nodes"
   if not self.workspaceLinks.Visible then self.workspaceLinkKey=nil;return end
   local origin=self.workspaceLinks.AbsolutePosition
-  local color=U.hex(s.accent);local lineIndex,portIndex=0,0
+  local color=U.hex(s.accent):Lerp(Color3.new(1,1,1),.35);local lineIndex,portIndex=0,0
   local function point(obj,x,y)
    return obj.AbsolutePosition-origin+Vector2.new(obj.AbsoluteSize.X*x,obj.AbsoluteSize.Y*y)
   end
@@ -1986,23 +1972,18 @@ function UI.new(app,gui,scope)
   local function wire(a,b)
    local curve=math.max(35,math.abs(b.X-a.X)*.45)
    port(a);port(b)
-   if self.nativeWorkspacePaths then
-    lineIndex+=1;local path=self.linkPool[lineIndex]
-    path.Color3=color
-    path:SetControlPoints({
-     Path2DControlPoint.new(UDim2.fromOffset(a.X,a.Y),UDim2.new(),UDim2.fromOffset(curve,0)),
-     Path2DControlPoint.new(UDim2.fromOffset(b.X,b.Y),UDim2.fromOffset(-curve,0),UDim2.new())
-    })
-    path.Visible=true
-    return
-   end
-   -- Compatibility fallback: adaptive subdivision with overlapping strokes.
+   -- Screen-space cubic segments remain visible across panning, zooming and fades.
    local p1=a+Vector2.new(curve,0);local p2=b-Vector2.new(curve,0)
-   local prev=a;local steps=math.clamp(math.ceil(((p1-a).Magnitude+(p2-p1).Magnitude+(b-p2).Magnitude)/12),24,96)
+   local prev=a;local steps=math.clamp(math.ceil(((p1-a).Magnitude+(p2-p1).Magnitude+(b-p2).Magnitude)/10),24,96)
+   local bounds=self.workspaceLinks.AbsoluteSize
    for i=1,steps do
     local t=i/steps;local v=1-t
     local nextPoint=a*v^3+p1*(3*v*v*t)+p2*(3*v*t*t)+b*t^3
     local delta=nextPoint-prev;local middle=(prev+nextPoint)*.5
+    local minX,maxX=math.min(prev.X,nextPoint.X),math.max(prev.X,nextPoint.X)
+    local minY,maxY=math.min(prev.Y,nextPoint.Y),math.max(prev.Y,nextPoint.Y)
+    prev=nextPoint
+    if maxX< -3 or minX>bounds.X+3 or maxY< -3 or minY>bounds.Y+3 then continue end
     lineIndex+=1;local line=self.linkPool[lineIndex]
     if not line then
      line=U.frame(self.workspaceLinks,"LinkSegment",nil,UDim2.fromOffset(1,2),color,0)
@@ -2010,8 +1991,7 @@ function UI.new(app,gui,scope)
      self.linkPool[lineIndex]=line
     end
     line.Position=UDim2.fromOffset(middle.X,middle.Y);line.Size=UDim2.fromOffset(math.max(2,delta.Magnitude+2),2)
-    line.Rotation=math.deg(math.atan2(delta.Y,delta.X));line.BackgroundColor3=color;line.Visible=true
-    prev=nextPoint
+    line.Rotation=math.deg(math.atan2(delta.Y,delta.X));line.BackgroundColor3=color;line.BackgroundTransparency=0;line.Visible=true
    end
   end
   local pairsToDraw={}
@@ -2036,12 +2016,13 @@ function UI.new(app,gui,scope)
   if self.appearancePanel.Visible and self.stylePreview.Visible then
    pairsToDraw[#pairsToDraw+1]={point(self.appearancePanel,1,.06),point(self.stylePreview,0,.08)}
   end
-  local signature={s.accent}
+  local bounds=self.workspaceLinks.AbsoluteSize
+  local signature={s.accent,bounds.X,bounds.Y}
   for _,pair in pairsToDraw do for _,v in pair do signature[#signature+1]=v.X;signature[#signature+1]=v.Y end end
   local key=table.concat(signature,":")
   if self.workspaceLinkKey==key then return end
-  self.workspaceLinkKey=key
   for _,pair in pairsToDraw do wire(pair[1],pair[2]) end
+  self.workspaceLinkKey=key
   for i=lineIndex+1,#self.linkPool do self.linkPool[i].Visible=false end
   for i=portIndex+1,#self.portPool do self.portPool[i].Visible=false end
  end
