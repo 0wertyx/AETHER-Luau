@@ -1678,6 +1678,136 @@ do
     scope:add(function() reset() end)
 end
 
+-- Read-only last-touch overlay. Counts received BallTouched events, never sends hits.
+do
+    local vb=app.volleyball
+    local rs=game:GetService("ReplicatedStorage")
+    local info={enabled=false,status="Off"}
+    vb.ballTouchInfo=info
+    local connection,controller,billboard,nameLabel,countLabel,trackedKey
+    local records={}
+    local nextAt=0
+    local function key(id) return if id~=nil then tostring(id) else nil end
+    local function hide()
+        if billboard then billboard:Destroy();billboard=nil;nameLabel=nil;countLabel=nil end
+    end
+    local function reset()
+        hide();table.clear(records);trackedKey=nil;controller=nil;nextAt=0
+        if connection then connection:Disconnect();connection=nil end
+        info.enabled=false;info.status="Off"
+    end
+    local function getRecord(id)
+        local k=key(id)
+        if not k then return nil end
+        local r=records[k]
+        if not r then r={count=0,last=nil,at=os.clock()};records[k]=r end
+        r.at=os.clock()
+        return r
+    end
+    local function subscribe()
+        if connection and controller then return true end
+        local packages=rs:FindFirstChild("Packages")
+        local module=packages and packages:FindFirstChild("Knit")
+        if not module then return false end
+        local knit=require(module)
+        controller=knit.GetController("BallController")
+        if not controller or type(controller.ActiveBalls)~="table" then return false end
+        local service=knit.GetService("BallService")
+        if not service or not service.BallTouched then return false end
+        if connection then connection:Disconnect() end
+        connection=service.BallTouched:Connect(function(who,id)
+            if not info.enabled or app.mode~="Game" or player:GetAttribute("Gameplay_InGame")~=true then return end
+            if typeof(who)~="Instance" or not who:IsA("Player") then return end
+            local r=getRecord(id or rs:GetAttribute("ActiveBall"))
+            if r then r.count+=1;r.last=who.Name end
+        end)
+        return true
+    end
+    local function activeBall()
+        local active=key(rs:GetAttribute("ActiveBall"))
+        local onlyPart,onlyKey,count=nil,nil,0
+        for id,state in pairs(controller.ActiveBalls) do
+            local b=type(state)=="table" and state.Ball or nil
+            if typeof(b)=="Instance" and b:IsA("Model") and b:IsDescendantOf(workspace) and b.PrimaryPart then
+                local k=key(b:GetAttribute("ServerId") or id)
+                if active and k==active then return b.PrimaryPart,k end
+                onlyPart=b.PrimaryPart;onlyKey=k;count+=1
+            end
+        end
+        if not active and count==1 then return onlyPart,onlyKey end
+        return nil,nil
+    end
+    local function ensure(part)
+        if not billboard or not billboard.Parent then
+            hide()
+            billboard=Instance.new("BillboardGui")
+            billboard.Name="AETHER_BallTouchInfo"
+            billboard.Size=UDim2.fromOffset(176,52)
+            billboard.StudsOffsetWorldSpace=Vector3.new(0,3.1,0)
+            billboard.AlwaysOnTop=false;billboard.MaxDistance=160
+            billboard.LightInfluence=0;billboard.Parent=gui
+            local panel=Instance.new("Frame")
+            panel.BackgroundColor3=Color3.fromRGB(26,20,40);panel.BackgroundTransparency=.22
+            panel.BorderSizePixel=0;panel.Size=UDim2.fromScale(1,1);panel.Parent=billboard
+            local round=Instance.new("UICorner");round.CornerRadius=UDim.new(0,10);round.Parent=panel
+            local stroke=Instance.new("UIStroke");stroke.Color=Color3.fromRGB(179,131,250);stroke.Transparency=.35;stroke.Thickness=1;stroke.Parent=panel
+            nameLabel=Instance.new("TextLabel")
+            nameLabel.Position=UDim2.fromOffset(7,3);nameLabel.Size=UDim2.new(1,-14,0,24)
+            nameLabel.BackgroundTransparency=1;nameLabel.TextColor3=Color3.fromRGB(244,237,255)
+            nameLabel.Font=Enum.Font.GothamBold;nameLabel.TextSize=14;nameLabel.TextTruncate=Enum.TextTruncate.AtEnd;nameLabel.Parent=panel
+            countLabel=Instance.new("TextLabel")
+            countLabel.Position=UDim2.fromOffset(7,27);countLabel.Size=UDim2.new(1,-14,0,18)
+            countLabel.BackgroundTransparency=1;countLabel.TextColor3=Color3.fromRGB(205,173,255)
+            countLabel.Font=Enum.Font.GothamMedium;countLabel.TextSize=12;countLabel.Parent=panel
+        end
+        billboard.Adornee=part
+        billboard.Enabled=true
+    end
+    function vb:toggleBallTouchInfo()
+        if info.enabled then reset();return end
+        info.enabled=true;info.status="Waiting for ball";nextAt=0
+    end
+    local oldReset=vb.reset
+    function vb:reset()
+        reset();oldReset(self)
+    end
+    local function tick()
+        if not info.enabled then return end
+        if app.stopping or not gui.Parent or app.mode~="Game" then reset();return end
+        if not subscribe() then info.status="Waiting for BallService";return end
+        if player:GetAttribute("Gameplay_InGame")~=true then
+            hide();table.clear(records);trackedKey=nil;info.status="Waiting for match";return
+        end
+        local part,k=activeBall()
+        if not part or not k then
+            hide()
+            if rs:GetAttribute("ActiveBall")==nil and trackedKey then records[trackedKey]=nil;trackedKey=nil end
+            info.status="Waiting for active ball";return
+        end
+        if trackedKey and trackedKey~=k then records[trackedKey]=nil end
+        trackedKey=k
+        local r=getRecord(k)
+        local now=os.clock()
+        for other,v in pairs(records) do if other~=k and now-v.at>10 then records[other]=nil end end
+        local last=r.last
+        if not last and key(rs:GetAttribute("ActiveBall"))==k then
+            local raw=rs:GetAttribute("LastHitter")
+            if type(raw)=="string" and raw~="" and Players:FindFirstChild(raw) then last=raw end
+        end
+        ensure(part)
+        nameLabel.Text=if last then "@"..last else "No confirmed hitter"
+        countLabel.Text="Hits seen: "..tostring(r.count)
+        info.status=nameLabel.Text.." | "..countLabel.Text
+    end
+    scope:on(RunService.Heartbeat,function()
+        if not info.enabled then return end
+        local now=os.clock();if now<nextAt then return end;nextAt=now+.12
+        local ok,err=pcall(tick)
+        if not ok then hide();nextAt=now+1;info.status="Retrying | "..tostring(err) end
+    end)
+    scope:add(reset)
+end
+
 -- Multi-style beta: visualize the replicated horizontal tilt vector only.
 -- This does not expose input, predict a hit, or modify the game state.
 do

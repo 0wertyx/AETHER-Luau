@@ -797,6 +797,19 @@ function E.render(a,tab,ui)
     radiusElapsed+=dt
     if radiusElapsed>=.25 then radiusElapsed=0;if ui.opened then refreshRadius() end end
    end)
+   ui:title("BALL TOUCH INFO")
+   ui:chips({"Show last hitter"},function() vb:toggleBallTouchInfo();ui:sync() end,1,function() return if vb.ballTouchInfo.enabled then "Show last hitter" else "" end)
+   ui:note("Shows the last hitter and received touch events for the active ball. Enable before a rally for a complete observed count.",64)
+   local ballInfoStatus=ui:note("",56)
+   local function refreshBallInfo()
+    ballInfoStatus.Text=(if vb.ballTouchInfo.enabled then "ON | " else "OFF | ")..vb.ballTouchInfo.status
+   end
+   ui:watch(refreshBallInfo)
+   local ballInfoElapsed=0
+   ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
+    ballInfoElapsed+=dt
+    if ballInfoElapsed>=.25 then ballInfoElapsed=0;if ui.opened then refreshBallInfo() end end
+   end)
    ui:title("TRAJECTORY ESP / BETA")
    ui:note("Controller velocity when available; position sampling fallback. Green = IN, red = OUT, amber = obstacle or unknown court. Prediction stops at first contact; unreplicated curve effects remain estimates.",76)
    ui:chips({"Toggle Trajectory ESP"},function() vb:toggleTrajectory();ui:sync() end,1,function() return if vb.trajectory.enabled then "Toggle Trajectory ESP" else "" end)
