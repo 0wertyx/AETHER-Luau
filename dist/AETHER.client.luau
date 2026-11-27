@@ -1114,6 +1114,15 @@ function UI.new(app,gui,scope)
  for _,item in searchSections do
   table.insert(self.searchIndex,{tab=item[1],label=item[2],term=(item[2].." "..item[1]):lower()})
  end
+ self.bindActions={}
+ self.bindRows={}
+ self.bindPanel=U.frame(self.stage,"KeybindHUD",UDim2.fromOffset(30,110),UDim2.fromOffset(220,70),bg,.18)
+ self.bindPanel.ZIndex=20;self.bindPanel.Active=false;U.corner(self.bindPanel,12)
+ self.bindRim=U.stroke(self.bindPanel,Color3.fromRGB(166,138,255),.4)
+ local bindTitle=U.label(self.bindPanel,"KEYBINDS",11,UDim2.fromOffset(12,5),UDim2.new(1,-24,0,22));bindTitle.ZIndex=21
+ self.bindList=U.new("ScrollingFrame",{Name="AssignedKeys",Position=UDim2.fromOffset(8,29),Size=UDim2.new(1,-16,1,-35),BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=2,ZIndex=21},self.bindPanel)
+ U.new("UIListLayout",{Padding=UDim.new(0,3),SortOrder=Enum.SortOrder.LayoutOrder},self.bindList)
+ self.bindEmpty=U.label(self.bindList,"No keybinds assigned",11,nil,UDim2.new(1,0,0,25));self.bindEmpty.ZIndex=22;self.bindEmpty.LayoutOrder=999
  self.quickOpen=false
  self.quickArrow=U.button(self.top,"")
  self.quickArrow.Name="VolleyballDropdown";self.quickArrow.AnchorPoint=Vector2.new(.5,0)
@@ -1294,6 +1303,9 @@ function UI:animateBackground(t)
  self.top.Visible=s.topCapsule
  self.quickArrow.Visible=self.app.volleyball~=nil
  self.quick.Visible=self.quickOpen and s.topCapsule and not self.app.editingHUD
+ self.bindPanel.Visible=not self.opened and not self.app.editingHUD and self.app.mode=="Game"
+ self.bindRim.Color=accent
+ if self.bindPanel.Visible and t>=(self.bindRefreshAt or 0) then self.bindRefreshAt=t+.3;self:refreshBindPanel() end
  if self.quick.Visible and self.quickAdapter and t>=(self.quickRefreshAt or 0) then
   self.quickRefreshAt=t+.25
   for _,refresh in self.quickAdapter.syncs do pcall(refresh) end
@@ -1412,7 +1424,99 @@ local quickSwitches={
  ["CONSECUTIVE TOUCH / BETA"]={function(v) return v.repeatTouch.enabled end,function(v) v:toggleRepeatTouch() end,"Repeat touch test"},
  ["AUTO TILT / BETA"]={function(v) return v.auto end,function(v) v:toggleAuto() end},
 }
+function UI:bindMap()
+ return self.app.bank.keybinds or {}
+end
+function UI:registerBind(id,label,invoke,read)
+ self.bindActions[id]={label=label,invoke=invoke,read=read}
+end
+function UI:startBind(id)
+ self.captureBind=if self.captureBind==id then nil else id
+ self.quickStatus.Text=if self.captureBind then "Press key · Esc cancel · Backspace clear" else "Binding cancelled"
+ if self.quickAdapter then self.quickAdapter:sync() end
+end
+function UI:assignBind(id,key)
+ local nextMap=table.clone(self:bindMap())
+ if key then
+  if key==S.menuKey(self.app.s) or key==self.app.s.lockKey then self.quickStatus.Text="Reserved menu / lock key";return false end
+  for other,bound in nextMap do
+   if other~=id and bound==key then self.quickStatus.Text="Key already assigned: "..key;return false end
+  end
+ end
+ nextMap[id]=key
+ self.app.bank.keybinds=nextMap
+ self.captureBind=nil
+ self.app:dirty()
+ if self.app.store then self.app.store:save() end
+ self.quickStatus.Text=if key then "Assigned "..key else "Keybind cleared"
+ self:refreshBindPanel()
+ if self.quickAdapter then self.quickAdapter:sync() end
+ return true
+end
+function UI:handleQuickKey(input,processed)
+ if input.UserInputType~=Enum.UserInputType.Keyboard then return false end
+ local key=input.KeyCode.Name
+ if self.captureBind then
+  if key=="Escape" then self.captureBind=nil;self.quickStatus.Text="Binding cancelled"
+  elseif key=="Backspace" or key=="Delete" then self:assignBind(self.captureBind,nil)
+  elseif key~="Unknown" and not Input:GetFocusedTextBox() then self:assignBind(self.captureBind,key) end
+  if self.quickAdapter then self.quickAdapter:sync() end
+  return true
+ end
+ if processed or Input:GetFocusedTextBox() or self.opened or self.app.editingHUD or self.app.bindingLockKey or self.app.mode~="Game" or game:GetService("GuiService").MenuIsOpen then return false end
+ if key==S.menuKey(self.app.s) or key==self.app.s.lockKey then return false end
+ local id
+ for action,bound in self:bindMap() do if bound==key then id=action;break end end
+ if not id then return false end
+ if not self.quickAdapter then
+  local ok,err=pcall(self.buildQuick,self)
+  if not ok then
+   if self.quickPage then self.quickPage:clear();self.quickPage=nil end
+   self.quickAdapter=nil;table.clear(self.bindActions);self.app:log("Keybind",err)
+   return true
+  end
+  self.quickAdapter.opened=self.quickOpen
+ end
+ local action=self.bindActions[id]
+ if not action then return true end
+ local now=os.clock()
+ if self.lastBindKey==key and now-(self.lastBindAt or 0)<.18 then return true end
+ self.lastBindKey=key;self.lastBindAt=now
+ local ok,err=pcall(action.invoke)
+ if not ok then self.app:log("Keybind",err);self.quickStatus.Text=tostring(err):sub(-100) end
+ self:refreshBindPanel()
+ return true
+end
+function UI:refreshBindPanel()
+ local entries={}
+ for id,key in self:bindMap() do
+  local action=self.bindActions[id]
+  local label=if action then action.label else (id:match(".*|(.+)$") or id)
+  local state=""
+  if action and action.read then
+   local ok,value=pcall(action.read)
+   if ok then state=if value==true then " · ON" elseif value==false then " · OFF" else "" end
+  end
+  table.insert(entries,{key=key,label=label,state=state})
+ end
+ table.sort(entries,function(a,b) return if a.key==b.key then a.label<b.label else a.key<b.key end)
+ local shown=math.min(9,math.max(1,#entries))
+ self.bindPanel.Size=UDim2.fromOffset(math.min(230,math.max(140,self.stage.AbsoluteSize.X*.3)),35+shown*27)
+ self.bindEmpty.Visible=#entries==0
+ for i,item in entries do
+  local row=self.bindRows[i]
+  if not row then
+   local f=U.frame(self.bindList,"Bind_"..i,nil,UDim2.new(1,-3,0,24),soft,.45);f.ZIndex=22;f.LayoutOrder=i;U.corner(f,5)
+   local k=U.label(f,"",10,UDim2.fromOffset(5,0),UDim2.fromOffset(64,24));k.TextColor3=Color3.fromRGB(200,170,255);k.ZIndex=23
+   local l=U.label(f,"",11,UDim2.fromOffset(71,0),UDim2.new(1,-75,1,0));l.ZIndex=23
+   row={f=f,k=k,l=l};self.bindRows[i]=row
+  end
+  row.f.Visible=true;row.k.Text="["..item.key.."]";row.l.Text=item.label..item.state
+ end
+ for i=#entries+1,#self.bindRows do self.bindRows[i].f.Visible=false end
+end
 function UI:buildQuick()
+ table.clear(self.bindActions)
  if self.quickPage then self.quickPage:clear() end
  local page=U.scope();self.quickPage=page
  local owner=self
@@ -1442,6 +1546,17 @@ function UI:buildQuick()
   current.layout()
   page:on(f.DescendantAdded,function(obj) if obj:IsA("GuiObject") then obj.ZIndex=33 end end)
   return f
+ end
+ function q:addBind(id,label,invoke,read)
+  owner:registerBind(id,label,invoke,read)
+  local row=self:row(28,"BindRow")
+  local text=U.label(row,"Bind · "..label,10,UDim2.fromOffset(6,0),UDim2.new(1,-90,1,0));text.ZIndex=33
+  local b=U.button(row,"Bind");b.Size=UDim2.fromOffset(78,24);b.Position=UDim2.new(1,-82,0,2);b.ZIndex=34;b.TextSize=11
+  self:watch(function()
+   b.Text=if owner.captureBind==id then "PRESS KEY" else (owner:bindMap()[id] or "Bind")
+   b.BackgroundColor3=if owner.captureBind==id then Color3.fromRGB(112,76,170) else bg
+  end)
+  page:on(b.Activated,function() owner:startBind(id) end)
  end
  function q:title(str)
   if self.fieldTitle then return UI.title(self,str) end
@@ -1477,6 +1592,10 @@ function UI:buildQuick()
    page:on(switch.Activated,function() self:action(function() spec[2](owner.app.volleyball);self:sync() end) end)
   end
   current=section;self.sc=body;section.layout()
+  if spec then
+   local label=title.Text
+   self:addBind(str.."|"..label,label,function() spec[2](owner.app.volleyball);self:sync() end,function() return spec[1](owner.app.volleyball)==true end)
+  end
   return title
  end
  function q:box(label,initial,h,commit)
@@ -1487,7 +1606,13 @@ function UI:buildQuick()
  end
  function q:chips(items,fn,cols,selected)
   if current and current.spec and #items==1 and items[1]==current.spec[3] then return end
-  return UI.chips(self,items,fn,cols,selected)
+  UI.chips(self,items,fn,cols,selected)
+  for _,item in items do
+   local label=tostring(item)
+   local id=current.name.."|"..label
+   local read=if selected then function() return selected()==item end else nil
+   self:addBind(id,label,function() fn(item);self:sync() end,read)
+  end
  end
  -- Full Volleyball content, including all nested fields and status callbacks.
  self.app:page("Volleyball",q)
@@ -1495,6 +1620,7 @@ function UI:buildQuick()
 end
 function UI:setQuick(on)
  self.quickOpen=on==true
+ if not self.quickOpen then self.captureBind=nil end
  self.quick.Visible=self.quickOpen and self.app.s.topCapsule
  self.quickGlyph.Rotation=if self.quickOpen then 180 else 0
  if self.quickOpen then
@@ -1502,7 +1628,7 @@ function UI:setQuick(on)
    local ok,err=pcall(self.buildQuick,self)
    if not ok then
     if self.quickPage then self.quickPage:clear();self.quickPage=nil end
-    self.quickAdapter=nil;self.quickStatus.Text="Menu error: "..tostring(err):sub(-100)
+    self.quickAdapter=nil;table.clear(self.bindActions);self.quickStatus.Text="Menu error: "..tostring(err):sub(-100)
     self.app:log("Quick menu",err)
    end
   else self.quickAdapter.opened=true;self.quickAdapter:sync() end
@@ -5780,11 +5906,21 @@ function S.settings(v,group)
 end
 function S.capture(settings,group) local r={};for k,d in S.defs do if d.group==group then r[k]=S.copy(settings[k]) end end;return r end
 function S.asset(v) assert(type(v)=="table" and v.version==1 and name(v.name) and table.find(S.kinds,v.kind),"Invalid AETHER asset");return {version=1,name=v.name,kind=v.kind,data=S.settings(v.data,v.kind)} end
-function S.blank() return {version=1,settings=S.defaults(),profiles={},assets={}} end
+function S.blank() return {version=1,settings=S.defaults(),profiles={},assets={},keybinds={}} end
 function S.bank(v)
  assert(type(v)=="table" and v.version==1,"Unsupported bank version");local r=S.blank();r.settings=S.settings(v.settings)
  local n=0;assert(type(v.profiles)=="table" and type(v.assets)=="table","Invalid library");for k,x in v.profiles do n+=1;assert(n<=10 and name(k),"Invalid profile name/count");r.profiles[k]=S.settings(x) end
- n=0;for k,x in v.assets do n+=1;assert(n<=40 and name(k),"Invalid asset name/count");r.assets[k]=S.asset(x);assert(k==r.assets[k].name,"Asset name mismatch") end;return r
+ n=0;for k,x in v.assets do n+=1;assert(n<=40 and name(k),"Invalid asset name/count");r.assets[k]=S.asset(x);assert(k==r.assets[k].name,"Asset name mismatch") end
+ if type(v.keybinds)=="table" then
+  local seen,count={},0
+  for id,key in v.keybinds do
+   if count>=100 then break end
+   if type(id)=="string" and #id<=160 and not id:find("%c") and type(key)=="string" and table.find(S.lockKeys,key) and key~="Escape" and key~="Backspace" and key~="Delete" and not seen[key] then
+    r.keybinds[id]=key;seen[key]=true;count+=1
+   end
+  end
+ end
+ return r
 end
 for _,row in {
  {"Amethyst Void","15102C","573B93","C1A5F9",58,72,20,70,-5,20,-15,35,10,22},
@@ -10790,6 +10926,7 @@ if player.Character then bind(player.Character) end
 
 scope:on(UserInputService.InputBegan, function(input, processed)
     if app.stopping then return end
+    if ui:handleQuickKey(input,processed) then return end
     if input.UserInputType==Enum.UserInputType.MouseButton2 then
         app.m2Presses=(app.m2Presses or 0)+1
         app.m2Last=string.format("M2 down | processed: %s | menu: %s",tostring(processed),tostring(ui.opened))
@@ -10916,7 +11053,7 @@ local function frame(dt, now)
         if app.preview.avatar then app.preview.avatar:step(app.preview.rig, styled, app.preview.effectTime or now) end
         view:preview(app.preview.cursorHost,styled)
     end
-    store:tick(now)
+    store:tick(os.clock())
 end
 -- Run the combined camera/lock pass after Roblox's native camera update.
 local cameraRenderBinding="AETHER_Camera_"..game:GetService("HttpService"):GenerateGUID(false)

@@ -153,11 +153,21 @@ function S.settings(v,group)
 end
 function S.capture(settings,group) local r={};for k,d in S.defs do if d.group==group then r[k]=S.copy(settings[k]) end end;return r end
 function S.asset(v) assert(type(v)=="table" and v.version==1 and name(v.name) and table.find(S.kinds,v.kind),"Invalid AETHER asset");return {version=1,name=v.name,kind=v.kind,data=S.settings(v.data,v.kind)} end
-function S.blank() return {version=1,settings=S.defaults(),profiles={},assets={}} end
+function S.blank() return {version=1,settings=S.defaults(),profiles={},assets={},keybinds={}} end
 function S.bank(v)
  assert(type(v)=="table" and v.version==1,"Unsupported bank version");local r=S.blank();r.settings=S.settings(v.settings)
  local n=0;assert(type(v.profiles)=="table" and type(v.assets)=="table","Invalid library");for k,x in v.profiles do n+=1;assert(n<=10 and name(k),"Invalid profile name/count");r.profiles[k]=S.settings(x) end
- n=0;for k,x in v.assets do n+=1;assert(n<=40 and name(k),"Invalid asset name/count");r.assets[k]=S.asset(x);assert(k==r.assets[k].name,"Asset name mismatch") end;return r
+ n=0;for k,x in v.assets do n+=1;assert(n<=40 and name(k),"Invalid asset name/count");r.assets[k]=S.asset(x);assert(k==r.assets[k].name,"Asset name mismatch") end
+ if type(v.keybinds)=="table" then
+  local seen,count={},0
+  for id,key in v.keybinds do
+   if count>=100 then break end
+   if type(id)=="string" and #id<=160 and not id:find("%c") and type(key)=="string" and table.find(S.lockKeys,key) and key~="Escape" and key~="Backspace" and key~="Delete" and not seen[key] then
+    r.keybinds[id]=key;seen[key]=true;count+=1
+   end
+  end
+ end
+ return r
 end
 for _,row in {
  {"Amethyst Void","15102C","573B93","C1A5F9",58,72,20,70,-5,20,-15,35,10,22},

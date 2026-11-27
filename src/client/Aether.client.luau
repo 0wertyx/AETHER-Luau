@@ -2779,6 +2779,7 @@ if player.Character then bind(player.Character) end
 
 scope:on(UserInputService.InputBegan, function(input, processed)
     if app.stopping then return end
+    if ui:handleQuickKey(input,processed) then return end
     if input.UserInputType==Enum.UserInputType.MouseButton2 then
         app.m2Presses=(app.m2Presses or 0)+1
         app.m2Last=string.format("M2 down | processed: %s | menu: %s",tostring(processed),tostring(ui.opened))
@@ -2905,7 +2906,7 @@ local function frame(dt, now)
         if app.preview.avatar then app.preview.avatar:step(app.preview.rig, styled, app.preview.effectTime or now) end
         view:preview(app.preview.cursorHost,styled)
     end
-    store:tick(now)
+    store:tick(os.clock())
 end
 -- Run the combined camera/lock pass after Roblox's native camera update.
 local cameraRenderBinding="AETHER_Camera_"..game:GetService("HttpService"):GenerateGUID(false)
