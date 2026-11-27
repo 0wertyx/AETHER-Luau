@@ -908,8 +908,26 @@ local function statePanel(ui,a)
  end)
 end
 function E.render(a,tab,ui)
- if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Custom lock keybind is in Interaction. Menu uses F8 (F7 when F8 is assigned to lock). Native Shift Lock is disabled where Roblox allows it.",43);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme",{topCapsule=true,robloxRail=true,menuDock=true,menuWidth=true,menuHeight=true,menuFloatX=true,menuFloatY=true,menuResize=true,menuDrag=true,constellationBgA=true,constellationBgB=true,constellationLineA=true,constellationLineB=true,constellationNodeA=true,constellationNodeB=true});ui:title("CONSTELLATION COLORS");for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end;ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
- elseif tab=="HUD" then preview(ui,a,true);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:title("TOP PANEL");for _,v in {"topCapsule","movePanels"} do ui:control(v) end;ui:note("Enable moving panels to drag the AETHER capsule.",34);ui:chips({"Reset panel position"},function() a:patch({topCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness"} do ui:control(k) end;ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);local widgets={"clock","profile","dock","top"};if not table.find(widgets,a.hudTab) then a.hudTab="clock" end;ui:chips(widgets,function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
+ if tab=="Dashboard" then
+  preview(ui,a);ui:title("AETHER / OVERVIEW")
+  ui:note("Choose a branch on the left. Visual collections, interface settings and profiles are organized separately.",50)
+  ui:chips({"Interface","Profiles","Halos","Wings"},function(n) ui:open(n) end,2)
+ elseif tab=="Interface" then
+  ui:title("LAYOUT & WIDGETS")
+  ui:chips({"Edit GUI size / position"},function() ui:editLayout(true) end,1)
+  ui:chips({"Edit HUD size / position"},function() a:set("movePanels",true);a:editHUD(true) end,1)
+  ui:chips({"Reset GUI layout","Save configuration"},function(n)
+   if n=="Reset GUI layout" then a:patch({layoutCustom=false,navWidth=156,topScale=100,topCustom=false}) else a.store:save() end
+  end,2)
+  for _,k in {"layoutCustom","layoutX","layoutY","layoutW","layoutH","navWidth","topScale","clock","profile","keybindWidget"} do ui:control(k) end
+  ui:title("LIQUID GLASS");preset(ui,a,"Theme")
+  for _,k in {"uiGlassOpacity","uiReflection","rim","glass"} do ui:control(k) end
+  for _,k in {"uiPanelColor","uiButtonColor","uiHoverColor","uiRowColor","uiStrokeColor","uiSpecularColor","accent","secondary","uiFontColor","uiMutedColor","glassColor","clockGlass","fpsGlass","clockText","fpsText"} do ui:colorPicker(k) end
+  ui:title("SPACE BACKGROUND")
+  for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end
+  for _,k in {"menuGeometry","menuShape","menuDensity","menuMotion","menuOpacity","constellationLinks","constellationDistance","constellationThickness","constellationSize","constellationAngle","screenParticles","screenParticleOpacity"} do ui:control(k) end
+  ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
+ elseif tab=="HUD" then preview(ui,a,true);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:title("TOP PANEL");for _,v in {"movePanels","topScale"} do ui:control(v) end;ui:note("Enable moving panels to drag the AETHER capsule.",34);ui:chips({"Reset panel position"},function() a:patch({topCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness"} do ui:control(k) end;ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);local widgets={"clock","profile","top"};if not table.find(widgets,a.hudTab) then a.hudTab="clock" end;ui:chips(widgets,function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
   if k=="top" then for _,v in {k.."Custom",k.."X",k.."Y"} do ui:control(v) end
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
  elseif tab=="Character" then
