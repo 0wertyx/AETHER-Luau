@@ -1123,6 +1123,35 @@ function UI.new(app,gui,scope)
   end)
  end
  quickButton("All volleyball settings","VOLLEYBALL MODIFIERS / BETA")
+ local function quickToggle(label,read,change)
+  local b=U.button(scroll,label.."  ·  OFF")
+  b.Size=UDim2.new(1,-5,0,30);b.ZIndex=30;b.TextXAlignment=Enum.TextXAlignment.Left
+  U.new("UIPadding",{PaddingLeft=UDim.new(0,9)},b)
+  b.LayoutOrder=#self.quickButtons+1;table.insert(self.quickButtons,b)
+  local function refresh()
+   local vb=self.app.volleyball
+   if not vb then return end
+   local on=read(vb)==true
+   b.Text=label..(if on then "  ·  ON" else "  ·  OFF")
+   b.BackgroundColor3=if on then Color3.fromRGB(98,68,150) else soft
+  end
+  table.insert(self.quickRefresh,refresh)
+  scope:on(b.Activated,function()
+   if not self.quickOpen or not self.app.volleyball then return end
+   self:action(function() change(self.app.volleyball);refresh();self:sync() end)
+  end)
+ end
+ self.quickRefresh={}
+ quickToggle("Auto Set",function(v) return v.play.set end,function(v) v:togglePlay("Set") end)
+ quickToggle("Auto Spike",function(v) return v.play.spike end,function(v) v:togglePlay("Spike") end)
+ quickToggle("Auto Dive",function(v) return v.play.dive end,function(v) v:togglePlay("Dive") end)
+ quickToggle("Auto Serve",function(v) return v.play.serve end,function(v) v:togglePlay("Serve") end)
+ quickToggle("Auto Tilt",function(v) return v.auto end,function(v) v:toggleAuto() end)
+ quickToggle("Ball Expander",function(v) return v.ballRadius.enabled end,function(v) v:toggleBallRadius() end)
+ quickToggle("Shot Arc",function(v) return v.shotArc.enabled end,function(v) v:toggleShotArc() end)
+ quickToggle("Ball Touch Info",function(v) return v.ballTouchInfo.enabled end,function(v) v:toggleBallTouchInfo() end)
+ quickToggle("Trajectory ESP",function(v) return v.trajectory.enabled end,function(v) v:toggleTrajectory() end)
+ quickToggle("Direction ESP",function(v) return v.jinkoDirection.enabled end,function(v) v:toggleJinkoDirection() end)
  quickButton("Auto Play","AUTO PLAY / BETA")
  quickButton("Hitbox Expander","BALL HITBOX EXPANDER / BETA")
  quickButton("Shot Arc","SHOT ARC / BETA")
@@ -1296,6 +1325,10 @@ function UI:animateBackground(t)
  self.top.Visible=s.topCapsule
  self.quickArrow.Visible=self.app.volleyball~=nil
  self.quick.Visible=self.quickOpen and s.topCapsule and not self.app.editingHUD
+ if self.quick.Visible and t>=(self.quickRefreshAt or 0) then
+  self.quickRefreshAt=t+.2
+  for _,refresh in self.quickRefresh do refresh() end
+ end
  local live=self.app.liveUpdate
  if live then
   local unread=live.unread==true
@@ -1402,6 +1435,7 @@ function UI:setQuick(on)
  self.quickOpen=on==true
  self.quick.Visible=self.quickOpen and self.app.s.topCapsule
  self.quickArrow.Text=if self.quickOpen then "⌃" else "⌄"
+ if self.quickOpen then for _,refresh in self.quickRefresh do refresh() end end
 end
 local function searchMatch(text,words)
  for _,word in words do if not text:find(word,1,true) then return false end end
