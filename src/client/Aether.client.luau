@@ -2653,16 +2653,20 @@ local done=U.button(header,"DONE");done.Position=UDim2.new(.75,0,0,5);done.Size=
 scope:on(panelToggle.Activated,function()
     if not app.editingHUD then return end
     ui.drag=nil
-    app:set("movePanels",not app.s.movePanels)
+    if app.hudEditMode=="Volleyball" then app:patch({keybindCustom=false,quickCustom=false})
+    else app:set("movePanels",not app.s.movePanels) end
     app:updateEditor()
 end)
 local handles={}
-local positions={"hp","clock","profile","dock","input","wallhop","top"}
-local function isPanel(key) return key=="top" end
+local positions={"hp","clock","profile","dock","input","wallhop","top","keybind","quick"}
+local function isAux(key) return key=="keybind" or key=="quick" end
+local function isPanel(key) return key=="top" or isAux(key) end
 local function widgetFor(key)
     if key=="input" then return hud.inputRoot end
     if key=="wallhop" then return hud.wallhop end
     if key=="top" then return ui.top end
+    if key=="keybind" then return ui.bindPanel end
+    if key=="quick" then return ui.quick end
     return hud.widgets[key].p
 end
 local function coord(key,topLeft,size,vp)
@@ -2671,18 +2675,27 @@ local function coord(key,topLeft,size,vp)
     end
     return math.clamp(math.round(topLeft.X/math.max(1,vp.X-size.X)*100),0,100),math.clamp(math.round(topLeft.Y/math.max(1,vp.Y-size.Y)*100),0,100)
 end
-function app:editHUD(on)
+function app:editHUD(on,mode,returnQuick)
     if self.stopping then return end
     if on then
+        self.hudEditMode=mode or "HUD"
+        self.hudEditReturnTab=ui.tab
+        self.hudEditReturnQuick=returnQuick==true
         ui:show(false)
+        if self.hudEditMode=="Volleyball" and not ui.quickAdapter then ui:setQuick(true) end
+        ui:setQuick(false)
         self.editingHUD=true
         editorGui.Enabled=true
         self.view:releaseLock(self.view:nativeLockAvailable())
     else
+        local backQuick=self.hudEditReturnQuick
+        local backTab=self.hudEditReturnTab or "HUD"
         self.editingHUD=false
+        self.hudEditMode=nil;self.hudEditReturnQuick=nil;self.hudEditReturnTab=nil
         editorGui.Enabled=false
         ui.drag=nil
-        ui:open("HUD")
+        if self.store and self.store.dirty then pcall(function() self.store:save() end) end
+        if backQuick then ui:setQuick(true) else ui:open(backTab) end
     end
 end
 scope:on(done.Activated,function() app:editHUD(false) end)
@@ -2695,7 +2708,8 @@ for _,key in positions do
     scope:on(b.InputBegan,function(input)
         if not app.editingHUD or (input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch) then return end
         local target=widgetFor(key)
-        if not target.Visible or (isPanel(key) and not app.s.movePanels) then return end
+        if not target.Visible or (key=="top" and not app.s.movePanels) then return end
+        if (app.hudEditMode=="Volleyball")~=isAux(key) then return end
         local vp=overlay.AbsoluteSize
         local size=target.AbsoluteSize
         local original=target.AbsolutePosition-overlay.AbsolutePosition
@@ -2717,7 +2731,7 @@ for _,key in positions do
             dest=Vector2.new(math.clamp(dest.X,0,math.max(0,vp.X-size.X)),math.clamp(dest.Y,0,math.max(0,vp.Y-size.Y)))
             local x,y=coord(key,dest,size,vp)
             if isPanel(key) then
-                if not app.s.movePanels then return end
+                if key=="top" and not app.s.movePanels then return end
                 if not app.s[key.."Custom"] or app.s[key.."X"]~=x or app.s[key.."Y"]~=y then app:patch({[key.."Custom"]=true,[key.."X"]=x,[key.."Y"]=y}) end
             elseif app.s[key.."X"]~=x or app.s[key.."Y"]~=y then app:patch({[key.."X"]=x,[key.."Y"]=y}) end
         end)
@@ -2726,14 +2740,16 @@ end
 function app:updateEditor()
     editorGui.Enabled=self.editingHUD==true
     if not self.editingHUD then return end
-    panelToggle.Text=if self.s.movePanels then "PANELS: MOVE" else "PANELS: LOCKED"
-    panelToggle.BackgroundColor3=if self.s.movePanels then Color3.fromRGB(105,71,164) else Color3.fromRGB(52,40,77)
+    local auxMode=self.hudEditMode=="Volleyball"
+    instruction.Text=if auxMode then "WIDGET EDIT" else "HUD EDIT"
+    panelToggle.Text=if auxMode then "RESET POS" elseif self.s.movePanels then "PANELS: MOVE" else "PANELS: LOCKED"
+    panelToggle.BackgroundColor3=if auxMode or self.s.movePanels then Color3.fromRGB(105,71,164) else Color3.fromRGB(52,40,77)
     for _,key in positions do
         local b,target=handles[key],widgetFor(key)
-        b.Visible=target.Visible and (if key=="top" then self.s.topCapsule elseif key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
-        local locked=isPanel(key) and not self.s.movePanels
+        b.Visible=target.Visible and (auxMode==isAux(key)) and (if isAux(key) then true elseif key=="top" then self.s.topCapsule elseif key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
+        local locked=key=="top" and not self.s.movePanels
         b.Active=not locked;b.Interactable=not locked
-        b.Text=key:upper()..(if locked then " · LOCKED" else " · MOVE")
+        b.Text=(if key=="keybind" then "KEYBINDS" elseif key=="quick" then "QUICK MENU" else key:upper())..(if locked then " · LOCKED" else " · MOVE")
         local rim=b:FindFirstChildOfClass("UIStroke")
         if rim then rim.Color=if locked then Color3.fromRGB(153,148,170) else Color3.fromRGB(224,183,255);rim.Transparency=if locked then .3 else 0 end
         if b.Visible then

@@ -805,6 +805,12 @@ function E.render(a,tab,ui)
   ui:note("Practice display: tracks your jump and horizontal camera rotation. No automatic jumps or camera movement.",42)
   for _,k in {"wallhopHelper","wallhopX","wallhopY","wallhopScale","wallhopOpacity"} do ui:control(k) end
  elseif tab=="Volleyball" then
+  if ui==a.ui then
+   ui:title("WIDGET LAYOUT")
+   ui:chips({"Edit widget positions"},function() a:editHUD(true,"Volleyball",false) end,1)
+   ui:control("keybindWidget")
+   ui:chips({"Reset widget positions"},function() a:patch({keybindCustom=false,quickCustom=false}) end,1)
+  end
   if a.volleyball then
    local vb=a.volleyball
    local lp=game:GetService("Players").LocalPlayer

@@ -1131,7 +1131,9 @@ function UI.new(app,gui,scope)
  self.quickGlyph=chevron(self.quickArrow)
  self.quick=U.new("Frame",{Name="VolleyballQuickPanel",AnchorPoint=Vector2.new(.5,0),Position=UDim2.new(.5,0,1,58),Size=UDim2.fromOffset(324,380),BackgroundColor3=bg,BackgroundTransparency=.10,BorderSizePixel=0,Visible=false,Active=true,ZIndex=28},self.top)
  U.corner(self.quick,13);self.quickRim=U.stroke(self.quick,Color3.fromRGB(166,138,255),.3)
- local title=U.label(self.quick,"VOLLEYBALL / MODULES",12,UDim2.fromOffset(12,5),UDim2.new(1,-24,0,22));title.ZIndex=29
+ local title=U.label(self.quick,"VOLLEYBALL / MODULES",12,UDim2.fromOffset(12,5),UDim2.new(1,-88,0,22));title.ZIndex=29
+ local edit=U.button(self.quick,"EDIT HUD");edit.Name="EditWidgetPositions";edit.Size=UDim2.fromOffset(68,23);edit.Position=UDim2.new(1,-76,0,5);edit.TextSize=10;edit.ZIndex=30
+ scope:on(edit.Activated,function() if self.quickOpen and not self.app.editingHUD then self.app:editHUD(true,"Volleyball",true) end end)
  self.quickScroll=U.new("ScrollingFrame",{Name="QuickFunctions",Position=UDim2.fromOffset(8,32),Size=UDim2.new(1,-16,1,-60),BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3,ZIndex=29},self.quick)
  U.new("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder},self.quickScroll)
  self.quickStatus=U.label(self.quick,"Tap a module to expand",10,UDim2.new(0,10,1,-24),UDim2.new(1,-20,0,20))
@@ -1202,7 +1204,7 @@ function UI.new(app,gui,scope)
   self.search.Position=UDim2.fromOffset(10,111);self.search.Size=UDim2.new(1,-20,0,30)
   self.pageBox.Position=UDim2.fromOffset(10,148);self.pageBox.Size=UDim2.new(1,-20,1,-179)
   self.searchResults.Position=self.pageBox.Position;self.searchResults.Size=self.pageBox.Size
-  self.quick.Size=UDim2.fromOffset(math.min(324,math.max(140,sz.X-24)),math.clamp(sz.Y*.58,120,440))
+  self.quick.Size=UDim2.fromOffset(math.min(324,math.max(140,sz.X-24)),math.min(math.clamp(sz.Y*.58,120,440),math.max(120,sz.Y-24)))
   self.layoutKey=table.concat({s.menuDock,s.menuWidth,s.menuHeight,s.menuFloatX,s.menuFloatY,tostring(s.menuResize),tostring(s.topCustom),s.topX,s.topY},":")
  end
  function self:finishMenuDrag(point,resize)
@@ -1300,10 +1302,11 @@ function UI:animateBackground(t)
  end
  local accent=U.hex(s.accent)
  local secondary=U.hex(s.secondary)
- self.top.Visible=s.topCapsule
- self.quickArrow.Visible=self.app.volleyball~=nil
- self.quick.Visible=self.quickOpen and s.topCapsule and not self.app.editingHUD
- self.bindPanel.Visible=not self.opened and not self.app.editingHUD and self.app.mode=="Game"
+ local editingAux=self.app.editingHUD and self.app.hudEditMode=="Volleyball"
+ self.top.Visible=s.topCapsule or editingAux
+ self.quickArrow.Visible=self.app.volleyball~=nil and not self.app.editingHUD
+ self.quick.Visible=editingAux or (self.quickOpen and s.topCapsule and not self.app.editingHUD)
+ self.bindPanel.Visible=editingAux or (not self.opened and not self.app.editingHUD and self.app.mode=="Game" and s.keybindWidget)
  self.bindRim.Color=accent
  if self.bindPanel.Visible and t>=(self.bindRefreshAt or 0) then self.bindRefreshAt=t+.3;self:refreshBindPanel() end
  if self.quick.Visible and self.quickAdapter and t>=(self.quickRefreshAt or 0) then
@@ -1325,7 +1328,7 @@ function UI:animateBackground(t)
  self.topRim.Color=accent;self.quickRim.Color=accent
  local below=6+self.updateChip.Size.Y.Offset+4
  self.quickArrow.Position=UDim2.new(.5,0,1,below)
- self.quick.Position=UDim2.new(.5,0,1,below+26)
+ self:layoutAuxWidgets(below)
  self.topButtons[1].TextColor3=U.hex(s.uiFontColor or "F1E6FF")
  local visible=s.screenParticles and q>.001
  self.screenFX.Visible=visible
@@ -1487,6 +1490,23 @@ function UI:handleQuickKey(input,processed)
  self:refreshBindPanel()
  return true
 end
+function UI:layoutAuxWidgets(below)
+ local s=self.app.s
+ local vp=self.stage.AbsoluteSize
+ if vp.X<2 or vp.Y<2 then return end
+ local top=self.top.AbsolutePosition-self.stage.AbsolutePosition
+ local function position(key,p,defaultX,defaultY,origin)
+  local w,h=p.Size.X.Offset,p.Size.Y.Offset
+  local maxX,maxY=math.max(0,vp.X-w),math.max(0,vp.Y-h)
+  local x,y=defaultX,defaultY
+  if s[key.."Custom"] then x=maxX*s[key.."X"]/100;y=maxY*s[key.."Y"]/100 end
+  p.AnchorPoint=Vector2.zero
+  p.Position=UDim2.fromOffset(math.round(math.clamp(x,0,maxX)-origin.X),math.round(math.clamp(y,0,maxY)-origin.Y))
+ end
+ position("keybind",self.bindPanel,30,110,Vector2.zero)
+ local width=self.quick.Size.X.Offset
+ position("quick",self.quick,top.X+self.top.AbsoluteSize.X*.5-width*.5,top.Y+self.top.AbsoluteSize.Y+below+26,top)
+end
 function UI:refreshBindPanel()
  local entries={}
  for id,key in self:bindMap() do
@@ -1501,7 +1521,7 @@ function UI:refreshBindPanel()
  end
  table.sort(entries,function(a,b) return if a.key==b.key then a.label<b.label else a.key<b.key end)
  local shown=math.min(9,math.max(1,#entries))
- self.bindPanel.Size=UDim2.fromOffset(math.min(230,math.max(140,self.stage.AbsoluteSize.X*.3)),35+shown*27)
+ self.bindPanel.Size=UDim2.fromOffset(math.min(230,math.max(140,self.stage.AbsoluteSize.X*.3)),math.min(35+shown*27,math.max(62,self.stage.AbsoluteSize.Y-24)))
  self.bindEmpty.Visible=#entries==0
  for i,item in entries do
   local row=self.bindRows[i]
@@ -5143,6 +5163,12 @@ function E.render(a,tab,ui)
   ui:note("Practice display: tracks your jump and horizontal camera rotation. No automatic jumps or camera movement.",42)
   for _,k in {"wallhopHelper","wallhopX","wallhopY","wallhopScale","wallhopOpacity"} do ui:control(k) end
  elseif tab=="Volleyball" then
+  if ui==a.ui then
+   ui:title("WIDGET LAYOUT")
+   ui:chips({"Edit widget positions"},function() a:editHUD(true,"Volleyball",false) end,1)
+   ui:control("keybindWidget")
+   ui:chips({"Reset widget positions"},function() a:patch({keybindCustom=false,quickCustom=false}) end,1)
+  end
   if a.volleyball then
    local vb=a.volleyball
    local lp=game:GetService("Players").LocalPlayer
@@ -5780,7 +5806,7 @@ toggle("Motion","reduce","Reduce motion",false);range("Motion","speed","Animatio
 toggle("Theme","menuGeometry","Animated geometric background",true);choice("Theme","menuShape","Background style","Mixed",{"Mixed","Rings","Crystals","Triangles","Hexagons","Squares","Stars","Dots","Rounded Star","Soft Star","Sparkle","Long Sparkle","Six Point Star","Eight Point Star","Circle","Rounded Square","Diamond","Rounded Triangle","Rounded Hexagon","Rounded Pentagon","Heart"});range("Theme","menuDensity","Background density",14,4,24);range("Theme","menuMotion","Background speed %",65,0,180);range("Theme","menuOpacity","Background intensity %",55,0,100);
 range("Theme","constellationLinks","Maximum connections",100,0,100);range("Theme","constellationDistance","Connection distance (px)",115,25,220);range("Theme","constellationThickness","Line width (tenths of px)",7,3,20);range("Theme","constellationSize","Figure size (px)",5,2,14);range("Theme","constellationAngle","Background gradient angle",45,0,360);color("Theme","constellationBgA","Background start","10091C");color("Theme","constellationBgB","Background end","35204D");color("Theme","constellationLineA","Line start","ECE0FF");color("Theme","constellationLineB","Line end","A66AFF");color("Theme","constellationNodeA","Figure start","FFFFFF");color("Theme","constellationNodeB","Figure end","BE8AFF");toggle("Theme","screenParticles","Menu screen particles",true);choice("Theme","screenParticleStyle","Screen particle style","Mixed",{"Mixed","Stars","Dust","Diamonds"});range("Theme","screenParticleCount","Screen particle count",24,8,48);range("Theme","screenParticleOpacity","Screen particle intensity %",55,0,100);toggle("Theme","robloxRail","Roblox shortcuts rail",true);toggle("Theme","topCapsule","Top AETHER title",true)
 choice("Theme","menuDock","Menu docking side","Left",{"Left","Right","Top","Bottom","Floating"});range("Theme","menuWidth","Menu width (px)",438,280,1600);range("Theme","menuHeight","Menu height (px)",600,260,1200);toggle("Theme","menuDrag","Drag / snap menu",true);toggle("Theme","menuResize","Resize with corner grip",true);range("Theme","menuFloatX","Floating horizontal %",35,0,100);range("Theme","menuFloatY","Floating vertical %",40,0,100)
-toggle("HUD","locked","Lock widget positions",true);toggle("HUD","movePanels","Allow moving top and left panels",false);toggle("HUD","topCustom","Custom top panel position",false);range("HUD","topX","Top panel X %",50,0,100);range("HUD","topY","Top panel Y %",2,0,100);toggle("HUD","railCustom","Custom left panel position",false);range("HUD","railX","Left panel X %",1,0,100);range("HUD","railY","Left panel Y %",46,0,100);toggle("HUD","compact","Compact health panel",true);choice("HUD","layoutMode","HUD layout","Sketch",{"Sketch","Custom"});choice("HUD","hudMotion","Widget animation","Glass",{"Glass","Float","Pulse","Off"});range("HUD","hudMotionStrength","Widget motion intensity %",65,0,100);toggle("HUD","hudShine","Health bar shimmer",true);toggle("HUD","hudReaction","Damage and healing glow",true);range("HUD","hudSmoothness","HUD smoothing (ms)",320,100,900)
+toggle("HUD","locked","Lock widget positions",true);toggle("HUD","movePanels","Allow moving top and left panels",false);toggle("HUD","topCustom","Custom top panel position",false);range("HUD","topX","Top panel X %",50,0,100);range("HUD","topY","Top panel Y %",2,0,100);toggle("HUD","railCustom","Custom left panel position",false);range("HUD","railX","Left panel X %",1,0,100);range("HUD","railY","Left panel Y %",46,0,100);toggle("HUD","keybindWidget","Show keybind widget",true);toggle("HUD","keybindCustom","Custom keybind position",false);range("HUD","keybindX","Keybind widget X %",2,0,100);range("HUD","keybindY","Keybind widget Y %",12,0,100);toggle("HUD","quickCustom","Custom quick menu position",false);range("HUD","quickX","Quick menu X %",50,0,100);range("HUD","quickY","Quick menu Y %",12,0,100);toggle("HUD","compact","Compact health panel",true);choice("HUD","layoutMode","HUD layout","Sketch",{"Sketch","Custom"});choice("HUD","hudMotion","Widget animation","Glass",{"Glass","Float","Pulse","Off"});range("HUD","hudMotionStrength","Widget motion intensity %",65,0,100);toggle("HUD","hudShine","Health bar shimmer",true);toggle("HUD","hudReaction","Damage and healing glow",true);range("HUD","hudSmoothness","HUD smoothing (ms)",320,100,900)
 choice("HUD","heartPalette","Heart gradient","Adaptive",{"Adaptive","Aurora","Amethyst","Ocean","Sakura","Sunset","Ember","Mint","Ice","Galaxy","Rainbow","Custom"});choice("HUD","heartDirection","Heart gradient direction","Vertical",{"Vertical","Horizontal","Diagonal","Reverse","Orbit"});range("HUD","heartGradientSpeed","Heart gradient speed %",60,0,150);color("HUD","heartA","Heart custom start","BA99FF");color("HUD","heartMid","Heart custom middle","F8CCFF");color("HUD","heartB","Heart custom end","69D9FA");range("HUD","heartGlow","Heart glow %",65,0,100)
 for _,row in {{"hp","Health",3,9},{"clock","Clock",3,96},{"profile","Player card",97,9},{"dock","AETHER menu button",50,96},{"cross","Reticle",50,50}} do
  local k,t=row[1],row[2];toggle("HUD",k,t,true); range("HUD",k.."X",t.." · horizontal %",row[3],0,100);range("HUD",k.."Y",t.." · vertical %",row[4],0,100)
@@ -10800,16 +10826,20 @@ local done=U.button(header,"DONE");done.Position=UDim2.new(.75,0,0,5);done.Size=
 scope:on(panelToggle.Activated,function()
     if not app.editingHUD then return end
     ui.drag=nil
-    app:set("movePanels",not app.s.movePanels)
+    if app.hudEditMode=="Volleyball" then app:patch({keybindCustom=false,quickCustom=false})
+    else app:set("movePanels",not app.s.movePanels) end
     app:updateEditor()
 end)
 local handles={}
-local positions={"hp","clock","profile","dock","input","wallhop","top"}
-local function isPanel(key) return key=="top" end
+local positions={"hp","clock","profile","dock","input","wallhop","top","keybind","quick"}
+local function isAux(key) return key=="keybind" or key=="quick" end
+local function isPanel(key) return key=="top" or isAux(key) end
 local function widgetFor(key)
     if key=="input" then return hud.inputRoot end
     if key=="wallhop" then return hud.wallhop end
     if key=="top" then return ui.top end
+    if key=="keybind" then return ui.bindPanel end
+    if key=="quick" then return ui.quick end
     return hud.widgets[key].p
 end
 local function coord(key,topLeft,size,vp)
@@ -10818,18 +10848,27 @@ local function coord(key,topLeft,size,vp)
     end
     return math.clamp(math.round(topLeft.X/math.max(1,vp.X-size.X)*100),0,100),math.clamp(math.round(topLeft.Y/math.max(1,vp.Y-size.Y)*100),0,100)
 end
-function app:editHUD(on)
+function app:editHUD(on,mode,returnQuick)
     if self.stopping then return end
     if on then
+        self.hudEditMode=mode or "HUD"
+        self.hudEditReturnTab=ui.tab
+        self.hudEditReturnQuick=returnQuick==true
         ui:show(false)
+        if self.hudEditMode=="Volleyball" and not ui.quickAdapter then ui:setQuick(true) end
+        ui:setQuick(false)
         self.editingHUD=true
         editorGui.Enabled=true
         self.view:releaseLock(self.view:nativeLockAvailable())
     else
+        local backQuick=self.hudEditReturnQuick
+        local backTab=self.hudEditReturnTab or "HUD"
         self.editingHUD=false
+        self.hudEditMode=nil;self.hudEditReturnQuick=nil;self.hudEditReturnTab=nil
         editorGui.Enabled=false
         ui.drag=nil
-        ui:open("HUD")
+        if self.store and self.store.dirty then pcall(function() self.store:save() end) end
+        if backQuick then ui:setQuick(true) else ui:open(backTab) end
     end
 end
 scope:on(done.Activated,function() app:editHUD(false) end)
@@ -10842,7 +10881,8 @@ for _,key in positions do
     scope:on(b.InputBegan,function(input)
         if not app.editingHUD or (input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch) then return end
         local target=widgetFor(key)
-        if not target.Visible or (isPanel(key) and not app.s.movePanels) then return end
+        if not target.Visible or (key=="top" and not app.s.movePanels) then return end
+        if (app.hudEditMode=="Volleyball")~=isAux(key) then return end
         local vp=overlay.AbsoluteSize
         local size=target.AbsoluteSize
         local original=target.AbsolutePosition-overlay.AbsolutePosition
@@ -10864,7 +10904,7 @@ for _,key in positions do
             dest=Vector2.new(math.clamp(dest.X,0,math.max(0,vp.X-size.X)),math.clamp(dest.Y,0,math.max(0,vp.Y-size.Y)))
             local x,y=coord(key,dest,size,vp)
             if isPanel(key) then
-                if not app.s.movePanels then return end
+                if key=="top" and not app.s.movePanels then return end
                 if not app.s[key.."Custom"] or app.s[key.."X"]~=x or app.s[key.."Y"]~=y then app:patch({[key.."Custom"]=true,[key.."X"]=x,[key.."Y"]=y}) end
             elseif app.s[key.."X"]~=x or app.s[key.."Y"]~=y then app:patch({[key.."X"]=x,[key.."Y"]=y}) end
         end)
@@ -10873,14 +10913,16 @@ end
 function app:updateEditor()
     editorGui.Enabled=self.editingHUD==true
     if not self.editingHUD then return end
-    panelToggle.Text=if self.s.movePanels then "PANELS: MOVE" else "PANELS: LOCKED"
-    panelToggle.BackgroundColor3=if self.s.movePanels then Color3.fromRGB(105,71,164) else Color3.fromRGB(52,40,77)
+    local auxMode=self.hudEditMode=="Volleyball"
+    instruction.Text=if auxMode then "WIDGET EDIT" else "HUD EDIT"
+    panelToggle.Text=if auxMode then "RESET POS" elseif self.s.movePanels then "PANELS: MOVE" else "PANELS: LOCKED"
+    panelToggle.BackgroundColor3=if auxMode or self.s.movePanels then Color3.fromRGB(105,71,164) else Color3.fromRGB(52,40,77)
     for _,key in positions do
         local b,target=handles[key],widgetFor(key)
-        b.Visible=target.Visible and (if key=="top" then self.s.topCapsule elseif key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
-        local locked=isPanel(key) and not self.s.movePanels
+        b.Visible=target.Visible and (auxMode==isAux(key)) and (if isAux(key) then true elseif key=="top" then self.s.topCapsule elseif key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
+        local locked=key=="top" and not self.s.movePanels
         b.Active=not locked;b.Interactable=not locked
-        b.Text=key:upper()..(if locked then " · LOCKED" else " · MOVE")
+        b.Text=(if key=="keybind" then "KEYBINDS" elseif key=="quick" then "QUICK MENU" else key:upper())..(if locked then " · LOCKED" else " · MOVE")
         local rim=b:FindFirstChildOfClass("UIStroke")
         if rim then rim.Color=if locked then Color3.fromRGB(153,148,170) else Color3.fromRGB(224,183,255);rim.Transparency=if locked then .3 else 0 end
         if b.Visible then

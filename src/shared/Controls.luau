@@ -268,7 +268,9 @@ function UI.new(app,gui,scope)
  self.quickGlyph=chevron(self.quickArrow)
  self.quick=U.new("Frame",{Name="VolleyballQuickPanel",AnchorPoint=Vector2.new(.5,0),Position=UDim2.new(.5,0,1,58),Size=UDim2.fromOffset(324,380),BackgroundColor3=bg,BackgroundTransparency=.10,BorderSizePixel=0,Visible=false,Active=true,ZIndex=28},self.top)
  U.corner(self.quick,13);self.quickRim=U.stroke(self.quick,Color3.fromRGB(166,138,255),.3)
- local title=U.label(self.quick,"VOLLEYBALL / MODULES",12,UDim2.fromOffset(12,5),UDim2.new(1,-24,0,22));title.ZIndex=29
+ local title=U.label(self.quick,"VOLLEYBALL / MODULES",12,UDim2.fromOffset(12,5),UDim2.new(1,-88,0,22));title.ZIndex=29
+ local edit=U.button(self.quick,"EDIT HUD");edit.Name="EditWidgetPositions";edit.Size=UDim2.fromOffset(68,23);edit.Position=UDim2.new(1,-76,0,5);edit.TextSize=10;edit.ZIndex=30
+ scope:on(edit.Activated,function() if self.quickOpen and not self.app.editingHUD then self.app:editHUD(true,"Volleyball",true) end end)
  self.quickScroll=U.new("ScrollingFrame",{Name="QuickFunctions",Position=UDim2.fromOffset(8,32),Size=UDim2.new(1,-16,1,-60),BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3,ZIndex=29},self.quick)
  U.new("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder},self.quickScroll)
  self.quickStatus=U.label(self.quick,"Tap a module to expand",10,UDim2.new(0,10,1,-24),UDim2.new(1,-20,0,20))
@@ -339,7 +341,7 @@ function UI.new(app,gui,scope)
   self.search.Position=UDim2.fromOffset(10,111);self.search.Size=UDim2.new(1,-20,0,30)
   self.pageBox.Position=UDim2.fromOffset(10,148);self.pageBox.Size=UDim2.new(1,-20,1,-179)
   self.searchResults.Position=self.pageBox.Position;self.searchResults.Size=self.pageBox.Size
-  self.quick.Size=UDim2.fromOffset(math.min(324,math.max(140,sz.X-24)),math.clamp(sz.Y*.58,120,440))
+  self.quick.Size=UDim2.fromOffset(math.min(324,math.max(140,sz.X-24)),math.min(math.clamp(sz.Y*.58,120,440),math.max(120,sz.Y-24)))
   self.layoutKey=table.concat({s.menuDock,s.menuWidth,s.menuHeight,s.menuFloatX,s.menuFloatY,tostring(s.menuResize),tostring(s.topCustom),s.topX,s.topY},":")
  end
  function self:finishMenuDrag(point,resize)
@@ -437,10 +439,11 @@ function UI:animateBackground(t)
  end
  local accent=U.hex(s.accent)
  local secondary=U.hex(s.secondary)
- self.top.Visible=s.topCapsule
- self.quickArrow.Visible=self.app.volleyball~=nil
- self.quick.Visible=self.quickOpen and s.topCapsule and not self.app.editingHUD
- self.bindPanel.Visible=not self.opened and not self.app.editingHUD and self.app.mode=="Game"
+ local editingAux=self.app.editingHUD and self.app.hudEditMode=="Volleyball"
+ self.top.Visible=s.topCapsule or editingAux
+ self.quickArrow.Visible=self.app.volleyball~=nil and not self.app.editingHUD
+ self.quick.Visible=editingAux or (self.quickOpen and s.topCapsule and not self.app.editingHUD)
+ self.bindPanel.Visible=editingAux or (not self.opened and not self.app.editingHUD and self.app.mode=="Game" and s.keybindWidget)
  self.bindRim.Color=accent
  if self.bindPanel.Visible and t>=(self.bindRefreshAt or 0) then self.bindRefreshAt=t+.3;self:refreshBindPanel() end
  if self.quick.Visible and self.quickAdapter and t>=(self.quickRefreshAt or 0) then
@@ -462,7 +465,7 @@ function UI:animateBackground(t)
  self.topRim.Color=accent;self.quickRim.Color=accent
  local below=6+self.updateChip.Size.Y.Offset+4
  self.quickArrow.Position=UDim2.new(.5,0,1,below)
- self.quick.Position=UDim2.new(.5,0,1,below+26)
+ self:layoutAuxWidgets(below)
  self.topButtons[1].TextColor3=U.hex(s.uiFontColor or "F1E6FF")
  local visible=s.screenParticles and q>.001
  self.screenFX.Visible=visible
@@ -624,6 +627,23 @@ function UI:handleQuickKey(input,processed)
  self:refreshBindPanel()
  return true
 end
+function UI:layoutAuxWidgets(below)
+ local s=self.app.s
+ local vp=self.stage.AbsoluteSize
+ if vp.X<2 or vp.Y<2 then return end
+ local top=self.top.AbsolutePosition-self.stage.AbsolutePosition
+ local function position(key,p,defaultX,defaultY,origin)
+  local w,h=p.Size.X.Offset,p.Size.Y.Offset
+  local maxX,maxY=math.max(0,vp.X-w),math.max(0,vp.Y-h)
+  local x,y=defaultX,defaultY
+  if s[key.."Custom"] then x=maxX*s[key.."X"]/100;y=maxY*s[key.."Y"]/100 end
+  p.AnchorPoint=Vector2.zero
+  p.Position=UDim2.fromOffset(math.round(math.clamp(x,0,maxX)-origin.X),math.round(math.clamp(y,0,maxY)-origin.Y))
+ end
+ position("keybind",self.bindPanel,30,110,Vector2.zero)
+ local width=self.quick.Size.X.Offset
+ position("quick",self.quick,top.X+self.top.AbsoluteSize.X*.5-width*.5,top.Y+self.top.AbsoluteSize.Y+below+26,top)
+end
 function UI:refreshBindPanel()
  local entries={}
  for id,key in self:bindMap() do
@@ -638,7 +658,7 @@ function UI:refreshBindPanel()
  end
  table.sort(entries,function(a,b) return if a.key==b.key then a.label<b.label else a.key<b.key end)
  local shown=math.min(9,math.max(1,#entries))
- self.bindPanel.Size=UDim2.fromOffset(math.min(230,math.max(140,self.stage.AbsoluteSize.X*.3)),35+shown*27)
+ self.bindPanel.Size=UDim2.fromOffset(math.min(230,math.max(140,self.stage.AbsoluteSize.X*.3)),math.min(35+shown*27,math.max(62,self.stage.AbsoluteSize.Y-24)))
  self.bindEmpty.Visible=#entries==0
  for i,item in entries do
   local row=self.bindRows[i]
