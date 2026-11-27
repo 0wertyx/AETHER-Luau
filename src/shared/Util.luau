@@ -29,18 +29,6 @@ function U.topPanel(parent)
  end
  return panel,rim,buttons
 end
-function U.railPanel(parent)
- local panel=U.frame(parent,"RobloxShortcuts",nil,UDim2.fromOffset(54,176),Color3.fromRGB(19,16,32),.16)
- panel.AnchorPoint=Vector2.new(0,.5);U.corner(panel,14)
- local rim=U.stroke(panel,Color3.fromRGB(166,138,255),.48)
- local buttons={}
- for index,label in {"CHAT","BAG","LIST"} do
-  local button=U.button(panel,label);button.TextSize=10;button.Size=UDim2.fromOffset(44,38);button.Position=UDim2.fromOffset(5,5+(index-1)*43)
-  buttons[index]=button
- end
- local collapse=U.button(panel,"‹");collapse.Size=UDim2.fromOffset(44,34);collapse.Position=UDim2.fromOffset(5,136)
- return panel,rim,buttons,collapse
-end
 function U.hex(s) return Color3.fromHex(s) end
 function U.font(s) local w=Enum.FontWeight[s.weight];if s.fontAsset~="" then return Font.new("rbxassetid://"..s.fontAsset,w) end;local base=Font.fromEnum(Enum.Font[s.font]);return Font.new(base.Family,w,base.Style) end
 function U.ease(t,name)

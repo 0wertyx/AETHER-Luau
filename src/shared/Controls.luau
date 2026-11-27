@@ -1,4 +1,4 @@
-local StarterGui=game:GetService("StarterGui");local Chat=game:GetService("TextChatService");local Input=game:GetService("UserInputService");local Tween=game:GetService("TweenService");local U=require(script.Parent.Util);local S=require(script.Parent.Schema);local Icons=require(script.Parent.Icons)
+local StarterGui=game:GetService("StarterGui");local Input=game:GetService("UserInputService");local Tween=game:GetService("TweenService");local U=require(script.Parent.Util);local S=require(script.Parent.Schema);local Icons=require(script.Parent.Icons)
 local Constellation=require(script.Parent.Constellation)
 local UI={};UI.__index=UI
 local bg=Color3.fromRGB(19,16,32);local dim=Color3.fromRGB(173,163,197);local soft=Color3.fromRGB(43,35,60)
@@ -55,30 +55,10 @@ function UI.new(app,gui,scope)
  self.updateRim=U.stroke(self.updateChip,Color3.fromRGB(166,138,255),.45)
  scope:on(self.updateChip.Activated,function() self:openShortcut("Updates") end)
  scope:on(self.topButtons[1].Activated,function() self:show(not self.opened) end)
- self.rail,self.railRim,self.railButtons,self.railCollapse=U.railPanel(self.stage)
  local coreOriginal,coreApplied={},{}
- local chatOriginal,chatApplied,chatConfig=nil,nil,nil
  scope:add(function()
   for kind,original in coreOriginal do pcall(function() if StarterGui:GetCoreGuiEnabled(kind)==coreApplied[kind] then StarterGui:SetCoreGuiEnabled(kind,original) end end) end
-  if chatConfig and chatConfig.Parent and chatConfig.Enabled==chatApplied then chatConfig.Enabled=chatOriginal end
  end)
- for index,item in {{"CHAT",Enum.CoreGuiType.Chat},{"BAG",Enum.CoreGuiType.Backpack},{"LIST",Enum.CoreGuiType.PlayerList}} do
-  local button=self.railButtons[index]
-  scope:on(button.Activated,function()
-   self:action(function()
-    if item[2]==Enum.CoreGuiType.PlayerList then self:openShortcut("List");return end
-    if item[2]==Enum.CoreGuiType.Chat then
-     local config=Chat:FindFirstChildOfClass("ChatWindowConfiguration")
-     if config then if chatConfig~=config then chatConfig=config;chatOriginal=config.Enabled end;config.Enabled=not config.Enabled;chatApplied=config.Enabled;button.BackgroundTransparency=if config.Enabled then .12 else .6;return end
-    end
-    local enabled=StarterGui:GetCoreGuiEnabled(item[2])
-    if coreOriginal[item[2]]==nil then coreOriginal[item[2]]=enabled end
-    StarterGui:SetCoreGuiEnabled(item[2],not enabled);coreApplied[item[2]]=not enabled
-    button.BackgroundTransparency=if enabled then .6 else .12
-    if item[2]==Enum.CoreGuiType.Backpack and not enabled then self:message("Roblox backpack enabled; use the native inventory control to expand it.") end
-   end)
-  end)
- end
  function self:togglePlayerList()
   local kind=Enum.CoreGuiType.PlayerList
   local enabled=StarterGui:GetCoreGuiEnabled(kind)
@@ -86,7 +66,6 @@ function UI.new(app,gui,scope)
   StarterGui:SetCoreGuiEnabled(kind,not enabled);coreApplied[kind]=not enabled
   self:message(if enabled then "Roblox player list hidden" else "Roblox player list enabled")
  end
- scope:on(self.railCollapse.Activated,function() self.railCollapsed=not self.railCollapsed;self:layout() end)
  self.panel=U.new("Frame",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=1,BorderSizePixel=0,Size=UDim2.fromScale(1,1),Visible=false,Active=true},self.stage);U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3)
  self.panelBackground=U.frame(self.panel,"GlassBackground",nil,nil,Color3.new(1,1,1),.035);self.panelBackground.Active=false;self.panelBackground.Interactable=false;self.panelBackground.ZIndex=1;U.corner(self.panelBackground,17)
  self.backgroundGradient=U.gradient(self.panelBackground,bg,Color3.fromRGB(39,30,58),82)
@@ -112,7 +91,7 @@ function UI.new(app,gui,scope)
   local s=self.app.s;local draft=self.menuDraft
   local side=if draft then draft.side else s.menuDock
   local narrow=sz.X<740
-  local left=if s.robloxRail and not narrow then 78 else 12
+  local left=12
   local top=if narrow then 92 else 62
   local bottom=if narrow then 126 else 76
   if sz.Y<420 then top=12;bottom=12 end
@@ -145,10 +124,7 @@ function UI.new(app,gui,scope)
   self.brand.Size=UDim2.fromOffset(if side=="Bottom" and s.menuResize then 111 else 135,40)
   self.top.Size=UDim2.fromOffset(math.min(136,math.max(90,sz.X-24)),38)
   self.top.Position=UDim2.new(.5,0,0,if narrow then 48 else 12)
-  self.rail.Position=UDim2.new(0,12,.46,0)
-  self.rail.Size=UDim2.fromOffset(54,if self.railCollapsed then 44 else 176)
-  for _,button in self.railButtons do button.Visible=not self.railCollapsed end
-  for _,spec in {{self.top,"top"},{self.rail,"rail"}} do
+  for _,spec in {{self.top,"top"}} do
    local panel,key=spec[1],spec[2]
    if s[key.."Custom"] then
     panel.AnchorPoint=Vector2.zero
@@ -157,15 +133,13 @@ function UI.new(app,gui,scope)
     panel.AnchorPoint=if key=="top" then Vector2.new(.5,0) else Vector2.new(0,.5)
    end
   end
-  self.railCollapse.Position=UDim2.fromOffset(5,if self.railCollapsed then 5 else 136)
-  self.railCollapse.Text=if self.railCollapsed then "›" else "‹"
   self.place.Position=UDim2.fromOffset(12,48);self.place.Size=UDim2.new(1,-24,0,17)
   self.nav.Position=UDim2.fromOffset(10,69);self.nav.Size=UDim2.new(1,-20,0,37)
   self.navList.FillDirection=Enum.FillDirection.Horizontal
   self.nav.AutomaticCanvasSize=Enum.AutomaticSize.X;self.nav.ScrollingDirection=Enum.ScrollingDirection.X
   for _,b in self.buttons do b.Size=UDim2.fromOffset(106,32) end
   self.pageBox.Position=UDim2.fromOffset(10,114);self.pageBox.Size=UDim2.new(1,-20,1,-145)
-  self.layoutKey=table.concat({s.menuDock,s.menuWidth,s.menuHeight,s.menuFloatX,s.menuFloatY,tostring(s.menuResize),tostring(s.robloxRail),tostring(s.topCustom),s.topX,s.topY,tostring(s.railCustom),s.railX,s.railY},":")
+  self.layoutKey=table.concat({s.menuDock,s.menuWidth,s.menuHeight,s.menuFloatX,s.menuFloatY,tostring(s.menuResize),tostring(s.topCustom),s.topX,s.topY},":")
  end
  function self:finishMenuDrag(point,resize)
   local s=self.app.s;local d=self.menuDraft
@@ -184,7 +158,7 @@ function UI.new(app,gui,scope)
     if distances[edge]<best then best=distances[edge];side=edge end
    end
    if side=="Floating" then
-    local left=if s.robloxRail and sz.X>=740 then 78 else 12
+    local left=12
     local margins={Left=math.abs(xy.X-left),Right=math.abs(sz.X-size.X-14-xy.X),Top=math.abs(xy.Y-(if sz.X<740 then 92 else 62)),Bottom=math.abs(sz.Y-size.Y-(if sz.X<740 then 126 else 76)-xy.Y)}
     best=26
     for _,edge in {"Left","Right","Top","Bottom"} do
@@ -261,7 +235,7 @@ function UI:animateBackground(t)
  end
  local accent=U.hex(s.accent)
  local secondary=U.hex(s.secondary)
- self.top.Visible=s.topCapsule;self.rail.Visible=s.robloxRail
+ self.top.Visible=s.topCapsule
  local live=self.app.liveUpdate
  if live then
   local unread=live.unread==true
@@ -274,7 +248,7 @@ function UI:animateBackground(t)
   self.updateRim.Color=accent
   self.updateRim.Transparency=if unread then .15 else .55
  end
- self.topRim.Color=accent;self.railRim.Color=accent
+ self.topRim.Color=accent
  self.topButtons[1].BackgroundColor3=if self.opened then accent:Lerp(bg,.55) else soft
  local visible=s.screenParticles and q>.001
  self.screenFX.Visible=visible
@@ -377,7 +351,7 @@ function UI:sync()
  local st=self.app.s
  self.backgroundGradient.Color=ColorSequence.new(U.hex(st.constellationBgA),U.hex(st.constellationBgB))
  self.backgroundGradient.Rotation=st.constellationAngle
- local layoutKey=table.concat({st.menuDock,st.menuWidth,st.menuHeight,st.menuFloatX,st.menuFloatY,tostring(st.menuResize),tostring(st.robloxRail),tostring(st.topCustom),st.topX,st.topY,tostring(st.railCustom),st.railX,st.railY},":")
+ local layoutKey=table.concat({st.menuDock,st.menuWidth,st.menuHeight,st.menuFloatX,st.menuFloatY,tostring(st.menuResize),tostring(st.topCustom),st.topX,st.topY},":")
  if self.layoutKey~=layoutKey and not self.menuDraft then self:layout() end
  local primary=U.hex(st.uiFontColor or "F1E6FF")
  local muted=U.hex(st.uiMutedColor or "ADA3C5")

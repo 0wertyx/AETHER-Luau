@@ -861,7 +861,7 @@ end
 
 -- BEGIN MODULE Controls
 __aether_factories["Controls"] = function()
-local StarterGui=game:GetService("StarterGui");local Chat=game:GetService("TextChatService");local Input=game:GetService("UserInputService");local Tween=game:GetService("TweenService");local U=__aether_require("Util");local S=__aether_require("Schema");local Icons=__aether_require("Icons")
+local StarterGui=game:GetService("StarterGui");local Input=game:GetService("UserInputService");local Tween=game:GetService("TweenService");local U=__aether_require("Util");local S=__aether_require("Schema");local Icons=__aether_require("Icons")
 local Constellation=__aether_require("Constellation")
 local UI={};UI.__index=UI
 local bg=Color3.fromRGB(19,16,32);local dim=Color3.fromRGB(173,163,197);local soft=Color3.fromRGB(43,35,60)
@@ -918,30 +918,10 @@ function UI.new(app,gui,scope)
  self.updateRim=U.stroke(self.updateChip,Color3.fromRGB(166,138,255),.45)
  scope:on(self.updateChip.Activated,function() self:openShortcut("Updates") end)
  scope:on(self.topButtons[1].Activated,function() self:show(not self.opened) end)
- self.rail,self.railRim,self.railButtons,self.railCollapse=U.railPanel(self.stage)
  local coreOriginal,coreApplied={},{}
- local chatOriginal,chatApplied,chatConfig=nil,nil,nil
  scope:add(function()
   for kind,original in coreOriginal do pcall(function() if StarterGui:GetCoreGuiEnabled(kind)==coreApplied[kind] then StarterGui:SetCoreGuiEnabled(kind,original) end end) end
-  if chatConfig and chatConfig.Parent and chatConfig.Enabled==chatApplied then chatConfig.Enabled=chatOriginal end
  end)
- for index,item in {{"CHAT",Enum.CoreGuiType.Chat},{"BAG",Enum.CoreGuiType.Backpack},{"LIST",Enum.CoreGuiType.PlayerList}} do
-  local button=self.railButtons[index]
-  scope:on(button.Activated,function()
-   self:action(function()
-    if item[2]==Enum.CoreGuiType.PlayerList then self:openShortcut("List");return end
-    if item[2]==Enum.CoreGuiType.Chat then
-     local config=Chat:FindFirstChildOfClass("ChatWindowConfiguration")
-     if config then if chatConfig~=config then chatConfig=config;chatOriginal=config.Enabled end;config.Enabled=not config.Enabled;chatApplied=config.Enabled;button.BackgroundTransparency=if config.Enabled then .12 else .6;return end
-    end
-    local enabled=StarterGui:GetCoreGuiEnabled(item[2])
-    if coreOriginal[item[2]]==nil then coreOriginal[item[2]]=enabled end
-    StarterGui:SetCoreGuiEnabled(item[2],not enabled);coreApplied[item[2]]=not enabled
-    button.BackgroundTransparency=if enabled then .6 else .12
-    if item[2]==Enum.CoreGuiType.Backpack and not enabled then self:message("Roblox backpack enabled; use the native inventory control to expand it.") end
-   end)
-  end)
- end
  function self:togglePlayerList()
   local kind=Enum.CoreGuiType.PlayerList
   local enabled=StarterGui:GetCoreGuiEnabled(kind)
@@ -949,7 +929,6 @@ function UI.new(app,gui,scope)
   StarterGui:SetCoreGuiEnabled(kind,not enabled);coreApplied[kind]=not enabled
   self:message(if enabled then "Roblox player list hidden" else "Roblox player list enabled")
  end
- scope:on(self.railCollapse.Activated,function() self.railCollapsed=not self.railCollapsed;self:layout() end)
  self.panel=U.new("Frame",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=1,BorderSizePixel=0,Size=UDim2.fromScale(1,1),Visible=false,Active=true},self.stage);U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3)
  self.panelBackground=U.frame(self.panel,"GlassBackground",nil,nil,Color3.new(1,1,1),.035);self.panelBackground.Active=false;self.panelBackground.Interactable=false;self.panelBackground.ZIndex=1;U.corner(self.panelBackground,17)
  self.backgroundGradient=U.gradient(self.panelBackground,bg,Color3.fromRGB(39,30,58),82)
@@ -975,7 +954,7 @@ function UI.new(app,gui,scope)
   local s=self.app.s;local draft=self.menuDraft
   local side=if draft then draft.side else s.menuDock
   local narrow=sz.X<740
-  local left=if s.robloxRail and not narrow then 78 else 12
+  local left=12
   local top=if narrow then 92 else 62
   local bottom=if narrow then 126 else 76
   if sz.Y<420 then top=12;bottom=12 end
@@ -1008,10 +987,7 @@ function UI.new(app,gui,scope)
   self.brand.Size=UDim2.fromOffset(if side=="Bottom" and s.menuResize then 111 else 135,40)
   self.top.Size=UDim2.fromOffset(math.min(136,math.max(90,sz.X-24)),38)
   self.top.Position=UDim2.new(.5,0,0,if narrow then 48 else 12)
-  self.rail.Position=UDim2.new(0,12,.46,0)
-  self.rail.Size=UDim2.fromOffset(54,if self.railCollapsed then 44 else 176)
-  for _,button in self.railButtons do button.Visible=not self.railCollapsed end
-  for _,spec in {{self.top,"top"},{self.rail,"rail"}} do
+  for _,spec in {{self.top,"top"}} do
    local panel,key=spec[1],spec[2]
    if s[key.."Custom"] then
     panel.AnchorPoint=Vector2.zero
@@ -1020,15 +996,13 @@ function UI.new(app,gui,scope)
     panel.AnchorPoint=if key=="top" then Vector2.new(.5,0) else Vector2.new(0,.5)
    end
   end
-  self.railCollapse.Position=UDim2.fromOffset(5,if self.railCollapsed then 5 else 136)
-  self.railCollapse.Text=if self.railCollapsed then "›" else "‹"
   self.place.Position=UDim2.fromOffset(12,48);self.place.Size=UDim2.new(1,-24,0,17)
   self.nav.Position=UDim2.fromOffset(10,69);self.nav.Size=UDim2.new(1,-20,0,37)
   self.navList.FillDirection=Enum.FillDirection.Horizontal
   self.nav.AutomaticCanvasSize=Enum.AutomaticSize.X;self.nav.ScrollingDirection=Enum.ScrollingDirection.X
   for _,b in self.buttons do b.Size=UDim2.fromOffset(106,32) end
   self.pageBox.Position=UDim2.fromOffset(10,114);self.pageBox.Size=UDim2.new(1,-20,1,-145)
-  self.layoutKey=table.concat({s.menuDock,s.menuWidth,s.menuHeight,s.menuFloatX,s.menuFloatY,tostring(s.menuResize),tostring(s.robloxRail),tostring(s.topCustom),s.topX,s.topY,tostring(s.railCustom),s.railX,s.railY},":")
+  self.layoutKey=table.concat({s.menuDock,s.menuWidth,s.menuHeight,s.menuFloatX,s.menuFloatY,tostring(s.menuResize),tostring(s.topCustom),s.topX,s.topY},":")
  end
  function self:finishMenuDrag(point,resize)
   local s=self.app.s;local d=self.menuDraft
@@ -1047,7 +1021,7 @@ function UI.new(app,gui,scope)
     if distances[edge]<best then best=distances[edge];side=edge end
    end
    if side=="Floating" then
-    local left=if s.robloxRail and sz.X>=740 then 78 else 12
+    local left=12
     local margins={Left=math.abs(xy.X-left),Right=math.abs(sz.X-size.X-14-xy.X),Top=math.abs(xy.Y-(if sz.X<740 then 92 else 62)),Bottom=math.abs(sz.Y-size.Y-(if sz.X<740 then 126 else 76)-xy.Y)}
     best=26
     for _,edge in {"Left","Right","Top","Bottom"} do
@@ -1124,7 +1098,7 @@ function UI:animateBackground(t)
  end
  local accent=U.hex(s.accent)
  local secondary=U.hex(s.secondary)
- self.top.Visible=s.topCapsule;self.rail.Visible=s.robloxRail
+ self.top.Visible=s.topCapsule
  local live=self.app.liveUpdate
  if live then
   local unread=live.unread==true
@@ -1137,7 +1111,7 @@ function UI:animateBackground(t)
   self.updateRim.Color=accent
   self.updateRim.Transparency=if unread then .15 else .55
  end
- self.topRim.Color=accent;self.railRim.Color=accent
+ self.topRim.Color=accent
  self.topButtons[1].BackgroundColor3=if self.opened then accent:Lerp(bg,.55) else soft
  local visible=s.screenParticles and q>.001
  self.screenFX.Visible=visible
@@ -1240,7 +1214,7 @@ function UI:sync()
  local st=self.app.s
  self.backgroundGradient.Color=ColorSequence.new(U.hex(st.constellationBgA),U.hex(st.constellationBgB))
  self.backgroundGradient.Rotation=st.constellationAngle
- local layoutKey=table.concat({st.menuDock,st.menuWidth,st.menuHeight,st.menuFloatX,st.menuFloatY,tostring(st.menuResize),tostring(st.robloxRail),tostring(st.topCustom),st.topX,st.topY,tostring(st.railCustom),st.railX,st.railY},":")
+ local layoutKey=table.concat({st.menuDock,st.menuWidth,st.menuHeight,st.menuFloatX,st.menuFloatY,tostring(st.menuResize),tostring(st.topCustom),st.topX,st.topY},":")
  if self.layoutKey~=layoutKey and not self.menuDraft then self:layout() end
  local primary=U.hex(st.uiFontColor or "F1E6FF")
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
@@ -1847,18 +1821,16 @@ function H.new(scope,parent,preview,go,drag,close,showPanels)
   self.previewPanels={}
   self.previewHandles={}
   local top,topRim,topButtons=U.topPanel(parent)
-  local rail,railRim,railButtons,collapse=U.railPanel(parent)
   self.previewPanels.top={p=top,rim=topRim,buttons=topButtons}
-  self.previewPanels.rail={p=rail,rim=railRim,buttons=railButtons,collapse=collapse}
   for _,item in self.previewPanels do
    item.p.AnchorPoint=Vector2.zero;item.p.ZIndex=7
    item.scale=U.new("UIScale",{Scale=.55},item.p)
    for _,button in item.buttons do button.Active=false;button.Interactable=false;button.ZIndex=8 end
    if item.collapse then item.collapse.Active=false;item.collapse.Interactable=false;item.collapse.ZIndex=8 end
   end
-  top.Position=UDim2.new(.5,-95,0,6);rail.Position=UDim2.new(0,6,.25,0)
-  for _,key in {"top","rail","input","wallhop","hp","clock","profile","dock"} do
-   local target=if key=="top" or key=="rail" then self.previewPanels[key].p elseif key=="input" then self.inputRoot elseif key=="wallhop" then self.wallhop else self.widgets[key].p
+  top.Position=UDim2.new(.5,-95,0,6)
+  for _,key in {"top","input","wallhop","hp","clock","profile","dock"} do
+   local target=if key=="top" then self.previewPanels[key].p elseif key=="input" then self.inputRoot elseif key=="wallhop" then self.wallhop else self.widgets[key].p
    local hit=U.new("TextButton",{Name="PreviewDrag_"..key,Text="",BackgroundTransparency=1,AutoButtonColor=false,Active=true,Visible=false,ZIndex=15},parent)
    local outline=U.stroke(hit,Color3.fromRGB(224,183,255),0,1.5);U.corner(hit,6)
    self.previewHandles[key]={p=hit,target=target,rim=outline}
@@ -1871,7 +1843,7 @@ function H:layoutPreview(s)
  if not self.previewPanels then return end
  local vp=self.view.AbsoluteSize
  if vp.X<2 or vp.Y<2 then return end
- for _,key in {"top","rail"} do
+ for _,key in {"top"} do
   local item=self.previewPanels[key]
   local panel=item.p
   local factor=math.clamp(math.min(vp.X/850,vp.Y/420),.35,.74)
@@ -1887,7 +1859,7 @@ function H:layoutPreview(s)
   panel.AnchorPoint=Vector2.zero
   panel.Size=UDim2.fromOffset(originalW,originalH)
   panel.Position=UDim2.fromOffset(math.clamp(x,0,math.max(0,vp.X-w)),math.clamp(y,0,math.max(0,vp.Y-height)))
-  panel.Visible=if key=="top" then s.topCapsule else s.robloxRail
+  panel.Visible=s.topCapsule
   item.rim.Color=U.hex(s.accent)
   item.rim.Transparency=if key=="top" then .42 else .48
   item.rim.Thickness=1
@@ -1896,7 +1868,7 @@ function H:layoutPreview(s)
   if item.collapse then item.collapse.FontFace=face end
  end
  for key,item in self.previewHandles do
-  local isPanel=key=="top" or key=="rail"
+  local isPanel=key=="top"
   local allowed=if isPanel then s.movePanels else not s.locked
   item.p.Visible=item.target.Visible and allowed
   item.p.Active=allowed;item.p.Interactable=allowed
@@ -4508,8 +4480,8 @@ local function scripts(ui,a)
 end
 function E.render(a,tab,ui)
  if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. Custom lock keybind is in Interaction. Menu uses F8 (F7 when F8 is assigned to lock). Native Shift Lock is disabled where Roblox allows it.",43);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme",{topCapsule=true,robloxRail=true,constellationBgA=true,constellationBgB=true,constellationLineA=true,constellationLineB=true,constellationNodeA=true,constellationNodeB=true});ui:title("CONSTELLATION COLORS");for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end;ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
- elseif tab=="HUD" then preview(ui,a,true);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:control("compact");ui:title("TOP / LEFT PANELS");for _,v in {"topCapsule","robloxRail","movePanels"} do ui:control(v) end;ui:note("Enable moving panels to drag the AETHER capsule and CHAT / BAG / LIST shortcuts.",38);ui:chips({"Reset panel positions"},function() a:patch({topCustom=false,railCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);local widgets={"hp","clock","profile","dock","top","rail"};if not table.find(widgets,a.hudTab) then a.hudTab="hp" end;ui:chips(widgets,function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
-  if k=="top" or k=="rail" then for _,v in {k.."Custom",k.."X",k.."Y"} do ui:control(v) end
+ elseif tab=="HUD" then preview(ui,a,true);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:control("compact");ui:title("TOP PANEL");for _,v in {"topCapsule","movePanels"} do ui:control(v) end;ui:note("Enable moving panels to drag the AETHER capsule.",34);ui:chips({"Reset panel position"},function() a:patch({topCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);local widgets={"hp","clock","profile","dock","top"};if not table.find(widgets,a.hudTab) then a.hudTab="hp" end;ui:chips(widgets,function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
+  if k=="top" then for _,v in {k.."Custom",k.."X",k.."Y"} do ui:control(v) end
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
  elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
   if tab=="Character" then
@@ -4662,6 +4634,17 @@ function E.render(a,tab,ui)
    ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
     ballInfoElapsed+=dt
     if ballInfoElapsed>=.25 then ballInfoElapsed=0;if ui.opened then refreshBallInfo() end end
+   end)
+   ui:title("SHOT ARC / BETA")
+   ui:chips({"Shot Arc"},function() vb:toggleShotArc();ui:sync() end,1,function() return if vb.shotArc.enabled then "Shot Arc" else "" end)
+   ui:chips({"Auto","Spike","Set","Serve"},function(n) vb.shotArc.mode=n;ui:sync() end,2,function() return vb.shotArc.mode end)
+   ui:note("Preview of a hypothetical next contact, not the incoming ball. Learns velocity from your observed hits; uses current power and tilt stats. No server hit formula is available.",76)
+   local arcStatus=ui:note("",64)
+   ui:watch(function() arcStatus.Text=vb.shotArc.status end)
+   local arcRefresh=0
+   ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
+    arcRefresh+=dt
+    if arcRefresh>=.25 then arcRefresh=0;if ui.opened then arcStatus.Text=vb.shotArc.status end end
    end)
    ui:title("TRAJECTORY ESP / BETA")
    ui:note("Controller velocity when available; position sampling fallback. Green = IN, red = OUT, amber = obstacle or unknown court. Prediction stops at first contact; unreplicated curve effects remain estimates.",76)
@@ -6180,18 +6163,6 @@ function U.topPanel(parent)
   buttons[index]=button
  end
  return panel,rim,buttons
-end
-function U.railPanel(parent)
- local panel=U.frame(parent,"RobloxShortcuts",nil,UDim2.fromOffset(54,176),Color3.fromRGB(19,16,32),.16)
- panel.AnchorPoint=Vector2.new(0,.5);U.corner(panel,14)
- local rim=U.stroke(panel,Color3.fromRGB(166,138,255),.48)
- local buttons={}
- for index,label in {"CHAT","BAG","LIST"} do
-  local button=U.button(panel,label);button.TextSize=10;button.Size=UDim2.fromOffset(44,38);button.Position=UDim2.fromOffset(5,5+(index-1)*43)
-  buttons[index]=button
- end
- local collapse=U.button(panel,"‹");collapse.Size=UDim2.fromOffset(44,34);collapse.Position=UDim2.fromOffset(5,136)
- return panel,rim,buttons,collapse
 end
 function U.hex(s) return Color3.fromHex(s) end
 function U.font(s) local w=Enum.FontWeight[s.weight];if s.fontAsset~="" then return Font.new("rbxassetid://"..s.fontAsset,w) end;local base=Font.fromEnum(Enum.Font[s.font]);return Font.new(base.Family,w,base.Style) end
@@ -9822,6 +9793,216 @@ do
     scope:add(function() esp.enabled=false;hide();clearSamples() end)
 end
 
+-- Read-only next-shot estimate. Learn observed launch velocities rather than
+-- inventing an authoritative server spike/serve formula.
+do
+    local rs=game:GetService("ReplicatedStorage")
+    local vb=app.volleyball
+    local arc={enabled=false,mode="Auto",status="Off"}
+    vb.shotArc=arc
+    local controller,handlers,config,connection
+    local learned,pending={},nil
+    local folder,marker,caption
+    local segments={}
+    local nextAt,retryAt,filterAt=0,0,0
+    local map
+    local params=RaycastParams.new()
+    params.FilterType=Enum.RaycastFilterType.Include
+    local function flat(v) return Vector3.new(v.X,0,v.Z) end
+    local function stat(name)
+        local v=player:GetAttribute("Multiplier_"..name)
+        return if type(v)=="number" and v==v and v>0 and v<100 then v else 1
+    end
+    local function rootPart()
+        local char=player.Character
+        return char and char:FindFirstChild("HumanoidRootPart")
+    end
+    local function kind()
+        if handlers.States.IsServing() or (vb.play and vb.play.serveActive) then return "Serve" end
+        return if handlers.States.IsJumping() then "Spike" else "Set"
+    end
+    local function power(k) return stat(if k=="Spike" then "SpikePower" elseif k=="Serve" then "ServePower" else "SetPower") end
+    local function facing(root)
+        local f=flat(root.CFrame.LookVector)
+        return if f.Magnitude>.01 then f.Unit else Vector3.zAxis
+    end
+    local function tilt(root)
+        local t=handlers.Values.TiltDirection
+        return if typeof(t)=="Vector3" then math.clamp(flat(t):Dot(root.CFrame.RightVector),-1,1) else 0
+    end
+    local function stateFor(id)
+        if not controller then return nil end
+        local active=id or rs:GetAttribute("ActiveBall")
+        local one,count=nil,0
+        for index,state in pairs(controller.ActiveBalls) do
+            local b=type(state)=="table" and state.Ball
+            if typeof(b)=="Instance" and b:IsA("Model") and b.PrimaryPart and b:IsDescendantOf(workspace) then
+                if active~=nil and tostring(b:GetAttribute("ServerId") or index)==tostring(active) then return state end
+                one=state;count+=1
+            end
+        end
+        return if active==nil and count==1 then one else nil
+    end
+    local function hide()
+        if folder then folder:Destroy();folder=nil end
+        table.clear(segments);marker=nil;caption=nil
+    end
+    local function stop()
+        hide();pending=nil
+        if connection then connection:Disconnect();connection=nil end
+        controller=nil;handlers=nil;config=nil;arc.enabled=false;arc.status="Off"
+    end
+    local function connect()
+        if connection and controller and handlers and config then return true end
+        if os.clock()<retryAt then return false end
+        retryAt=os.clock()+2
+        local knit=require(rs.Packages.Knit)
+        controller=knit.GetController("BallController")
+        local gc=game:GetService("ReplicatedFirst"):FindFirstChild("Controllers")
+        gc=gc and gc:FindFirstChild("GameController")
+        if not gc or not controller or type(controller.ActiveBalls)~="table" then return false end
+        handlers=require(gc.Handlers)
+        config=require(rs.Configuration.Game)
+        local svc=knit.GetService("BallService")
+        connection=svc.BallTouched:Connect(function(who,id)
+            if who~=player or not arc.enabled then return end
+            local root=rootPart()
+            if not root then return end
+            local st=stateFor(id)
+            if not st then return end
+            local k=kind()
+            pending={id=id,k=k,at=os.clock(),before=st.Velocity,forward=facing(root),right=root.CFrame.RightVector,power=power(k),tilt=tilt(root),tiltPower=stat("TiltPower")}
+        end)
+        return true
+    end
+    local function sample(now)
+        if not pending then return end
+        local p=pending
+        local st=stateFor(p.id)
+        if now-p.at>.3 or not st then pending=nil;return end
+        local v=st.Velocity
+        if now-p.at<.035 or typeof(v)~="Vector3" or v.Magnitude<2 or v.Magnitude>250 then return end
+        if typeof(p.before)=="Vector3" and (v-p.before).Magnitude<2 and now-p.at<.13 then return end
+        local forward=flat(v):Dot(p.forward)
+        if forward<1 then pending=nil;return end
+        local g=rs:GetAttribute("Modifier_BallGravity")
+        if type(g)~="number" or g~=g then g=config.Physics.Gravity end
+        local y=v.Y+g*(now-p.at)
+        local lateral=flat(v):Dot(p.right)
+        local previous=learned[p.k]
+        local record={forward=forward/p.power,vertical=y/p.power,side=lateral/p.power,tilt=p.tilt*p.tiltPower,count=1}
+        if previous then
+            record.count=previous.count+1
+            record.forward=previous.forward*.4+record.forward*.6
+            record.vertical=previous.vertical*.4+record.vertical*.6
+            if math.abs(record.tilt)>.08 and math.abs(previous.tilt)>.08 then
+                record.side=previous.side*.4+record.side*.6
+                record.tilt=previous.tilt*.4+record.tilt*.6
+            end
+        end
+        learned[p.k]=record;pending=nil
+    end
+    local function makePart(name)
+        local p=Instance.new("Part");p.Name=name;p.Anchored=true;p.CanCollide=false;p.CanTouch=false;p.CanQuery=false;p.CastShadow=false
+        p.Material=Enum.Material.Neon;p.Color=Color3.fromRGB(197,143,255);p.Transparency=1;p.Parent=folder
+        return p
+    end
+    local function visual()
+        if folder and folder.Parent then return end
+        hide();folder=Instance.new("Folder");folder.Name="AETHER_ShotArc";folder.Parent=workspace
+        for i=1,80 do segments[i]=makePart("Arc") end
+        marker=makePart("Landing");marker.Shape=Enum.PartType.Ball;marker.Size=Vector3.new(.9,.9,.9)
+        local bb=Instance.new("BillboardGui");bb.Size=UDim2.fromOffset(126,28);bb.StudsOffsetWorldSpace=Vector3.new(0,1.2,0);bb.AlwaysOnTop=false;bb.Parent=marker
+        caption=Instance.new("TextLabel");caption.BackgroundTransparency=1;caption.Size=UDim2.fromScale(1,1);caption.TextSize=13;caption.Font=Enum.Font.GothamBold;caption.TextColor3=marker.Color;caption.TextStrokeTransparency=.25;caption.Parent=bb
+    end
+    local function invisible()
+        if not folder then return end
+        for _,p in segments do p.Transparency=1 end
+        marker.Transparency=1;caption.Text=""
+    end
+    function vb:toggleShotArc()
+        if arc.enabled then stop();return end
+        arc.enabled=true;arc.status="Waiting for your first hit";retryAt=0;nextAt=0
+    end
+    local function tick()
+        if not arc.enabled then return end
+        local now=os.clock()
+        if app.stopping or not gui.Parent or app.mode~="Game" then stop();return end
+        if not connect() then arc.status="Waiting for game data";return end
+        sample(now)
+        if now<nextAt then return end;nextAt=now+.067
+        if player:GetAttribute("Gameplay_InGame")~=true then invisible();pending=nil;arc.status="Waiting for match";return end
+        local root=rootPart()
+        local st=stateFor(nil)
+        if not root or not st or not st.Ball.PrimaryPart then invisible();arc.status="Waiting for active ball";return end
+        local k=if arc.mode=="Auto" then kind() else arc.mode
+        local origin=st.Ball.PrimaryPart.Position
+        if (origin-root.Position).Magnitude>18 then invisible();arc.status="Waiting for nearby ball";return end
+        local m=learned[k]
+        local f=facing(root);local right=flat(root.CFrame.RightVector).Unit
+        local t=tilt(root)*stat("TiltPower")
+        local strength=power(k)
+        local v,source
+        if m then
+            local side=if math.abs(m.tilt)>.08 then m.side*math.clamp(t/m.tilt,-3,3) else m.side
+            v=(f*m.forward+right*side+Vector3.yAxis*m.vertical)*strength
+            source="Learned "..tostring(m.count).." hits"
+        elseif k=="Set" then
+            local c=config.Ball.Set
+            local range=c.VerticalVelocity
+            local move=player.Character:FindFirstChildOfClass("Humanoid")
+            v=(f*c.LookVectorHorizontalVelocity+(move and flat(move.MoveDirection) or Vector3.zero)*c.MoveHorizontalVelocity+Vector3.yAxis*((range.Min+range.Max)*.5))*strength
+            source="Config estimate"
+        else
+            invisible();arc.status="Make one "..k.." hit to calibrate";return
+        end
+        local currentMap=workspace:FindFirstChild("Map")
+        if not currentMap then invisible();arc.status="Waiting for map";return end
+        if currentMap~=map or now>=filterAt then
+            map=currentMap;filterAt=now+1
+            local parts={}
+            for _,p in map:GetDescendants() do
+                if p:IsA("BasePart") and p.CanQuery then
+                    local skip=false;local node=p
+                    while node and node~=map do if node:HasTag("BallNoCollide") then skip=true;break end;node=node.Parent end
+                    if not skip then table.insert(parts,p) end
+                end
+            end
+            params.FilterDescendantsInstances=parts
+        end
+        local g=rs:GetAttribute("Modifier_BallGravity")
+        if type(g)~="number" or g~=g or g<=0 then g=config.Physics.Gravity end
+        local radius=config.Physics.Radius
+        if type(radius)~="number" then radius=1.2835 end
+        radius*=math.clamp(tonumber(rs:GetAttribute("Modifier_BallSizeMultiplier")) or 1,.05,10)
+        visual()
+        local prev=origin;local hit
+        for i,p in segments do
+            if hit then p.Transparency=1;continue end
+            local time=i*.05
+            local target=origin+v*time-Vector3.yAxis*(.5*g*time*time)
+            local delta=target-prev
+            if delta.Magnitude<.001 then p.Transparency=1;continue end
+            hit=workspace:Spherecast(prev,radius,delta,params)
+            if hit then target=prev+delta.Unit*hit.Distance end
+            if (target-prev).Magnitude>.001 then
+                p.Size=Vector3.new(.15,.15,(target-prev).Magnitude);p.CFrame=CFrame.lookAt((prev+target)*.5,target);p.Transparency=.15
+            else p.Transparency=1 end
+            prev=target
+        end
+        marker.Transparency=if hit then .15 else 1
+        if hit then marker.Position=hit.Position+hit.Normal*.15 end
+        caption.Text=if hit then (if hit.Normal.Y>.5 then "EST. LANDING" else "EST. CONTACT") else ""
+        arc.status=k.." | "..source.." | Power "..string.format("%.2fx",strength).." | Tilt "..string.format("%.2fx",stat("TiltPower"))
+    end
+    scope:on(RunService.Heartbeat,function()
+        if not arc.enabled then return end
+        local ok,err=pcall(tick)
+        if not ok then hide();arc.status="Retrying | "..tostring(err);nextAt=os.clock()+1 end
+    end)
+    scope:add(stop)
+end
+
 function app:modeSet(mode)
     assert(mode == "Game" or mode == "Simulator", "Invalid AETHER mode")
     self.mode = mode
@@ -9958,7 +10139,7 @@ function app:onMenu(open)
     if open and self.view then self.view:releaseLock(self.view:nativeLockAvailable()) end
 end
 function app:drag(input, key, widget, frame, source)
-    local panel=key=="top" or key=="rail"
+    local panel=key=="top"
     if panel then if not self.s.movePanels then return end
     elseif self.s.locked then return end
     if key=="cross" then return end
@@ -10099,13 +10280,12 @@ scope:on(panelToggle.Activated,function()
     app:updateEditor()
 end)
 local handles={}
-local positions={"hp","clock","profile","dock","input","wallhop","top","rail"}
-local function isPanel(key) return key=="top" or key=="rail" end
+local positions={"hp","clock","profile","dock","input","wallhop","top"}
+local function isPanel(key) return key=="top" end
 local function widgetFor(key)
     if key=="input" then return hud.inputRoot end
     if key=="wallhop" then return hud.wallhop end
     if key=="top" then return ui.top end
-    if key=="rail" then return ui.rail end
     return hud.widgets[key].p
 end
 local function coord(key,topLeft,size,vp)
@@ -10173,7 +10353,7 @@ function app:updateEditor()
     panelToggle.BackgroundColor3=if self.s.movePanels then Color3.fromRGB(105,71,164) else Color3.fromRGB(52,40,77)
     for _,key in positions do
         local b,target=handles[key],widgetFor(key)
-        b.Visible=target.Visible and (if key=="top" then self.s.topCapsule elseif key=="rail" then self.s.robloxRail elseif key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
+        b.Visible=target.Visible and (if key=="top" then self.s.topCapsule elseif key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
         local locked=isPanel(key) and not self.s.movePanels
         b.Active=not locked;b.Interactable=not locked
         b.Text=key:upper()..(if locked then " · LOCKED" else " · MOVE")

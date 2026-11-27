@@ -172,18 +172,16 @@ function H.new(scope,parent,preview,go,drag,close,showPanels)
   self.previewPanels={}
   self.previewHandles={}
   local top,topRim,topButtons=U.topPanel(parent)
-  local rail,railRim,railButtons,collapse=U.railPanel(parent)
   self.previewPanels.top={p=top,rim=topRim,buttons=topButtons}
-  self.previewPanels.rail={p=rail,rim=railRim,buttons=railButtons,collapse=collapse}
   for _,item in self.previewPanels do
    item.p.AnchorPoint=Vector2.zero;item.p.ZIndex=7
    item.scale=U.new("UIScale",{Scale=.55},item.p)
    for _,button in item.buttons do button.Active=false;button.Interactable=false;button.ZIndex=8 end
    if item.collapse then item.collapse.Active=false;item.collapse.Interactable=false;item.collapse.ZIndex=8 end
   end
-  top.Position=UDim2.new(.5,-95,0,6);rail.Position=UDim2.new(0,6,.25,0)
-  for _,key in {"top","rail","input","wallhop","hp","clock","profile","dock"} do
-   local target=if key=="top" or key=="rail" then self.previewPanels[key].p elseif key=="input" then self.inputRoot elseif key=="wallhop" then self.wallhop else self.widgets[key].p
+  top.Position=UDim2.new(.5,-95,0,6)
+  for _,key in {"top","input","wallhop","hp","clock","profile","dock"} do
+   local target=if key=="top" then self.previewPanels[key].p elseif key=="input" then self.inputRoot elseif key=="wallhop" then self.wallhop else self.widgets[key].p
    local hit=U.new("TextButton",{Name="PreviewDrag_"..key,Text="",BackgroundTransparency=1,AutoButtonColor=false,Active=true,Visible=false,ZIndex=15},parent)
    local outline=U.stroke(hit,Color3.fromRGB(224,183,255),0,1.5);U.corner(hit,6)
    self.previewHandles[key]={p=hit,target=target,rim=outline}
@@ -196,7 +194,7 @@ function H:layoutPreview(s)
  if not self.previewPanels then return end
  local vp=self.view.AbsoluteSize
  if vp.X<2 or vp.Y<2 then return end
- for _,key in {"top","rail"} do
+ for _,key in {"top"} do
   local item=self.previewPanels[key]
   local panel=item.p
   local factor=math.clamp(math.min(vp.X/850,vp.Y/420),.35,.74)
@@ -212,7 +210,7 @@ function H:layoutPreview(s)
   panel.AnchorPoint=Vector2.zero
   panel.Size=UDim2.fromOffset(originalW,originalH)
   panel.Position=UDim2.fromOffset(math.clamp(x,0,math.max(0,vp.X-w)),math.clamp(y,0,math.max(0,vp.Y-height)))
-  panel.Visible=if key=="top" then s.topCapsule else s.robloxRail
+  panel.Visible=s.topCapsule
   item.rim.Color=U.hex(s.accent)
   item.rim.Transparency=if key=="top" then .42 else .48
   item.rim.Thickness=1
@@ -221,7 +219,7 @@ function H:layoutPreview(s)
   if item.collapse then item.collapse.FontFace=face end
  end
  for key,item in self.previewHandles do
-  local isPanel=key=="top" or key=="rail"
+  local isPanel=key=="top"
   local allowed=if isPanel then s.movePanels else not s.locked
   item.p.Visible=item.target.Visible and allowed
   item.p.Active=allowed;item.p.Interactable=allowed

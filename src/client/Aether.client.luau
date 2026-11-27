@@ -2168,6 +2168,216 @@ do
     scope:add(function() esp.enabled=false;hide();clearSamples() end)
 end
 
+-- Read-only next-shot estimate. Learn observed launch velocities rather than
+-- inventing an authoritative server spike/serve formula.
+do
+    local rs=game:GetService("ReplicatedStorage")
+    local vb=app.volleyball
+    local arc={enabled=false,mode="Auto",status="Off"}
+    vb.shotArc=arc
+    local controller,handlers,config,connection
+    local learned,pending={},nil
+    local folder,marker,caption
+    local segments={}
+    local nextAt,retryAt,filterAt=0,0,0
+    local map
+    local params=RaycastParams.new()
+    params.FilterType=Enum.RaycastFilterType.Include
+    local function flat(v) return Vector3.new(v.X,0,v.Z) end
+    local function stat(name)
+        local v=player:GetAttribute("Multiplier_"..name)
+        return if type(v)=="number" and v==v and v>0 and v<100 then v else 1
+    end
+    local function rootPart()
+        local char=player.Character
+        return char and char:FindFirstChild("HumanoidRootPart")
+    end
+    local function kind()
+        if handlers.States.IsServing() or (vb.play and vb.play.serveActive) then return "Serve" end
+        return if handlers.States.IsJumping() then "Spike" else "Set"
+    end
+    local function power(k) return stat(if k=="Spike" then "SpikePower" elseif k=="Serve" then "ServePower" else "SetPower") end
+    local function facing(root)
+        local f=flat(root.CFrame.LookVector)
+        return if f.Magnitude>.01 then f.Unit else Vector3.zAxis
+    end
+    local function tilt(root)
+        local t=handlers.Values.TiltDirection
+        return if typeof(t)=="Vector3" then math.clamp(flat(t):Dot(root.CFrame.RightVector),-1,1) else 0
+    end
+    local function stateFor(id)
+        if not controller then return nil end
+        local active=id or rs:GetAttribute("ActiveBall")
+        local one,count=nil,0
+        for index,state in pairs(controller.ActiveBalls) do
+            local b=type(state)=="table" and state.Ball
+            if typeof(b)=="Instance" and b:IsA("Model") and b.PrimaryPart and b:IsDescendantOf(workspace) then
+                if active~=nil and tostring(b:GetAttribute("ServerId") or index)==tostring(active) then return state end
+                one=state;count+=1
+            end
+        end
+        return if active==nil and count==1 then one else nil
+    end
+    local function hide()
+        if folder then folder:Destroy();folder=nil end
+        table.clear(segments);marker=nil;caption=nil
+    end
+    local function stop()
+        hide();pending=nil
+        if connection then connection:Disconnect();connection=nil end
+        controller=nil;handlers=nil;config=nil;arc.enabled=false;arc.status="Off"
+    end
+    local function connect()
+        if connection and controller and handlers and config then return true end
+        if os.clock()<retryAt then return false end
+        retryAt=os.clock()+2
+        local knit=require(rs.Packages.Knit)
+        controller=knit.GetController("BallController")
+        local gc=game:GetService("ReplicatedFirst"):FindFirstChild("Controllers")
+        gc=gc and gc:FindFirstChild("GameController")
+        if not gc or not controller or type(controller.ActiveBalls)~="table" then return false end
+        handlers=require(gc.Handlers)
+        config=require(rs.Configuration.Game)
+        local svc=knit.GetService("BallService")
+        connection=svc.BallTouched:Connect(function(who,id)
+            if who~=player or not arc.enabled then return end
+            local root=rootPart()
+            if not root then return end
+            local st=stateFor(id)
+            if not st then return end
+            local k=kind()
+            pending={id=id,k=k,at=os.clock(),before=st.Velocity,forward=facing(root),right=root.CFrame.RightVector,power=power(k),tilt=tilt(root),tiltPower=stat("TiltPower")}
+        end)
+        return true
+    end
+    local function sample(now)
+        if not pending then return end
+        local p=pending
+        local st=stateFor(p.id)
+        if now-p.at>.3 or not st then pending=nil;return end
+        local v=st.Velocity
+        if now-p.at<.035 or typeof(v)~="Vector3" or v.Magnitude<2 or v.Magnitude>250 then return end
+        if typeof(p.before)=="Vector3" and (v-p.before).Magnitude<2 and now-p.at<.13 then return end
+        local forward=flat(v):Dot(p.forward)
+        if forward<1 then pending=nil;return end
+        local g=rs:GetAttribute("Modifier_BallGravity")
+        if type(g)~="number" or g~=g then g=config.Physics.Gravity end
+        local y=v.Y+g*(now-p.at)
+        local lateral=flat(v):Dot(p.right)
+        local previous=learned[p.k]
+        local record={forward=forward/p.power,vertical=y/p.power,side=lateral/p.power,tilt=p.tilt*p.tiltPower,count=1}
+        if previous then
+            record.count=previous.count+1
+            record.forward=previous.forward*.4+record.forward*.6
+            record.vertical=previous.vertical*.4+record.vertical*.6
+            if math.abs(record.tilt)>.08 and math.abs(previous.tilt)>.08 then
+                record.side=previous.side*.4+record.side*.6
+                record.tilt=previous.tilt*.4+record.tilt*.6
+            end
+        end
+        learned[p.k]=record;pending=nil
+    end
+    local function makePart(name)
+        local p=Instance.new("Part");p.Name=name;p.Anchored=true;p.CanCollide=false;p.CanTouch=false;p.CanQuery=false;p.CastShadow=false
+        p.Material=Enum.Material.Neon;p.Color=Color3.fromRGB(197,143,255);p.Transparency=1;p.Parent=folder
+        return p
+    end
+    local function visual()
+        if folder and folder.Parent then return end
+        hide();folder=Instance.new("Folder");folder.Name="AETHER_ShotArc";folder.Parent=workspace
+        for i=1,80 do segments[i]=makePart("Arc") end
+        marker=makePart("Landing");marker.Shape=Enum.PartType.Ball;marker.Size=Vector3.new(.9,.9,.9)
+        local bb=Instance.new("BillboardGui");bb.Size=UDim2.fromOffset(126,28);bb.StudsOffsetWorldSpace=Vector3.new(0,1.2,0);bb.AlwaysOnTop=false;bb.Parent=marker
+        caption=Instance.new("TextLabel");caption.BackgroundTransparency=1;caption.Size=UDim2.fromScale(1,1);caption.TextSize=13;caption.Font=Enum.Font.GothamBold;caption.TextColor3=marker.Color;caption.TextStrokeTransparency=.25;caption.Parent=bb
+    end
+    local function invisible()
+        if not folder then return end
+        for _,p in segments do p.Transparency=1 end
+        marker.Transparency=1;caption.Text=""
+    end
+    function vb:toggleShotArc()
+        if arc.enabled then stop();return end
+        arc.enabled=true;arc.status="Waiting for your first hit";retryAt=0;nextAt=0
+    end
+    local function tick()
+        if not arc.enabled then return end
+        local now=os.clock()
+        if app.stopping or not gui.Parent or app.mode~="Game" then stop();return end
+        if not connect() then arc.status="Waiting for game data";return end
+        sample(now)
+        if now<nextAt then return end;nextAt=now+.067
+        if player:GetAttribute("Gameplay_InGame")~=true then invisible();pending=nil;arc.status="Waiting for match";return end
+        local root=rootPart()
+        local st=stateFor(nil)
+        if not root or not st or not st.Ball.PrimaryPart then invisible();arc.status="Waiting for active ball";return end
+        local k=if arc.mode=="Auto" then kind() else arc.mode
+        local origin=st.Ball.PrimaryPart.Position
+        if (origin-root.Position).Magnitude>18 then invisible();arc.status="Waiting for nearby ball";return end
+        local m=learned[k]
+        local f=facing(root);local right=flat(root.CFrame.RightVector).Unit
+        local t=tilt(root)*stat("TiltPower")
+        local strength=power(k)
+        local v,source
+        if m then
+            local side=if math.abs(m.tilt)>.08 then m.side*math.clamp(t/m.tilt,-3,3) else m.side
+            v=(f*m.forward+right*side+Vector3.yAxis*m.vertical)*strength
+            source="Learned "..tostring(m.count).." hits"
+        elseif k=="Set" then
+            local c=config.Ball.Set
+            local range=c.VerticalVelocity
+            local move=player.Character:FindFirstChildOfClass("Humanoid")
+            v=(f*c.LookVectorHorizontalVelocity+(move and flat(move.MoveDirection) or Vector3.zero)*c.MoveHorizontalVelocity+Vector3.yAxis*((range.Min+range.Max)*.5))*strength
+            source="Config estimate"
+        else
+            invisible();arc.status="Make one "..k.." hit to calibrate";return
+        end
+        local currentMap=workspace:FindFirstChild("Map")
+        if not currentMap then invisible();arc.status="Waiting for map";return end
+        if currentMap~=map or now>=filterAt then
+            map=currentMap;filterAt=now+1
+            local parts={}
+            for _,p in map:GetDescendants() do
+                if p:IsA("BasePart") and p.CanQuery then
+                    local skip=false;local node=p
+                    while node and node~=map do if node:HasTag("BallNoCollide") then skip=true;break end;node=node.Parent end
+                    if not skip then table.insert(parts,p) end
+                end
+            end
+            params.FilterDescendantsInstances=parts
+        end
+        local g=rs:GetAttribute("Modifier_BallGravity")
+        if type(g)~="number" or g~=g or g<=0 then g=config.Physics.Gravity end
+        local radius=config.Physics.Radius
+        if type(radius)~="number" then radius=1.2835 end
+        radius*=math.clamp(tonumber(rs:GetAttribute("Modifier_BallSizeMultiplier")) or 1,.05,10)
+        visual()
+        local prev=origin;local hit
+        for i,p in segments do
+            if hit then p.Transparency=1;continue end
+            local time=i*.05
+            local target=origin+v*time-Vector3.yAxis*(.5*g*time*time)
+            local delta=target-prev
+            if delta.Magnitude<.001 then p.Transparency=1;continue end
+            hit=workspace:Spherecast(prev,radius,delta,params)
+            if hit then target=prev+delta.Unit*hit.Distance end
+            if (target-prev).Magnitude>.001 then
+                p.Size=Vector3.new(.15,.15,(target-prev).Magnitude);p.CFrame=CFrame.lookAt((prev+target)*.5,target);p.Transparency=.15
+            else p.Transparency=1 end
+            prev=target
+        end
+        marker.Transparency=if hit then .15 else 1
+        if hit then marker.Position=hit.Position+hit.Normal*.15 end
+        caption.Text=if hit then (if hit.Normal.Y>.5 then "EST. LANDING" else "EST. CONTACT") else ""
+        arc.status=k.." | "..source.." | Power "..string.format("%.2fx",strength).." | Tilt "..string.format("%.2fx",stat("TiltPower"))
+    end
+    scope:on(RunService.Heartbeat,function()
+        if not arc.enabled then return end
+        local ok,err=pcall(tick)
+        if not ok then hide();arc.status="Retrying | "..tostring(err);nextAt=os.clock()+1 end
+    end)
+    scope:add(stop)
+end
+
 function app:modeSet(mode)
     assert(mode == "Game" or mode == "Simulator", "Invalid AETHER mode")
     self.mode = mode
@@ -2304,7 +2514,7 @@ function app:onMenu(open)
     if open and self.view then self.view:releaseLock(self.view:nativeLockAvailable()) end
 end
 function app:drag(input, key, widget, frame, source)
-    local panel=key=="top" or key=="rail"
+    local panel=key=="top"
     if panel then if not self.s.movePanels then return end
     elseif self.s.locked then return end
     if key=="cross" then return end
@@ -2445,13 +2655,12 @@ scope:on(panelToggle.Activated,function()
     app:updateEditor()
 end)
 local handles={}
-local positions={"hp","clock","profile","dock","input","wallhop","top","rail"}
-local function isPanel(key) return key=="top" or key=="rail" end
+local positions={"hp","clock","profile","dock","input","wallhop","top"}
+local function isPanel(key) return key=="top" end
 local function widgetFor(key)
     if key=="input" then return hud.inputRoot end
     if key=="wallhop" then return hud.wallhop end
     if key=="top" then return ui.top end
-    if key=="rail" then return ui.rail end
     return hud.widgets[key].p
 end
 local function coord(key,topLeft,size,vp)
@@ -2519,7 +2728,7 @@ function app:updateEditor()
     panelToggle.BackgroundColor3=if self.s.movePanels then Color3.fromRGB(105,71,164) else Color3.fromRGB(52,40,77)
     for _,key in positions do
         local b,target=handles[key],widgetFor(key)
-        b.Visible=target.Visible and (if key=="top" then self.s.topCapsule elseif key=="rail" then self.s.robloxRail elseif key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
+        b.Visible=target.Visible and (if key=="top" then self.s.topCapsule elseif key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
         local locked=isPanel(key) and not self.s.movePanels
         b.Active=not locked;b.Interactable=not locked
         b.Text=key:upper()..(if locked then " · LOCKED" else " · MOVE")
