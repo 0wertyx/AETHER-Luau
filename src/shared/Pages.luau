@@ -488,13 +488,6 @@ local function effectThumbnail(ui,card,a,item,kind)
   local sun=U.frame(host,"Sun",UDim2.fromScale(.67,.28),UDim2.fromOffset(16,16),Color3.fromRGB(255,241,211),.1);U.corner(sun,99)
   return
  end
- if kind=="Neon" then
-  local shade=U.hex(a.s.neonColor)
-  local symbol=U.label(host,item.icon or "✦",35)
-  symbol.TextXAlignment=Enum.TextXAlignment.Center;symbol.TextColor3=shade;symbol:SetAttribute("AETHERKeepFontColor",true)
-  U.gradient(host,Color3.fromRGB(39,30,66),Color3.fromRGB(17,14,32),45)
-  return
- end
  local vp=U.new("ViewportFrame",{Name="Effect3D",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Ambient=Color3.fromRGB(165,145,200),LightColor=Color3.fromRGB(245,230,255)},host)
  local wm=U.new("WorldModel",{},vp)
  local cam=U.new("Camera",{FieldOfView=40},vp);vp.CurrentCamera=cam
@@ -551,9 +544,6 @@ local function visualsHub(a,kind,ui)
   for _,style in S.defs.haloStyle.min do items[#items+1]={id="classic:"..style,name=style,classic=true} end
  elseif kind=="Wings" then
   for _,style in S.defs.wingStyle.min do items[#items+1]={id=style,name=style} end
- elseif kind=="Neon" then
-  for i,style in S.defs.neonMotion.min do items[#items+1]={id=style,name=style,icon=({"◇","◉","✧","♥","≈","✦"})[(i-1)%6+1]} end
-  items[#items+1]={id="aura",name="Aura",icon="✺"};items[#items+1]={id="trail",name="Trail",icon="≋"}
  else
   for _,row in S.skies do items[#items+1]={id=row[1],name=row[1],sky=row} end
  end
@@ -567,7 +557,6 @@ local function visualsHub(a,kind,ui)
   local s=a.s
   if kind=="Halos" then return if item.classic then s.halo and s.haloStyle==item.name else s[item.key.."Enabled"] end
   if kind=="Wings" then return s.wings and s.wingStyle==item.name end
-  if kind=="Neon" then return if item.id=="aura" or item.id=="trail" then s[item.id] else s.neon and s.neonMotion==item.name end
   return s.ambient and s.skyA==item.sky[2] and s.skyB==item.sky[3] and s.skyC==item.sky[4]
  end
  local function equip(item,on)
@@ -576,9 +565,6 @@ local function visualsHub(a,kind,ui)
    else a:set(item.key.."Enabled",on) end
   elseif kind=="Wings" then
    if on then a:patch({wings=true,wingStyle=item.name}) elseif active(item) then a:set("wings",false) end
-  elseif kind=="Neon" then
-   if item.id=="aura" or item.id=="trail" then a:set(item.id,on)
-   elseif on then a:patch({neon=true,neonMotion=item.name}) elseif active(item) then a:set("neon",false) end
   else
    if on then a:patch(S.sky(item.sky)) elseif active(item) then a:set("ambient",false) end
   end
@@ -641,9 +627,6 @@ local function visualsHub(a,kind,ui)
      local patch={halo=false};for i in S.haloV2Styles do patch["haloV2"..i.."Enabled"]=false end;a:patch(patch)
     end,1)
    elseif kind=="Wings" then ed:group("Wings",{wingStyle=true,wings=true})
-   elseif kind=="Neon" then
-    ed:group("Neon",{visualBloom=true,visualBloomStrength=true,visualBloomRadius=true,neonMotion=true})
-    for _,k in {"auraRate","trailLife","auraColor"} do ed:control(k) end
    else
     ed:group("Ambient",{starfallA=true,starfallB=true,bloom=true,worldBloomSize=true,worldExposure=true})
     ed:colorPicker("starfallA");ed:colorPicker("starfallB")
@@ -673,10 +656,6 @@ local function visualsHub(a,kind,ui)
  end
  ui.page:on(prev.Activated,function() move(-1) end);ui.page:on(nextButton.Activated,function() move(1) end)
  ui:watch(drawCards);buildEditor()
-end
-local function simMap(ui,a)
- local map=ui:row(132,"VirtualMap");map.ClipsDescendants=true;map.BackgroundColor3=U.hex("211E36");local center=U.label(map,"CAMERA ↑",11,UDim2.new(.5,-32,.5,-8),UDim2.fromOffset(70,18));center.TextColor3=U.hex(a.s.accent)
- for _,p in a.sim.players do local b=U.button(map,tostring(p.id));b.AnchorPoint=Vector2.new(.5,.5);b.Size=UDim2.fromOffset(27,25);b.Position=UDim2.fromScale(.5+p.x*.45,.5+p.y*.45);ui.page:on(b.InputBegan,function(i) ui:begin(i,function(pos) local rel=pos-map.AbsolutePosition;p.x=math.clamp((rel.X/map.AbsoluteSize.X-.5)/.45,-1,1);p.y=math.clamp((rel.Y/map.AbsoluteSize.Y-.5)/.45,-1,1);b.Position=UDim2.fromScale(.5+p.x*.45,.5+p.y*.45) end) end) end
 end
 local function configs(ui,a)
  local selected=a.configSelection
@@ -742,11 +721,7 @@ local function configs(ui,a)
   end,2)
  end
 end
-local function scripts(ui,a)
- local draft=a.scriptTab=="Luau draft";ui:chips({"AETHER Lua","Luau draft"},function(n) a:stopCue();a.scriptTab=n;ui:open("Scripts") end,2,function() return a.scriptTab or "AETHER Lua" end)
- ui:note(if draft then "Author Studio source here. Copy it to a ModuleScript in Studio for compilation. In-game checks are lexical only." else "Bounded HUD language: local values, arithmetic, if/elseif/else, hud calls, onHealthChanged(hp,maxHP) and onEvent(name,hp).",42)
- local k=if draft then "luau" else "cue";local box=ui:box("Source",a.s[k],125,function(v) if a.s[k]~=v then a:stopCue();a:set(k,v) end end);box.TextTruncate=Enum.TextTruncate.None
- local function esc(v) return (v:gsub("&","&amp;"):gsub("<","&lt;"):gsub(">","&gt;")) end
+local function esc(v) return (v:gsub("&","&amp;"):gsub("<","&lt;"):gsub(">","&gt;")) end
  local syntax=ui:note("",45);syntax.RichText=true;local function highlight() local code=esc(box.Text:sub(1,280));syntax.Text=code:gsub("[%a_][%w_]*",function(w) return if table.find({"local","function","if","then","else","end","return","and","or","nil","true","false"},w) then '<font color="#CF9BFF">'..w..'</font>' else w end) end;ui.page:on(box:GetPropertyChangedSignal("Text"),highlight);highlight()
  ui:chips({"Template","Complete symbol","Select source","Check"},function(op)
   if op=="Template" then a:set(k,S.defs[k].default);box.Text=a.s[k]
@@ -835,31 +810,16 @@ local function statePanel(ui,a)
   elapsed+=dt
   if elapsed>=.35 then elapsed=0;if ui.opened then refresh() end end
  end)
- ui:title("STATE OVERRIDE / SIMULATOR")
- ui:note("Test only: simulate a Busy state, then override it to Free. This affects virtual jump permission only; the Game mode monitor never writes states.",76)
- ui:chips({"Open simulator mode"},function() a:modeSet("Simulator");ui:sync() end,1)
- ui:chips({"Simulated Busy"},function()
-  assert(a.mode=="Simulator","Switch to Simulator first")
-  a.sim.stateBusy=not a.sim.stateBusy
-  a:log("State",if a.sim.stateBusy then "Simulated Busy" else "Simulated Free")
-  ui:sync()
- end,1,function() return if a.mode=="Simulator" and a.sim.stateBusy then "Simulated Busy" else "" end)
- ui:chips({"State Override"},function()
-  assert(a.mode=="Simulator","Switch to Simulator first")
-  a.sim.stateOverride=not a.sim.stateOverride
-  a:log("State",if a.sim.stateOverride then "Simulator override ON" else "Simulator override OFF")
-  ui:sync()
- end,1,function() return if a.mode=="Simulator" and a.sim.stateOverride then "State Override" else "" end)
 end
 function E.render(a,tab,ui)
- if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. Custom lock keybind is in Interaction. Menu uses F8 (F7 when F8 is assigned to lock). Native Shift Lock is disabled where Roblox allows it.",43);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme",{topCapsule=true,robloxRail=true,menuDock=true,menuWidth=true,menuHeight=true,menuFloatX=true,menuFloatY=true,menuResize=true,menuDrag=true,constellationBgA=true,constellationBgB=true,constellationLineA=true,constellationLineB=true,constellationNodeA=true,constellationNodeB=true});ui:title("CONSTELLATION COLORS");for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end;ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
+ if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Custom lock keybind is in Interaction. Menu uses F8 (F7 when F8 is assigned to lock). Native Shift Lock is disabled where Roblox allows it.",43);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme",{topCapsule=true,robloxRail=true,menuDock=true,menuWidth=true,menuHeight=true,menuFloatX=true,menuFloatY=true,menuResize=true,menuDrag=true,constellationBgA=true,constellationBgB=true,constellationLineA=true,constellationLineB=true,constellationNodeA=true,constellationNodeB=true});ui:title("CONSTELLATION COLORS");for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end;ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
  elseif tab=="HUD" then preview(ui,a,true);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:title("TOP PANEL");for _,v in {"topCapsule","movePanels"} do ui:control(v) end;ui:note("Enable moving panels to drag the AETHER capsule.",34);ui:chips({"Reset panel position"},function() a:patch({topCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness"} do ui:control(k) end;ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);local widgets={"clock","profile","dock","top"};if not table.find(widgets,a.hudTab) then a.hudTab="clock" end;ui:chips(widgets,function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
   if k=="top" then for _,v in {k.."Custom",k.."X",k.."Y"} do ui:control(v) end
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
  elseif tab=="Character" then
   ui:title("AETHER MOTION STUDIO V12.14")
   MotionStudio.mount(ui,a)
- elseif tab=="Wings" or tab=="Halos" or tab=="Neon" or tab=="Ambient" then
+ elseif tab=="Wings" or tab=="Halos" or tab=="Ambient" then
   if ui.catalogHost then visualsHub(a,tab,ui) end
  elseif tab=="Indicators" then preview(ui,a);gallery(ui,a);ui:group(tab,{shape=true});ui:title("PER-PLAYER OVERRIDE");local id=ui:box("UserId or simulator ID","1");local label=ui:box("Label override","");local color=ui:box("Override hex",a.s.arrowA);ui:chips({"Assign current shape","Remove override"},function(k) local p=S.copy(a.s.players);if k=="Assign current shape" then p[id.Text]={label=label.Text,color=color.Text,shape=a.s.shape} else p[id.Text]=nil end;a:set("players",p);ui:message("Overrides updated") end,2)
  elseif tab=="Cursor" then local f=ui:row(94,"CursorPreview");local host=U.frame(f,"OriginalCursorPreview",UDim2.fromScale(.5,.5),UDim2.fromOffset(60,60),nil,1);host.AnchorPoint=Vector2.new(.5,.5);a.preview={cursorHost=host};preset(ui,a,tab);ui:group(tab,{cursorTrailA=true,cursorTrailB=true});ui:title("TRAIL COLORS");ui:colorPicker("cursorTrailA");ui:colorPicker("cursorTrailB");ui:note("Cursor animation never moves its click hotspot. Enable Show hotspot marker to compare the real mouse position with the skin; use Pointer offset X/Y only for calibration. EditableImage renders desktop SVG; imports need an authorized asset ID.",57)
@@ -1113,40 +1073,7 @@ function E.render(a,tab,ui)
   end
   airControls(ui,a)
  elseif tab=="Fonts" then local text=ui:note(a.s.sample,62);text:SetAttribute("AETHERKeepFontColor",true);text.TextXAlignment=Enum.TextXAlignment.Center;local gradient=U.gradient(text,Color3.new(),Color3.new(),10);local glow=U.stroke(text,U.hex(a.s.fontB),.8);glow.ApplyStrokeMode=Enum.ApplyStrokeMode.Contextual;ui:watch(function() local s=a.s;text.Text=s.sample;text.FontFace=U.font(s);text.TextSize=s.fontSize*.23;text.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA);text.TextStrokeTransparency=1-s.fontOutline/100;gradient.Enabled=s.fontGradient;gradient.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB));glow.Color=U.hex(s.fontB);glow.Transparency=1-s.fontGlow*.008;glow.Thickness=1+s.fontGlow*.023 end);local query=ui:box("Search native typefaces",a.fontQuery or "",32,function(q) if q~=(a.fontQuery or "") then a.fontQuery=q;ui:open("Fonts") end end);local fonts={};for _,n in S.fonts do if n:lower():find((a.fontQuery or ""):lower(),1,true) then table.insert(fonts,n) end end;ui:chips(fonts,function(n) a:patch({font=n,fontAsset=""}) end,3,function() return a.s.font end);ui:group(tab,{font=true});preset(ui,a,tab)
- elseif tab=="Simulator" then preview(ui,a);ui:title("WORLD PREVIEW");ui:control("airControl");ui:control("airControlStrength");ui:control("airControlSpeed");ui:control("airTiltAngle");ui:control("bunnyHop");avatarPreview(ui,a,true);statePanel(ui,a);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
- elseif tab=="Scripts" then scripts(ui,a)
  elseif tab=="Profiles" then configs(ui,a)
- elseif tab=="List" then
-  ui:title("ROBLOX PLAYER LIST")
-  ui:chips({"Toggle native player list"},function() ui:togglePlayerList() end,1)
-  ui:note("Roblox updates its own player list automatically as players join or leave.",36)
- elseif tab=="Updates" then
-  ui:title("LIVE UPDATE CENTER")
-  local state=a.liveUpdate
-  state.unread=false
-  local version=ui:note("",36)
-  local status=ui:note("",48)
-  local notes=ui:note("",52)
-  local function sync()
-   version.Text="RUNNING VERSION  /  "..state.version..(if state.isTest then " · TEST "..tostring(state.testCount) else "").."\nWEBSITE  /  "..(if state.connected then (state.relayStatus or "CONNECTED · AUTO") else "RELAY OFFLINE")
-   status.Text=state.status
-   notes.Text=state.notes or "No update applied. Your HUD, configs and menu stay active during an update."
-  end
-  ui:watch(sync)
-  ui:chips({"Test update","Check updates","Rollback"},function(n)
-   if n=="Test update" then a:testLiveUpdate() elseif n=="Check updates" then a:checkLiveUpdate() else a:rollbackLiveUpdate() end
-  end,3)
-  ui:note("RELAY OFFLINE: install the server relay in your own place. HTTP DISABLED: enable Allow HTTP Requests in experience settings. ONLINE: website releases apply automatically.",65)
-  ui:title("UPDATE LIST")
-  local changelog=ui:note("",280)
-  ui:watch(function()
-   local rows={}
-   for i,release in state.releases do
-    if i>5 then break end
-    table.insert(rows,"v"..release.version.."  /  "..release.source.."  /  "..release.time.."\n"..release.notes)
-   end
-   changelog.Text=if #rows>0 then table.concat(rows,"\n\n") else "No updates applied in this session yet."
-  end)
  elseif tab=="Diagnostics" then local info=ui:note("",54);local log=ui:box("Session events","",165);log.TextEditable=false;local function refresh() info.Text=string.format("%s  ·  HP %s / %s  ·  %d tracked\n%s",a.mode,tostring(a.frame.hp),tostring(a.frame.max),#a.frame.targets,a.store.status);log.Text=table.concat(a.logs,"\n") end;ui:chips({"Refresh","Clear log","Reset settings"},function(n) if n=="Clear log" then table.clear(a.logs) elseif n=="Reset settings" then a:replace(S.defaults()) end;refresh() end,3);refresh();ui:title("SESSION");ui:note("Unload stops AETHER, removes its HUD and effects, and releases its camera and mouse controls. Export a bank first to retain local-only settings.",52);-- Allocate one confirmation row, once per Diagnostics page. Never append rows from clicks.
   local page=ui.page
   local row=ui:row(40,"UnloadConfirmation")
