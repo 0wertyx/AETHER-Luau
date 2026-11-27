@@ -895,8 +895,20 @@ local function glassSurface(frame,s)
   NumberSequenceKeypoint.new(.74,.78),NumberSequenceKeypoint.new(1,.15)
  })
 end
+local function workspacePrefix(s) return "ws"..s.workspaceMode end
 local function layoutKey(s)
- return table.concat({s.topX,s.topY,tostring(s.topCustom),s.topScale,tostring(s.layoutCustom),s.layoutX,s.layoutY,s.layoutW,s.layoutH,s.navWidth},":")
+ local prefix=workspacePrefix(s)
+ local values={s.topX,s.topY,tostring(s.topCustom),s.topScale,tostring(s.layoutCustom),s.layoutX,s.layoutY,s.layoutW,s.layoutH,s.navWidth,s.workspaceMode}
+ for _,node in {"Root","Main","Visuals","Utility","Interface","Page"} do
+  values[#values+1]=s[prefix..node.."X"];values[#values+1]=s[prefix..node.."Y"]
+ end
+ return table.concat(values,":")
+end
+local function workspaceOffset(self,node)
+ local draft=self.workspaceNodeDraft
+ if draft and draft.node==node then return draft.offset end
+ local s=self.app.s;local prefix=workspacePrefix(s)..node
+ return Vector2.new(s[prefix.."X"],s[prefix.."Y"])
 end
 local function chevron(parent)
  local glyph=U.frame(parent,"Chevron",UDim2.fromScale(.5,.5),UDim2.fromOffset(18,12),nil,1)
@@ -1097,7 +1109,6 @@ function UI.new(app,gui,scope)
  self.nav=U.frame(self.panel,"BranchNavigation",nil,nil,nil,1)
  self.navList=U.new("UIListLayout",{Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
  self.branchStack=U.frame(self.panel,"OpenBranches",nil,nil,nil,1);self.branchStack.ZIndex=3
- self.branchList=U.new("UIListLayout",{Padding=UDim.new(0,10),SortOrder=Enum.SortOrder.LayoutOrder},self.branchStack)
  self.pageBox=U.new("Frame",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true},self.panel)
  self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
  self.buttons={};self.branchCards={};self.branchButtons={}
@@ -1128,10 +1139,14 @@ function UI.new(app,gui,scope)
  function self:refreshBranches(immediate)
   if not self.branchRowH then return end
   local st=self.app.s
+  local stackY=0
   for _,branch in branches do
    local r=self.branchCards[branch.name];local b=self.branchButtons[branch.name]
    local open=st["branch"..branch.name]==true
    local height=self.branchTitleH+#r.tabs*self.branchRowH+6
+   local offset=workspaceOffset(self,branch.name)
+   local position=UDim2.fromOffset(offset.X,stackY+offset.Y)
+   if open then stackY+=height+10 end
    r.title.Size=UDim2.new(1,-24,0,self.branchTitleH-3)
    for i,tab in r.buttons do
     tab.Position=UDim2.fromOffset(6,self.branchTitleH+(i-1)*self.branchRowH)
@@ -1139,18 +1154,18 @@ function UI.new(app,gui,scope)
     tab.TextSize=math.clamp(self.branchRowH-9,10,14)
    end
    b.button.BackgroundColor3=U.hex(if open then st.uiHoverColor else st.uiButtonColor)
-   if immediate or open~=r.expanded or r.height~=height then
-    r.expanded=open;r.height=height;r.revision+=1
+   if immediate or open~=r.expanded or r.height~=height or r.targetPosition~=position then
+    r.expanded=open;r.height=height;r.targetPosition=position;r.revision+=1
     local revision=r.revision
     if r.tween then r.tween:Cancel();r.tween=nil end
     if r.arrowTween then r.arrowTween:Cancel();r.arrowTween=nil end
     if open then r.frame.Visible=true end
     local size=UDim2.new(1,0,0,if open then height else 0)
     if immediate or st.reduce then
-     r.frame.Size=size;r.frame.Visible=open;b.arrow.Rotation=if open then 0 else -90
+     r.frame.Size=size;r.frame.Position=position;r.frame.Visible=open;b.arrow.Rotation=if open then 0 else -90
     else
      local info=TweenInfo.new(.22,Enum.EasingStyle.Quart,Enum.EasingDirection.Out)
-     r.tween=Tween:Create(r.frame,info,{Size=size});r.tween:Play()
+     r.tween=Tween:Create(r.frame,info,{Size=size,Position=position});r.tween:Play()
      r.arrowTween=Tween:Create(b.arrow,info,{Rotation=if open then 0 else -90});r.arrowTween:Play()
      if not open then task.delay(.23,function() if r.frame.Parent and r.revision==revision and not r.expanded then r.frame.Visible=false end end) end
     end
@@ -1172,16 +1187,48 @@ function UI.new(app,gui,scope)
  self.layoutDone=U.button(self.panel,"DONE");self.layoutDone.ZIndex=8;self.layoutDone.Visible=false
  scope:on(self.layoutDone.Activated,function() self:editLayout(false) end)
  self.pageBox.Active=true;self.header.Active=true
+ -- The camera transforms a shared canvas. Header and view controls stay in screen space.
+ self.workspace=U.frame(self.panel,"InfiniteWorkspace",UDim2.fromScale(.5,.5),UDim2.fromOffset(1,1),nil,1)
+ self.workspace.AnchorPoint=Vector2.new(.5,.5);self.workspace.Active=false;self.workspace.ZIndex=3
+ self.workspaceScale=U.new("UIScale",{Scale=1},self.workspace)
+ self.workspaceLinks=U.frame(self.workspace,"NodeConnections",nil,nil,nil,1)
+ self.workspaceLinks.Active=false;self.workspaceLinks.Interactable=false;self.workspaceLinks.ZIndex=1
+ self.linkPool={};self.portPool={}
+ for i=1,50 do
+  local line=U.frame(self.workspaceLinks,"LinkSegment",nil,UDim2.fromOffset(1,2),Color3.new(1,1,1),.32)
+  line.AnchorPoint=Vector2.new(.5,.5);line.Active=false;line.Interactable=false;line.Visible=false;U.corner(line,2);self.linkPool[i]=line
+ end
+ for i=1,10 do
+  local port=U.frame(self.workspaceLinks,"NodePort",nil,UDim2.fromOffset(7,7),Color3.new(1,1,1),.06)
+  port.AnchorPoint=Vector2.new(.5,.5);port.Active=false;port.Interactable=false;port.Visible=false;U.corner(port,9);self.portPool[i]=port
+ end
+ for _,obj in {self.navGlass,self.nav,self.branchStack,self.contentGlass,self.pageBox,self.search,self.searchResults,self.status,self.layoutMove,self.layoutResize,self.layoutDone} do obj.Parent=self.workspace end
+ self.rootDrag=U.button(self.workspace,"AETHER / MOVE");self.rootDrag.ZIndex=5;self.rootDrag.TextSize=11
+ self.pageDrag=U.button(self.workspace,"MOVE PANEL");self.pageDrag.ZIndex=5;self.pageDrag.TextSize=11
+ self.modeBar=U.frame(self.panel,"WorkspaceModes",nil,UDim2.fromOffset(320,30),nil,.5)
+ self.modeBar.AnchorPoint=Vector2.new(.5,0);self.modeBar.ZIndex=12;U.corner(self.modeBar,14)
+ self.modeButtons={}
+ for i,mode in {"GUI","Nodes"} do
+  local b=U.button(self.modeBar,if mode=="GUI" then "GUI VIEW" else "NODE VIEW")
+  b.Position=UDim2.new((i-1)*.4,4,0,3);b.Size=UDim2.new(.4,-5,1,-6);b.ZIndex=13;b.TextSize=11;self.modeButtons[mode]=b
+  scope:on(b.Activated,function()
+   if self.app.s.workspaceMode==mode then return end
+   self:commitWorkspaceCamera();self.workspaceNodeDraft=nil;self.drag=nil;self.workspacePan=nil
+   self.app:set("workspaceMode",mode)
+  end)
+ end
+ self.homeButton=U.button(self.modeBar,"HOME");self.homeButton.Position=UDim2.new(.8,2,0,3);self.homeButton.Size=UDim2.new(.2,-6,1,-6);self.homeButton.ZIndex=13;self.homeButton.TextSize=10
+ scope:on(self.homeButton.Activated,function() self:resetWorkspace(false) end)
  local function inside(obj,pos)
   if not obj or not obj.Visible then return false end
   local a,b=obj.AbsolutePosition,obj.AbsoluteSize
   return pos.X>=a.X and pos.X<=a.X+b.X and pos.Y>=a.Y and pos.Y<=a.Y+b.Y
  end
  scope:on(self.backdropHit.Activated,function(input)
-  if not self.opened or self.drag or self.layoutEditing or os.clock()<(self.tabInputAfter or 0) then return end
+  if not self.opened or self.drag or self.workspacePan or self.layoutEditing or os.clock()<(self.tabInputAfter or 0) then return end
   if not input or (input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch) then return end
   local pos=Vector2.new(input.Position.X,input.Position.Y)
-  for _,obj in {self.header,self.navGlass,self.nav,self.search,self.pageBox,self.searchResults,self.status} do
+  for _,obj in {self.header,self.modeBar,self.navGlass,self.nav,self.search,self.pageBox,self.searchResults,self.status,self.rootDrag,self.pageDrag,self.layoutMove,self.layoutResize,self.layoutDone} do
    if inside(obj,pos) then return end
   end
   for _,r in self.branchCards do if inside(r.frame,pos) then return end end
@@ -1195,7 +1242,7 @@ function UI.new(app,gui,scope)
  end
  for _,k in S.order do
   local d=S.defs[k]
-  if type(d)~="table" or type(d.group)~="string" or k=="hp" or k:match("^hp[A-Z]") or k:match("^heart") or k=="hudShine" or k=="hudReaction" or k=="compact" or k=="robloxRail" or k=="railCustom" or k=="railX" or k=="railY" then continue end
+  if type(d)~="table" or type(d.group)~="string" or k:match("^ws[GN]") or k=="hp" or k:match("^hp[A-Z]") or k:match("^heart") or k=="hudShine" or k=="hudReaction" or k=="compact" or k=="robloxRail" or k=="railCustom" or k=="railX" or k=="railY" then continue end
   local tab=if d.group=="Theme" or d.group=="Motion" then "Interface" elseif d.group=="Camera" then "Interaction" else d.group
   if not self.buttons[tab] then continue end
   local label=if type(d.label)=="string" and d.label~="" then d.label elseif k=="players" then "Per-player override" else tostring(k)
@@ -1243,7 +1290,7 @@ function UI.new(app,gui,scope)
    self.sc.Position=UDim2.fromOffset(10,10);self.sc.Size=UDim2.new(1,-20,1,-20)
    return
   end
-  local w=self.pageBox.AbsoluteSize.X
+  local w=self.pageBox.Size.X.Offset
   if w<2 then w=math.max(1,self.stage.AbsoluteSize.X-180) end
   if w>=650 then
    local right=math.clamp(math.floor(w*.43),280,560)
@@ -1253,6 +1300,77 @@ function UI.new(app,gui,scope)
    self.catalogHost.Position=UDim2.fromOffset(0,0);self.catalogHost.Size=UDim2.new(1,0,.49,-6)
    self.sc.Position=UDim2.new(0,0,.49,6);self.sc.Size=UDim2.new(1,0,.51,-6)
   end
+ end
+ function self:workspaceCamera()
+  if self.workspaceCameraDraft then return self.workspaceCameraDraft end
+  local s=self.app.s;local prefix=workspacePrefix(s)
+  return {zoom=s[prefix.."Zoom"]/100,pan=Vector2.new(s[prefix.."PanX"],s[prefix.."PanY"])}
+ end
+ function self:applyWorkspaceCamera()
+  local state=self:workspaceCamera()
+  local position=UDim2.new(.5,state.pan.X*state.zoom,.5,state.pan.Y*state.zoom)
+  if self.workspaceScale.Scale~=state.zoom then self.workspaceScale.Scale=state.zoom end
+  if self.workspace.Position~=position then self.workspace.Position=position end
+ end
+ function self:commitWorkspaceCamera()
+  local state=self.workspaceCameraDraft
+  if not state then return end
+  self.workspaceCameraDraft=nil;self.workspaceCameraRevision=(self.workspaceCameraRevision or 0)+1
+  local prefix=workspacePrefix(self.app.s)
+  self.app:patch({[prefix.."Zoom"]=math.clamp(math.round(state.zoom*100),35,180),[prefix.."PanX"]=math.clamp(math.round(state.pan.X),-1000000,1000000),[prefix.."PanY"]=math.clamp(math.round(state.pan.Y),-1000000,1000000)})
+ end
+ function self:resetWorkspace(all)
+  self.workspaceCameraDraft=nil;self.workspaceCameraRevision=(self.workspaceCameraRevision or 0)+1;self.workspaceNodeDraft=nil;self.workspacePan=nil;self.drag=nil
+  local prefix=workspacePrefix(self.app.s)
+  local patch={[prefix.."Zoom"]=100,[prefix.."PanX"]=0,[prefix.."PanY"]=0}
+  if all then
+   for _,node in {"Root","Main","Visuals","Utility","Interface","Page"} do patch[prefix..node.."X"]=0;patch[prefix..node.."Y"]=0 end
+  end
+  self.app:patch(patch)
+ end
+ function self:updateWorkspaceLinks()
+  local s=self.app.s
+  self.workspaceLinks.Visible=s.workspaceMode=="Nodes"
+  if not self.workspaceLinks.Visible then return end
+  local zoom=self.workspaceScale.Scale;local origin=self.workspace.AbsolutePosition
+  local color=U.hex(s.accent);local lineIndex,portIndex=0,0
+  local function point(obj,x,y)
+   return (obj.AbsolutePosition-origin+Vector2.new(obj.AbsoluteSize.X*x,obj.AbsoluteSize.Y*y))/zoom
+  end
+  local function port(p)
+   portIndex+=1;local obj=self.portPool[portIndex];if not obj then return end
+   obj.Position=UDim2.fromOffset(p.X,p.Y);obj.BackgroundColor3=color;obj.Visible=true
+  end
+  local function wire(a,b)
+   local curve=math.max(35,math.abs(b.X-a.X)*.45)
+   local p1=a+Vector2.new(curve,0);local p2=b-Vector2.new(curve,0)
+   local prev=a
+   port(a);port(b)
+   for i=1,10 do
+    local t=i/10;local v=1-t
+    local next=a*v^3+p1*(3*v*v*t)+p2*(3*v*t*t)+b*t^3
+    local delta=next-prev;local middle=(prev+next)*.5
+    lineIndex+=1;local line=self.linkPool[lineIndex]
+    if line then
+     line.Position=UDim2.fromOffset(middle.X,middle.Y);line.Size=UDim2.fromOffset(math.max(1,delta.Magnitude+1),2)
+     line.Rotation=math.deg(math.atan2(delta.Y,delta.X));line.BackgroundColor3=color;line.Visible=true
+    end
+    prev=next
+   end
+  end
+  for _,branch in branches do
+   local r=self.branchCards[branch.name]
+   if r.frame.Visible and r.frame.AbsoluteSize.Y>4 then wire(point(self.branchButtons[branch.name].button,1,.5),point(r.frame,0,.5)) end
+  end
+  local selected=self.buttons[self.tab];local group=tabBranch[self.tab]
+  if selected and group and self.branchCards[group].frame.Visible and self.pageBox.Visible then wire(point(selected,1,.5),point(self.pageBox,0,.08)) end
+  for i=lineIndex+1,#self.linkPool do self.linkPool[i].Visible=false end
+  for i=portIndex+1,#self.portPool do self.portPool[i].Visible=false end
+ end
+ function self:workspacePageVisible()
+  if not self.opened or not self.pageBox.Visible then return false end
+  local p=self.pageBox.AbsolutePosition;local size=self.pageBox.AbsoluteSize;local a=self.stage.AbsolutePosition;local b=a+self.stage.AbsoluteSize
+  return self.workspaceScale.Scale>=.45 and p.X+size.X>a.X and p.Y+size.Y>a.Y and p.X<b.X and p.Y<b.Y
  end
  function self:layout()
   local sz=self.stage.AbsoluteSize
@@ -1264,6 +1382,9 @@ function UI.new(app,gui,scope)
   self.grip.Visible=false;self.dockPicker.Visible=false;self.place.Visible=false
   self.header.AnchorPoint=Vector2.new(.5,0);self.header.Position=UDim2.new(.5,0,0,math.max(12,math.round(sz.Y*.045)))
   self.header.Size=UDim2.fromOffset(math.min(720,math.max(160,sz.X-24)),46)
+  self.modeBar.Position=UDim2.new(.5,0,0,math.max(12,math.round(sz.Y*.045))+51)
+  self.modeBar.Size=UDim2.fromOffset(math.min(320,sz.X-16),30)
+  self.workspace.Size=UDim2.fromOffset(sz.X,sz.Y);self:applyWorkspaceCamera()
   self.brand.Position=UDim2.fromOffset(10,0);self.brand.Size=UDim2.new(1,-20,1,0);self.brand.TextXAlignment=Enum.TextXAlignment.Center
   self.brand.TextSize=if sz.X<500 then 14 else 20
   self.brand.Font=Enum.Font.Code;self.tag.Visible=false
@@ -1273,11 +1394,11 @@ function UI.new(app,gui,scope)
   local draft=self.layoutDraft or s
   local custom=draft.layoutCustom
   local fullW=math.max(1,sz.X-2*pad)
-  local fullH=math.max(60,sz.Y-120)
+  local fullH=math.max(60,sz.Y-160)
   local workW=math.min(fullW,math.max(math.min(fullW,440),math.round(fullW*(if custom then draft.layoutW else 86)/100)))
   local workH=math.min(fullH,math.max(math.min(fullH,280),math.round(fullH*(if custom then draft.layoutH else 78)/100)))
   local x=pad+math.round((fullW-workW)*(if custom then draft.layoutX else 50)/100)
-  local y=90+math.round((fullH-workH)*(if custom then draft.layoutY else 50)/100)
+  local y=130+math.round((fullH-workH)*(if custom then draft.layoutY else 50)/100)
   local rail=math.min(math.round(workW*.23),if narrow then 92 else draft.navWidth)
   local branchW=math.min(math.round(workW*.24),if narrow then 128 else 202)
   local contentX=x+rail+branchW+2*gap
@@ -1286,8 +1407,10 @@ function UI.new(app,gui,scope)
   self.layoutBounds={x=x,y=y,w=workW,h=workH,fullW=fullW,fullH=fullH,pad=pad}
   local buttonH=math.min(54,math.max(22,math.floor((workH-38)/4)))
   local railH=buttonH*4+40
-  self.navGlass.Position=UDim2.fromOffset(x,y);self.navGlass.Size=UDim2.fromOffset(rail,railH)
-  self.nav.Position=UDim2.fromOffset(x+7,y+8);self.nav.Size=UDim2.fromOffset(math.max(1,rail-14),math.max(1,railH-16))
+  local rootOffset=workspaceOffset(self,"Root");local rootX,rootY=x+rootOffset.X,y+rootOffset.Y
+  self.navGlass.Position=UDim2.fromOffset(rootX,rootY);self.navGlass.Size=UDim2.fromOffset(rail,railH)
+  self.nav.Position=UDim2.fromOffset(rootX+7,rootY+8);self.nav.Size=UDim2.fromOffset(math.max(1,rail-14),math.max(1,railH-16))
+  self.rootDrag.Position=UDim2.fromOffset(rootX,rootY-30);self.rootDrag.Size=UDim2.fromOffset(rail,26)
   for _,b in self.branchButtons do
    b.button.Size=UDim2.new(1,0,0,buttonH)
    b.button.TextSize=if narrow then 12 else 16
@@ -1297,14 +1420,16 @@ function UI.new(app,gui,scope)
   self.branchTitleH=math.clamp(math.floor(workH/20),10,24)
   self.branchRowH=math.clamp(math.floor((workH-4*(self.branchTitleH+6)-30)/14),8,36)
   self:refreshBranches(true)
-  self.search.Position=UDim2.fromOffset(contentX,y);self.search.Size=UDim2.fromOffset(bodyW,32)
+  local pageOffset=workspaceOffset(self,"Page");local pageX,pageY=contentX+pageOffset.X,y+pageOffset.Y
+  self.pageDrag.Position=UDim2.fromOffset(pageX,pageY-30);self.pageDrag.Size=UDim2.fromOffset(bodyW,26);self.pageDrag.Text=self.tab:upper().." / MOVE PANEL"
+  self.search.Position=UDim2.fromOffset(pageX,pageY);self.search.Size=UDim2.fromOffset(bodyW,32)
   self.search.BackgroundTransparency=.53
-  self.contentGlass.Position=UDim2.fromOffset(contentX,y+42);self.contentGlass.Size=UDim2.fromOffset(bodyW,bodyH)
+  self.contentGlass.Position=UDim2.fromOffset(pageX,pageY+42);self.contentGlass.Size=UDim2.fromOffset(bodyW,bodyH)
   local isCatalog=self.catalogHost~=nil and self.catalogHost.Parent~=nil
   self.contentGlass.Visible=not isCatalog or self.searchResults.Visible
   self.pageBox.Position=self.contentGlass.Position;self.pageBox.Size=self.contentGlass.Size
   self.searchResults.Position=self.pageBox.Position;self.searchResults.Size=self.pageBox.Size
-  self.status.Position=UDim2.fromOffset(contentX,y+workH+5);self.status.Size=UDim2.fromOffset(bodyW,21)
+  self.status.Position=UDim2.fromOffset(pageX,pageY+workH+5);self.status.Size=UDim2.fromOffset(bodyW,21)
   self.layoutMove.Position=UDim2.fromOffset(x,math.max(55,y-34));self.layoutMove.Size=UDim2.fromOffset(100,28)
   self.layoutDone.Position=UDim2.fromOffset(x+workW-74,math.max(55,y-34));self.layoutDone.Size=UDim2.fromOffset(74,28)
   self.layoutResize.Position=UDim2.fromOffset(x+workW-74,y+workH-28);self.layoutResize.Size=UDim2.fromOffset(74,28)
@@ -1388,7 +1513,7 @@ function UI.new(app,gui,scope)
   local b=self.layoutBounds;if not b then return end
   local origin=Vector2.new(input.Position.X,input.Position.Y)
   local function calc(pos)
-   local delta=pos-origin
+   local delta=(pos-origin)/self.workspaceScale.Scale
    local w=if resize then math.clamp(b.w+delta.X,b.fullW*.50,b.fullW*.98) else b.w
    local h=if resize then math.clamp(b.h+delta.Y,b.fullH*.40,b.fullH*.95) else b.h
    local x=if resize then b.x else b.x+delta.X
@@ -1396,7 +1521,7 @@ function UI.new(app,gui,scope)
    local next=table.clone(self.app.s);next.layoutCustom=true
    next.layoutW=math.clamp(math.round(w/b.fullW*100),50,98);next.layoutH=math.clamp(math.round(h/b.fullH*100),40,95)
    next.layoutX=math.clamp(math.round((x-b.pad)/math.max(1,b.fullW-w)*100),0,100)
-   next.layoutY=math.clamp(math.round((y-90)/math.max(1,b.fullH-h)*100),0,100)
+   next.layoutY=math.clamp(math.round((y-130)/math.max(1,b.fullH-h)*100),0,100)
    self.layoutDraft=next;self:layout()
   end
   self:begin(input,calc)
@@ -1408,11 +1533,66 @@ function UI.new(app,gui,scope)
  end
  scope:on(self.layoutMove.InputBegan,function(i) beginLayout(i,false) end)
  scope:on(self.layoutResize.InputBegan,function(i) beginLayout(i,true) end)
+ local function beginWorkspaceNode(input,node)
+  if not self.opened or self.drag or self.workspacePan then return end
+  if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
+  local origin=Vector2.new(input.Position.X,input.Position.Y);local old=workspaceOffset(self,node);local zoom=self.workspaceScale.Scale
+  local function calc(pos)
+   local next=old+(pos-origin)/zoom
+   self.workspaceNodeDraft={node=node,offset=next}
+   if node=="Root" or node=="Page" then self:layout() else self:refreshBranches(true) end
+  end
+  self:begin(input,calc)
+  if self.drag then self.drag.finish=function(pos)
+   calc(pos);local next=self.workspaceNodeDraft.offset;self.workspaceNodeDraft=nil
+   local prefix=workspacePrefix(self.app.s)..node
+   self.app:patch({[prefix.."X"]=math.clamp(math.round(next.X),-1000000,1000000),[prefix.."Y"]=math.clamp(math.round(next.Y),-1000000,1000000)})
+  end end
+ end
+ scope:on(self.rootDrag.InputBegan,function(i) beginWorkspaceNode(i,"Root") end)
+ scope:on(self.pageDrag.InputBegan,function(i) beginWorkspaceNode(i,"Page") end)
+ for name,r in self.branchCards do
+  r.title.Active=true
+  scope:on(r.title.InputBegan,function(i) beginWorkspaceNode(i,name) end)
+ end
+ scope:on(Input.InputBegan,function(i)
+  if not self.opened or Input:GetFocusedTextBox() then return end
+  if i.KeyCode==Enum.KeyCode.Home then self:resetWorkspace(false);return end
+  if i.UserInputType~=Enum.UserInputType.MouseButton3 or self.drag then return end
+  local state=self:workspaceCamera()
+  self.workspacePan={origin=Vector2.new(i.Position.X,i.Position.Y),pan=state.pan,zoom=state.zoom}
+ end)
+ scope:on(Input.InputChanged,function(i)
+  if not self.opened then return end
+  local pan=self.workspacePan
+  if pan and i.UserInputType==Enum.UserInputType.MouseMovement then
+   local delta=Vector2.new(i.Position.X,i.Position.Y)-pan.origin
+   self.workspaceCameraDraft={zoom=pan.zoom,pan=pan.pan+delta/pan.zoom};self:applyWorkspaceCamera();return
+  end
+  if i.UserInputType~=Enum.UserInputType.MouseWheel or self.drag or pan then return end
+  local ctrl=Input:IsKeyDown(Enum.KeyCode.LeftControl) or Input:IsKeyDown(Enum.KeyCode.RightControl)
+  local pos=Vector2.new(i.Position.X,i.Position.Y)
+  if not ctrl then
+   for _,obj in {self.pageBox,self.searchResults,self.search,self.header,self.modeBar,self.navGlass} do if inside(obj,pos) then return end end
+   for _,r in self.branchCards do if inside(r.frame,pos) then return end end
+  end
+  local state=self:workspaceCamera();local zoom=math.clamp(state.zoom*1.12^i.Position.Z,.35,1.8)
+  if zoom==state.zoom then return end
+  local center=self.stage.AbsolutePosition+self.stage.AbsoluteSize*.5
+  local delta=pos-center
+  local next=state.pan+delta/zoom-delta/state.zoom
+  self.workspaceCameraDraft={zoom=zoom,pan=next};self:applyWorkspaceCamera()
+  self.workspaceCameraRevision=(self.workspaceCameraRevision or 0)+1;local rev=self.workspaceCameraRevision
+  task.delay(.25,function() if self.workspace.Parent and rev==self.workspaceCameraRevision and not self.workspacePan then self:commitWorkspaceCamera() end end)
+ end)
+ scope:on(Input.InputEnded,function(i)
+  if i.UserInputType==Enum.UserInputType.MouseButton3 and self.workspacePan then self.workspacePan=nil;self:commitWorkspaceCamera() end
+ end)
  scope:on(self.pageBox:GetPropertyChangedSignal("AbsoluteSize"),function() self:layoutCatalog() end)
  scope:on(self.stage:GetPropertyChangedSignal("AbsoluteSize"),function() self:layout() end);self:layout()
  scope:on(Input.InputChanged,function(i) local d=self.drag;if d and (i==d.i or d.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseMovement) then d.fn(Vector2.new(i.Position.X,i.Position.Y),d.start,d.origin) end end)
  scope:on(Input.InputEnded,function(i) if self.drag and (self.drag.i==i or self.drag.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseButton1) then local d=self.drag;self.drag=nil;if d.finish then d.finish(Vector2.new(i.Position.X,i.Position.Y)) end end end)
- scope:on(Input.WindowFocusReleased,function() self.drag=nil;if self.menuDraft then self.menuDraft=nil;self:layout() end end);scope:add(function() if self.page then self.page:clear() end;Icons.clear() end);return self
+ scope:on(Input.WindowFocusReleased,function() self.drag=nil;self.workspacePan=nil;self.workspaceNodeDraft=nil;self:commitWorkspaceCamera();if self.menuDraft then self.menuDraft=nil end;self:layout() end);scope:add(function() if self.page then self.page:clear() end;Icons.clear() end);return self
 end
 function UI:animateBackground(t)
  if self.layoutPending or self.layoutViewport~=self.stage.AbsoluteSize then self:layout() end
@@ -1477,6 +1657,7 @@ function UI:animateBackground(t)
  transition(self.pageBox,pageQ)
  -- Full-screen content stays anchored; no per-tab position animation.
  if decorDue or self.navDirty then
+ self:updateWorkspaceLinks()
  self.navDirty=false
  for name,b in self.buttons do
   local desired=if name==self.tab then 1 elseif self.navHover[name] then .45 else 0
@@ -1494,6 +1675,7 @@ end
 function UI:begin(i,fn,origin) if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end;local v=Vector2.new(i.Position.X,i.Position.Y);self.drag={i=i,start=v,fn=fn,origin=origin};fn(v,v,origin) end
 function UI:show(on)
  if on then self:setQuick(false) end
+ if not on then self.workspacePan=nil;self:commitWorkspaceCamera();self.workspaceNodeDraft=nil end
  if not on and self.opened then
   self.lastClosedTab=self.tab
   self.lastClosedPage=self.sc
@@ -1906,6 +2088,9 @@ function UI:sync()
  local key=layoutKey(st)
  if self.layoutKey~=key and not self.menuDraft and not self.layoutDraft then self:layout() end
  self:refreshBranches(false)
+ self:applyWorkspaceCamera()
+ self.workspaceLinks.Visible=st.workspaceMode=="Nodes"
+ for mode,b in self.modeButtons do b.BackgroundColor3=U.hex(if mode==st.workspaceMode then st.uiHoverColor else st.uiButtonColor) end
  local primary=U.hex(st.uiFontColor or "F1E6FF")
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
@@ -1919,10 +2104,11 @@ function UI:sync()
  local themeKey=table.concat({st.accent,st.uiFontColor,st.uiMutedColor,st.uiPanelColor,st.uiButtonColor,st.uiHoverColor,st.uiRowColor,st.uiStrokeColor,st.uiSpecularColor,st.uiGlassOpacity,st.uiReflection,st.rim},":")
  if not self.themeDirty and self.themeKey==themeKey then return end
  self.themeDirty=false;self.themeKey=themeKey
- for _,frame in {self.navGlass,self.contentGlass,self.header,self.top,self.quick,self.bindPanel,self.catalogHost,self.catalogHost and self.sc} do if frame then glassSurface(frame,st) end end
+ for _,frame in {self.navGlass,self.contentGlass,self.header,self.top,self.quick,self.bindPanel,self.modeBar,self.catalogHost,self.catalogHost and self.sc} do if frame then glassSurface(frame,st) end end
  for _,r in self.branchCards do glassSurface(r.frame,st) end
  self.search.BackgroundColor3=U.hex(st.uiRowColor)
  self.quickArrow.BackgroundColor3=U.hex(st.uiButtonColor)
+ self.rootDrag.BackgroundColor3=U.hex(st.uiButtonColor);self.pageDrag.BackgroundColor3=U.hex(st.uiButtonColor);self.homeButton.BackgroundColor3=U.hex(st.uiButtonColor)
  for _,obj in {self.layoutMove,self.layoutResize,self.layoutDone} do obj.BackgroundColor3=U.hex(st.uiHoverColor) end
  -- Only recolor editor controls, not HUD/3D previews or their own palette.
  for _,obj in self.panel:GetDescendants() do
@@ -5293,6 +5479,10 @@ function E.render(a,tab,ui)
   ui:note("Choose a branch on the left. Visual collections, interface settings and profiles are organized separately.",50)
   ui:chips({"Interface","Profiles","Halos","Wings"},function(n) ui:open(n) end,2)
  elseif tab=="Interface" then
+  ui:title("INFINITE WORKSPACE")
+  ui:note("Middle mouse: pan. Wheel on background or Ctrl + wheel: zoom. Drag node titles to move individual panels. Home returns to the default camera.",62)
+  ui:control("workspaceMode")
+  ui:chips({"Reset camera","Reset current workspace"},function(n) ui:resetWorkspace(n=="Reset current workspace") end,2)
   ui:title("LAYOUT & WIDGETS")
   ui:chips({"Edit GUI size / position"},function() ui:editLayout(true) end,1)
   ui:chips({"Edit HUD size / position"},function() a:set("movePanels",true);a:editHUD(true) end,1)
@@ -6048,6 +6238,17 @@ range("Interface","layoutW","GUI width %",86,50,98)
 range("Interface","layoutH","GUI height %",72,40,95)
 range("Interface","navWidth","Branch rail width",156,100,220)
 range("Interface","topScale","Top capsule scale %",100,60,180)
+choice("Interface","workspaceMode","Workspace view","GUI",{"GUI","Nodes"})
+for _,mode in {"GUI","Nodes"} do
+ local prefix="ws"..mode
+ range("Interface",prefix.."Zoom","Workspace zoom %",100,35,180)
+ for _,axis in {"X","Y"} do
+  range("Interface",prefix.."Pan"..axis,"Workspace camera "..axis,0,-1000000,1000000)
+  for _,node in {"Root","Main","Visuals","Utility","Interface","Page"} do
+   range("Interface",prefix..node..axis,"Workspace "..node.." "..axis,0,-1000000,1000000)
+  end
+ end
+end
 function S.copy(v) if type(v)~="table" then return v end;local r={};for k,x in v do r[k]=S.copy(x) end;return r end
 local function str(s,n) return type(s)=="string" and #s<=n and utf8.len(s)~=nil end
 local function name(s) return str(s,48) and s:match("%S") and not s:find("%c") end
@@ -11430,7 +11631,7 @@ local function frame(dt, now)
     peers:step(styled, app.mode=="Game", walkMotion, dt)
     if peers.statusLabel and peers.statusLabel.Parent and peers.statusLabel.Text~=peers.status then peers.statusLabel.Text=peers.status end
     world:apply(styled)
-    if ui.opened and app.preview then
+    if ui:workspacePageVisible() and app.preview then
         if app.preview.hud then app.preview.hud:step(styled, result, dt) end
         if app.preview.pose then app.preview.pose(styled, dt) end
         if app.preview.avatar then app.preview.avatar:step(app.preview.rig, styled, app.preview.effectTime or now) end
@@ -11733,7 +11934,7 @@ scope:on(RunService.RenderStepped, function(dt)
     elapsed += math.min(dt, .1)
     local ok, err = pcall(frame, math.min(dt, .1), elapsed)
     -- Keep drag handles synchronized even if another cosmetic module faults.
-    if ui.opened and app.preview and app.preview.hud and app.preview.hud.previewPanels then
+    if ui:workspacePageVisible() and app.preview and app.preview.hud and app.preview.hud.previewPanels then
         local good, problem=pcall(app.preview.hud.layoutPreview,app.preview.hud,app.s)
         if not good and not app.previewLayoutError then app.previewLayoutError=true;warn("AETHER preview panels:",problem) end
     end
