@@ -340,7 +340,7 @@ do
     end
     function vb:reset()
         self.auto=false;detachTilt()
-        if self.play then self.play.set=false;self.play.spike=false;self.play.dive=false;self.play.ownsTilt=false;self.play.generation+=1;table.clear(self.play.locks);self.play.status="Off | reset" end
+        if self.play then self.play.set=false;self.play.spike=false;self.play.dive=false;self.play.ownsTilt=false;self.play.generation+=1;table.clear(self.play.locks);table.clear(self.play.jumpLocks);self.play.jumpPendingUntil=0;self.play.status="Off | reset" end
         stopCurve()
         stopStyle()
         table.clear(self.multiplierRequests)
@@ -540,7 +540,7 @@ do
         self.auto=true;self.status="Local tilt correction enabled; ball response depends on style"
     end
     -- Auto Play dispatches normal game inputs; it does not bypass move validation.
-    local play={set=false,spike=false,dive=false,busy=false,ownsTilt=false,status="Off",locks={},nextLockCheck=0,lastAt=0,generation=0,attempts=0,hits=0,cameraAim="Free zone",groundPredict=true,cameraStatus="Off",cameraTargetAt=0}
+    local play={set=false,spike=false,dive=false,busy=false,ownsTilt=false,status="Off",locks={},nextLockCheck=0,lastAt=0,generation=0,attempts=0,hits=0,cameraAim="Free zone",groundPredict=true,cameraStatus="Off",cameraTargetAt=0,autoJump=true,jumpStatus="Off",jumpCount=0,jumpLocks={},jumpCheckAt=0,nextJumpAt=0,jumpPendingUntil=0}
     vb.play=play
     local api,retryAt=nil,0
     local tags=game:GetService("CollectionService")
@@ -561,8 +561,11 @@ do
         assert(c and c.Loaded,"GameController is loading")
         local h=require(g.Handlers)
         local bind=require(registry.DoMove)
+        local jumpBinding=require(registry.Jump)
+        local jumpPhysics=require(move.Jump.Physics)
+        assert(type(jumpBinding.onJumpRequest)=="function" and type(jumpPhysics.LaunchSpeed)=="number","Jump binding unavailable")
         assert(type(bind.onMoveRequest)=="function" and type(bind.canDoMove)=="function","Action binding unavailable")
-        return {controller=c,service=knit.GetService("BallService"),config=require(ReplicatedStorage.Configuration.Game),states=h.States,values=h.Values,input=knit.GetController("InputController"),
+        return {controller=c,jumpBinding=jumpBinding,jumpPhysics=jumpPhysics,service=knit.GetService("BallService"),config=require(ReplicatedStorage.Configuration.Game),states=h.States,values=h.Values,input=knit.GetController("InputController"),
             balls=knit.GetController("BallController"),binding=bind,orch=require(dm.Orchestrator),
             rules=require(dm.Game),special=require(dm.StyleSpecial),hitbox=require(ReplicatedStorage.Tools.Hitbox),
             joint=require(ReplicatedStorage.Tools.TiltJoint),physics=require(ReplicatedStorage.Common.Physics),
@@ -628,7 +631,7 @@ do
                     end
                 end
             elseif typeof(who)=="Instance" and who:IsA("Player") then
-                play.locks[key]=nil
+                play.locks[key]=nil;play.jumpLocks[key]=nil
             end
         end)
     end
@@ -811,12 +814,12 @@ do
         end
         return best
     end
-    function vb:stepSpikeCamera(blocked)
+    function vb:stepSpikeCamera(blocked,lockActive)
         local function idle(reason)
             play.cameraPhase=nil;play.cameraPoint=nil;play.cameraTargetAt=0;play.cameraStatus=reason
         end
         if not play.spike or play.cameraAim=="Off" or app.stopping or not gui.Parent or app.mode~="Game" then idle("Off");return end
-        if blocked or UserInputService:GetFocusedTextBox() or game:GetService("GuiService").MenuIsOpen then idle("Paused | menu");return end
+        if blocked or UserInputService:GetFocusedTextBox() or game:GetService("GuiService").MenuIsOpen or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then idle("Paused | manual camera/menu");return end
         local m=api
         if not m or not m.states.IsPlaying() or m.states.IsStunned() or m.states.IsServing() then idle("Waiting for rally");return end
         local char=player.Character
@@ -856,10 +859,143 @@ do
         end
         if (target-pos).Magnitude<.1 then return end
         cam.CFrame=CFrame.lookAt(pos,target)
-        play.cameraStatus=if air then "Air | "..play.cameraAim else "Ground | predicted contact"
+        play.cameraStatus=(if air then "Air | "..play.cameraAim else "Ground | predicted contact")..(if lockActive then " | AETHER Lock" else "")
+        play.cameraAppliedAt=os.clock()
+    end
+    local function refreshJumpLocks(m,char,now)
+        if now<play.jumpCheckAt then return end
+        play.jumpCheckAt=now+.12
+        for key,lock in pairs(play.jumpLocks) do
+            local b=lock.ball
+            if not b or not b:IsDescendantOf(workspace) or ballKey(b)~=key then
+                play.jumpLocks[key]=nil
+            else
+                local d=b:GetPivot().Position-char.PrimaryPart.Position
+                local distant=flatten(d).Magnitude>22 or d.Y< -7
+                if distant then
+                    lock.outSince=lock.outSince or now
+                    if now-lock.outSince>.6 then play.jumpLocks[key]=nil end
+                else lock.outSince=nil end
+            end
+        end
+    end
+    local function jumpPrediction(m,char,hum)
+        local root=char.PrimaryPart
+        if not root or root.Anchored or hum.Health<=0 or hum.Sit then return nil end
+        if char:GetAttribute("EmoteFrozen") or char:GetAttribute("IsWatchingCharacter") then return nil end
+        if hum.FloorMaterial==Enum.Material.Air then return nil end
+        local context=m.jumpBinding.buildContext(Enum.UserInputState.Begin)
+        if m.jumpBinding.canDoKazanaChargeJump(context) then
+            play.jumpStatus="Charge jump style | manual jump";return nil
+        end
+        if not m.jumpBinding.canJump(context) then return nil end
+        local a,u,v,width,length=geometry()
+        if not a then return nil end
+        local ownZ=(flatten(root.Position)-a):Dot(v)
+        local side=if ownZ<length*.5 then -1 else 1
+        local aim=courtAim(root)
+        local heading=if aim then flatten(aim-root.Position) else flatten(root.CFrame.LookVector)
+        if heading.Magnitude<.01 then return nil end
+        heading=heading.Unit
+        local h=m.hitbox.get({Special=m.special.getSpecial(),MoveId="Spike"})
+        if not h or typeof(h.Offset)~="CFrame" or typeof(h.Size)~="Vector3" then return nil end
+        local off,size=h.Offset,h.Size
+        if h.Custom and h.Custom.AdjustBoundsLocal then
+            local o,n=h.Custom.AdjustBoundsLocal(off,size)
+            if typeof(o)=="CFrame" then off=o end
+            if typeof(n)=="Vector3" then size=n end
+        end
+        local joint=m.joint.get(char):GetC0()
+        local pose=CFrame.lookAt(Vector3.zero,heading)*(joint-joint.Position)*off
+        local setCF,setSize=bounds(m,char,"Set",0)
+        local mult=player:GetAttribute("Multiplier_JumpPower")
+        if type(mult)~="number" or mult~=mult or mult<=0 then mult=1 end
+        local launch=m.jumpPhysics.LaunchSpeed*mult
+        local g=workspace.Gravity
+        if launch<=0 or g<=0 then return nil end
+        local flight=math.min(1.35,2*launch/g)
+        if flight<.08 then return nil end
+        local scale=ReplicatedStorage:GetAttribute("GlobalTimeScale")
+        if type(scale)~="number" or scale~=scale then scale=1 end
+        if scale<=.01 then return nil end
+        local ballG=ReplicatedStorage:GetAttribute("Modifier_BallGravity")
+        if type(ballG)~="number" or ballG~=ballG then ballG=17 end
+        local move=flatten(hum.MoveDirection)*math.max(0,hum.WalkSpeed)
+        local best,bestPoint,bestT,bestScore=nil,nil,nil,math.huge
+        for _,ball in candidates(m) do
+            local key=ballKey(ball)
+            if play.locks[key] or play.jumpLocks[key] then continue end
+            local p=ball:GetPivot().Position
+            local id=ball:GetAttribute("ServerId")
+            local state=id~=nil and m.balls.ActiveBalls[id] or nil
+            local vel=state and state.Velocity
+            if typeof(vel)~="Vector3" or vel~=vel or vel.Magnitude>500 then vel=ball.PrimaryPart.AssemblyLinearVelocity end
+            if vel.Magnitude<.5 or vel~=vel then continue end
+            local gm=state and state.GravityMultiplier
+            if type(gm)~="number" or gm~=gm then gm=1 end
+            local acc=Vector3.new(0,-ballG*gm,0)
+            if state and typeof(state.Acceleration)=="Vector3" and state.Acceleration==state.Acceleration and state.Acceleration.Magnitude<1000 then acc+=state.Acceleration end
+            local jerk=state and state.Jerk
+            if typeof(jerk)~="Vector3" or jerk~=jerk or jerk.Magnitude>600 then jerk=Vector3.zero end
+            local radius=math.clamp(math.min(ball.PrimaryPart.Size.X,ball.PrimaryPart.Size.Y,ball.PrimaryPart.Size.Z)*.5,.1,3)
+            for t=.06,flight,.035 do
+                local bt=t*scale
+                local bp=p+vel*bt+acc*(.5*bt*bt)+jerk*(bt*bt*bt/6)
+                local rise=launch*t-.5*g*t*t
+                if rise<.35 or bp.Y<root.Position.Y+1 then continue end
+                local d=flatten(bp)-a
+                local x,z=d:Dot(u),d:Dot(v)
+                if x< -2 or x>width+2 or (side==-1 and (z< -2 or z>length*.5+2)) or (side==1 and (z<length*.5-2 or z>length+2)) then continue end
+                local future=root.Position+move*math.max(0,t-.035)+Vector3.yAxis*rise
+                local center=CFrame.new(future)*pose
+                local q=center:PointToObjectSpace(bp)
+                local half=size*.5
+                local delta=Vector3.new(math.max(0,math.abs(q.X)-half.X),math.max(0,math.abs(q.Y)-half.Y),math.max(0,math.abs(q.Z)-half.Z))
+                if delta.Magnitude>radius then continue end
+                -- Do not replace an immediately reachable low Set with a marginal jump.
+                if setCF and overlaps(ball,setCF,setSize) and bp.Y<root.Position.Y+2.5 then continue end
+                local score=t+.025*q.Magnitude
+                if score<bestScore then best,bestPoint,bestT,bestScore=ball,bp,t,score end
+            end
+        end
+        return best,bestPoint,bestT
+    end
+    local function tryAutoJump(m,char,now)
+        if not play.spike or not play.autoJump then play.jumpStatus="Off";return false end
+        if now<play.jumpPendingUntil then return true end
+        if now<play.nextJumpAt then return false end
+        play.nextJumpAt=now+.055
+        if (app.ui and app.ui.opened) or app.editingHUD or game:GetService("GuiService").MenuIsOpen then
+            play.jumpStatus="Paused | menu";return false
+        end
+        if m.states.Charge()~=nil then return false end
+        local hum=char:FindFirstChildOfClass("Humanoid")
+        if not hum then return false end
+        local valid=m.rules.isMoveInvalidOnServe("Spike")
+        if not valid or m.rules.isHitboxSkipped("Spike") then play.jumpStatus="Waiting for legal Spike";return false end
+        play.jumpStatus="Waiting for reachable prediction"
+        local ball,point,t=jumpPrediction(m,char,hum)
+        if not ball then return false end
+        local key=ballKey(ball)
+        play.jumpLocks[key]={ball=ball}
+        play.jumpPendingUntil=now+.24
+        play.jumpCount+=1
+        play.jumpStatus=string.format("Jump | predicted contact %.2fs",t)
+        play.jumpPoint=point
+        play.busy=true
+        local gen=play.generation
+        task.spawn(function()
+            local ok,err=pcall(function()
+                if gen~=play.generation or not play.spike or not play.autoJump or player.Character~=char or m.states.IsJumping() or not allowed(m) then return end
+                m.jumpBinding.onJumpRequest(Enum.UserInputState.Begin)
+            end)
+            play.busy=false
+            if not ok then play.jumpStatus="Jump error: "..tostring(err) end
+        end)
+        return true
     end
     local function stopPlay(reason)
-        play.set=false;play.spike=false;play.dive=false;play.generation+=1;table.clear(play.locks)
+        play.set=false;play.spike=false;play.dive=false;play.generation+=1;table.clear(play.locks);table.clear(play.jumpLocks);play.jumpPendingUntil=0;play.jumpStatus="Off"
         if play.ownsTilt and vb.auto then vb:toggleAuto() end
         play.ownsTilt=false;play.status=reason
     end
@@ -874,7 +1010,7 @@ do
             end
         else
             if key=="spike" and play.ownsTilt and self.auto then self:toggleAuto() end
-            if key=="spike" then play.ownsTilt=false end
+            if key=="spike" then play.ownsTilt=false;table.clear(play.jumpLocks);play.jumpPendingUntil=0;play.jumpStatus="Off" end
             play.status="Auto "..which.." off"
         end
     end
@@ -891,13 +1027,15 @@ do
             listenTouches(m);api=m
         end
         local m=api
-        if not m.states.IsPlaying() then table.clear(play.locks);return waiting("Waiting for match") end
+        if not m.states.IsPlaying() then table.clear(play.locks);table.clear(play.jumpLocks);play.jumpPendingUntil=0;return waiting("Waiting for match") end
         local char=m.states.Character
         if not char or char~=player.Character or not char.PrimaryPart then return waiting("Waiting for character") end
-        refreshLocks(m,char,now)
+        refreshLocks(m,char,now);refreshJumpLocks(m,char,now)
         local ready,reason=allowed(m)
         if not ready then return waiting(reason) end
         local jumping=m.states.IsJumping()==true
+        if not jumping and tryAutoJump(m,char,now) then return waiting(play.jumpStatus) end
+        if jumping then play.jumpPendingUntil=0 end
         local action=if jumping then "Spike" else "Set"
         if m.states.Charge()~=nil then return waiting("Manual charge in progress") end
         if jumping and not play.spike then return waiting("Waiting for landing") end
@@ -2128,11 +2266,6 @@ local function frame(dt, now)
     peers:step(styled, app.mode=="Game", walkMotion, dt)
     if peers.statusLabel and peers.statusLabel.Parent and peers.statusLabel.Text~=peers.status then peers.statusLabel.Text=peers.status end
     world:apply(styled)
-    view:step(styled, if app.mode=="Game" then humanoid else nil, ui.opened or app.editingHUD==true, dt, now)
-    if app.volleyball then
-        local ok,err=pcall(app.volleyball.stepSpikeCamera,app.volleyball,ui.opened or app.editingHUD==true)
-        if not ok then app.volleyball.play.cameraAim="Off";app.volleyball.play.cameraStatus="Camera error: "..tostring(err);app:log("Spike camera",err) end
-    end
     if app.preview then
         if app.preview.hud then app.preview.hud:step(styled, result, dt) end
         if app.preview.pose then app.preview.pose(styled, dt) end
@@ -2141,6 +2274,27 @@ local function frame(dt, now)
     end
     store:tick(now)
 end
+-- Run the combined camera/lock pass after Roblox's native camera update.
+local cameraRenderBinding="AETHER_Camera_"..game:GetService("HttpService"):GenerateGUID(false)
+RunService:BindToRenderStep(cameraRenderBinding,Enum.RenderPriority.Camera.Value+1,function(dt)
+    if app.stopping or not gui.Parent then return end
+    local styled=app.s
+    if app.cues and next(app.cues.overrides) then
+        styled=table.clone(app.s)
+        for k,v in app.cues.overrides do styled[k]=v end
+    end
+    local blocked=ui.opened or app.editingHUD==true
+    local function aimStep(lockActive)
+        if not app.volleyball then return end
+        local ok,err=pcall(app.volleyball.stepSpikeCamera,app.volleyball,blocked,lockActive)
+        if not ok then app.volleyball.play.cameraAim="Off";app.volleyball.play.cameraStatus="Camera error: "..tostring(err);app:log("Spike camera",err) end
+    end
+    local ok,err=pcall(view.step,view,styled,if app.mode=="Game" then humanoid else nil,blocked,math.min(dt,.1),os.clock(),aimStep)
+    if not ok then
+        if app.cameraError~=err then app.cameraError=err;app:log("Camera",err) end
+    else app.cameraError=nil end
+end)
+scope:add(function() RunService:UnbindFromRenderStep(cameraRenderBinding) end)
 -- Cursor tracking is isolated from the expensive AETHER/EditableImage frame.
 -- Use a unique binding: cleaning up an older reload cannot unbind the newer one.
 local pointerRenderBinding = "AETHER_Pointer_" .. game:GetService("HttpService"):GenerateGUID(false)

@@ -857,10 +857,11 @@ function E.render(a,tab,ui)
    ui:title("SPIKE CAMERA")
    ui:chips({"Free zone","Court center","Off"},function(n) vb.play.cameraAim=n;vb.play.cameraTargetAt=0;vb.play.cameraPoint=nil;ui:sync() end,3,function() return vb.play.cameraAim end)
    ui:chips({"Ground prediction"},function() vb.play.groundPredict=not vb.play.groundPredict;vb.play.cameraTargetAt=0;ui:sync() end,1,function() return if vb.play.groundPredict then "Ground prediction" else "" end)
+   ui:chips({"Auto Jump"},function() vb.play.autoJump=not vb.play.autoJump;vb.play.jumpPendingUntil=0;ui:sync() end,1,function() return if vb.play.autoJump then "Auto Jump" else "" end)
    ui:note("Auto Spike only. Air: look at the opponent half. Ground: look at an estimated incoming contact point. Paused in menus.",60)
-   local playStatus=ui:note("",112)
+   local playStatus=ui:note("",142)
    local function refreshPlay()
-    playStatus.Text=string.format("SET %s | SPIKE %s | DIVE %s\n%s\nAttempts %d | confirmed touches %d\nCamera: %s",if vb.play.set then "ON" else "OFF",if vb.play.spike then "ON" else "OFF",if vb.play.dive then "ON" else "OFF",vb.play.status,vb.play.attempts,vb.play.hits,vb.play.cameraStatus)
+    playStatus.Text=string.format("SET %s | SPIKE %s | DIVE %s\n%s\nAttempts %d | confirmed touches %d\nCamera: %s\nJump: %s | %d",if vb.play.set then "ON" else "OFF",if vb.play.spike then "ON" else "OFF",if vb.play.dive then "ON" else "OFF",vb.play.status,vb.play.attempts,vb.play.hits,vb.play.cameraStatus,vb.play.jumpStatus,vb.play.jumpCount)
    end
    ui:watch(refreshPlay)
    local playRefresh=0

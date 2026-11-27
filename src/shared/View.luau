@@ -208,7 +208,7 @@ function V:cursorStep(s)
   self.motionTrail:step(hit,s,os.clock())
  else self.motionTrail:hide() end
 end
-function V:step(s,hum,menu,dt,t)
+function V:step(s,hum,menu,dt,t,aimStep)
  self.menuOpen=menu
  local camera=workspace.CurrentCamera
  local hrp=hum and hum.Parent and hum.Parent:FindFirstChild("HumanoidRootPart")
@@ -242,8 +242,11 @@ function V:step(s,hum,menu,dt,t)
    local hit=workspace:Raycast(center,desired,params);local pos=center+desired.Unit*(if hit then math.max(.4,hit.Distance-.28) else desired.Magnitude);self.orbitPos=if hit then pos else (self.orbitPos or pos):Lerp(pos,k);camera.CFrame=CFrame.lookAt(self.orbitPos,center);camera.Focus=CFrame.new(center)
   else
    if camera.CameraType~=Enum.CameraType.Custom then camera.CameraType=Enum.CameraType.Custom end;camera.CameraSubject=hum;self.orbitPos=nil
+   if aimStep and not menu then aimStep(lock) end
    if lock then if not self.mouse then self.mouse=Enum.MouseBehavior.Default;self.lockHum=hum;self.auto=hum.AutoRotate;self.releaseFrames=nil;self.releaseWaitForButtons=nil end;Input.MouseBehavior=Enum.MouseBehavior.LockCenter;hum.AutoRotate=false;local look=camera.CFrame.LookVector*Vector3.new(1,0,1);if look.Magnitude>.01 and not hum.Sit then hrp.CFrame=CFrame.lookAt(hrp.Position,hrp.Position+look) end else self:releaseLock(native) end
   end
+ elseif aimStep and not nativeOwnsFollow and not menu then
+  aimStep(false)
  end
  -- Rasterization and gradient work is independent of pointer position.
  if self.previewHost and not self.pointer.Visible then self.glyph:step(s,os.clock()) end
