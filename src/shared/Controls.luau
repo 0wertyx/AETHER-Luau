@@ -364,7 +364,7 @@ function UI.new(app,gui,scope)
   b.Position=UDim2.new((i-1)*.4,4,0,3);b.Size=UDim2.new(.4,-5,1,-6);b.ZIndex=13;b.TextSize=11;self.modeButtons[mode]=b
   scope:on(b.Activated,function()
    if self.app.s.workspaceMode==mode then return end
-   self:commitWorkspaceCamera();self.workspaceNodeDraft=nil;self.drag=nil;self.workspacePan=nil
+   self:finishWorkspaceNode();self:commitWorkspaceCamera();self.drag=nil;self.workspacePan=nil
    self.app:set("workspaceMode",mode)
   end)
  end
@@ -485,7 +485,33 @@ function UI.new(app,gui,scope)
   local prefix=workspacePrefix(self.app.s)
   self.app:patch({[prefix.."Zoom"]=math.clamp(math.round(state.zoom*100),35,180),[prefix.."PanX"]=math.clamp(math.round(state.pan.X),-1000000,1000000),[prefix.."PanY"]=math.clamp(math.round(state.pan.Y),-1000000,1000000)})
  end
+ function self:applyWorkspaceNode(node,offset)
+  self.workspaceNodeDraft={node=node,offset=Vector2.new(math.clamp(offset.X,-1000000,1000000),math.clamp(offset.Y,-1000000,1000000)),mode=self.app.s.workspaceMode}
+  if node=="Root" or node=="Page" then self:layout() else self:refreshBranches(true) end
+ end
+ function self:finishWorkspaceNode(discard)
+  local draft=self.workspaceNodeDraft
+  self.workspaceNodeInertia=nil;self.workspaceNodeDraft=nil
+  if not draft then return end
+  if not discard then
+   local prefix="ws"..draft.mode..draft.node
+   self.app:patch({[prefix.."X"]=math.round(draft.offset.X),[prefix.."Y"]=math.round(draft.offset.Y)})
+  end
+  self:layout()
+ end
+ function self:stepWorkspaceNode(dt)
+  local slide=self.workspaceNodeInertia
+  if not slide then return end
+  if not self.opened or self.app.s.reduce or self.app.s.workspaceMode~=slide.mode then self:finishWorkspaceNode();return end
+  local step=math.min(dt,math.max(0,.32-slide.elapsed))
+  local decay=math.exp(-12*step)
+  slide.offset+=slide.velocity*((1-decay)/12)
+  slide.velocity*=decay;slide.elapsed+=step
+  self:applyWorkspaceNode(slide.node,slide.offset)
+  if slide.elapsed>=.32 or slide.velocity.Magnitude*self.workspaceScale.Scale<12 then self:finishWorkspaceNode() end
+ end
  function self:resetWorkspace(all)
+  self:finishWorkspaceNode(all)
   self.workspaceCameraDraft=nil;self.workspaceCameraRevision=(self.workspaceCameraRevision or 0)+1;self.workspaceNodeDraft=nil;self.workspacePan=nil;self.drag=nil
   local prefix=workspacePrefix(self.app.s)
   local patch={[prefix.."Zoom"]=100,[prefix.."PanX"]=0,[prefix.."PanY"]=0}
@@ -691,7 +717,7 @@ function UI.new(app,gui,scope)
   if self.drag then self.drag.finish=function(point) self:finishMenuDrag(point,true) end end
  end)
  function self:editLayout(on)
-  self.layoutEditing=on==true;self.layoutDraft=nil;self.drag=nil;self:layout()
+  self:finishWorkspaceNode();self.layoutEditing=on==true;self.layoutDraft=nil;self.drag=nil;self:layout()
   if not on and self.app.store then self.app.store:save() end
  end
  local function beginLayout(input,resize)
@@ -723,17 +749,33 @@ function UI.new(app,gui,scope)
  local function beginWorkspaceNode(input,node)
   if not self.opened or self.drag or self.workspacePan then return end
   if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
+  self:finishWorkspaceNode()
   local origin=Vector2.new(input.Position.X,input.Position.Y);local old=workspaceOffset(self,node);local zoom=self.workspaceScale.Scale
+  local lastPos,lastAt=origin,os.clock()
+  local velocity=Vector2.zero
   local function calc(pos)
-   local next=old+(pos-origin)/zoom
-   self.workspaceNodeDraft={node=node,offset=next}
-   if node=="Root" or node=="Page" then self:layout() else self:refreshBranches(true) end
+   local now=os.clock()
+   if pos~=lastPos then
+    local dt=math.max(1/240,now-lastAt)
+    local measured=(pos-lastPos)/dt
+    local cap=650
+    if measured.Magnitude>cap then measured=measured.Unit*cap end
+    velocity=velocity:Lerp(measured,1-math.exp(-dt*32))
+    lastPos=pos;lastAt=now
+   end
+   self:applyWorkspaceNode(node,old+(pos-origin)/zoom)
   end
   self:begin(input,calc)
   if self.drag then self.drag.finish=function(pos)
-   calc(pos);local next=self.workspaceNodeDraft.offset;self.workspaceNodeDraft=nil
-   local prefix=workspacePrefix(self.app.s)..node
-   self.app:patch({[prefix.."X"]=math.clamp(math.round(next.X),-1000000,1000000),[prefix.."Y"]=math.clamp(math.round(next.Y),-1000000,1000000)})
+   calc(pos)
+   local next=self.workspaceNodeDraft.offset
+   local idle=os.clock()-lastAt
+   local releaseVelocity=velocity*math.exp(-idle*25)
+   if not self.app.s.reduce and idle<.10 and (pos-origin).Magnitude>=6 and releaseVelocity.Magnitude>=80 then
+    self.workspaceNodeInertia={node=node,mode=self.app.s.workspaceMode,offset=next,velocity=releaseVelocity/zoom,elapsed=0}
+   else
+    self:finishWorkspaceNode()
+   end
   end end
  end
  scope:on(self.rootDrag.InputBegan,function(i) beginWorkspaceNode(i,"Root") end)
@@ -781,13 +823,14 @@ function UI.new(app,gui,scope)
  scope:on(self.stage:GetPropertyChangedSignal("AbsoluteSize"),function() self:layout() end);self:layout()
  scope:on(Input.InputChanged,function(i) local d=self.drag;if d and (i==d.i or d.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseMovement) then d.fn(Vector2.new(i.Position.X,i.Position.Y),d.start,d.origin) end end)
  scope:on(Input.InputEnded,function(i) if self.drag and (self.drag.i==i or self.drag.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseButton1) then local d=self.drag;self.drag=nil;if d.finish then d.finish(Vector2.new(i.Position.X,i.Position.Y)) end end end)
- scope:on(Input.WindowFocusReleased,function() self.backgroundTap=nil;self.drag=nil;self.workspacePan=nil;self.workspaceNodeDraft=nil;self:commitWorkspaceCamera();if self.menuDraft then self.menuDraft=nil end;self:layout() end);scope:add(function() if self.page then self.page:clear() end;Icons.clear() end);return self
+ scope:on(Input.WindowFocusReleased,function() self.backgroundTap=nil;self.drag=nil;self.workspacePan=nil;self:finishWorkspaceNode();self:commitWorkspaceCamera();if self.menuDraft then self.menuDraft=nil end;self:layout() end);scope:add(function() if self.page then self.page:clear() end;Icons.clear() end);return self
 end
 function UI:animateBackground(t)
  if self.layoutPending or self.layoutViewport~=self.stage.AbsoluteSize then self:layout() end
  local s=self.app.s
  local dt=math.clamp(t-(self.motionAt or t-1/60),0,.1)
  self.motionAt=t
+ self:stepWorkspaceNode(dt)
  local immediate=s.reduce or s.menuTransition=="Off"
  local duration=if not self.opened then .24 else math.max(.06,s.duration/1000*100/s.speed)
  local target=if self.opened then 1 else 0
@@ -862,11 +905,11 @@ function UI:animateBackground(t)
  self.constellationLayer.Visible=s.menuGeometry
  if self.geoLayer.Visible and s.menuGeometry and decorDue then self.constellation:step(math.min(.1,decorDt),s) end
 end
-function UI:begin(i,fn,origin) if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end;self.backgroundTap=nil;local v=Vector2.new(i.Position.X,i.Position.Y);self.drag={i=i,start=v,fn=fn,origin=origin};fn(v,v,origin) end
+function UI:begin(i,fn,origin) if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end;self.backgroundTap=nil;if self.workspaceNodeInertia then self:finishWorkspaceNode() end;local v=Vector2.new(i.Position.X,i.Position.Y);self.drag={i=i,start=v,fn=fn,origin=origin};fn(v,v,origin) end
 function UI:show(on)
  self.backgroundTap=nil
  if on then self:setQuick(false) end
- if not on then self.workspacePan=nil;self:commitWorkspaceCamera();if self.workspaceNodeDraft then self.workspaceNodeDraft=nil;self:layout() end end
+ if not on then self.workspacePan=nil;self:finishWorkspaceNode();self:commitWorkspaceCamera() end
  if not on and self.opened then
   self.lastClosedTab=self.tab
   self.lastClosedPage=self.sc
