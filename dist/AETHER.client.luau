@@ -1198,7 +1198,7 @@ function UI.new(app,gui,scope)
     local shift=if narrow then UDim2.new(.5,-10,0,3) else UDim2.new(0,8,.5,-10)
     icon.native.Position=shift
     if icon.hd then icon.hd.Position=if narrow then UDim2.new(.5,-11.5,0,2) else UDim2.new(0,7,.5,-11.5) end
-    icon.visual.Position=if narrow then UDim2.new(.5,-12,0,2) else UDim2.new(0,7,.5,-12) end
+    icon.visual.Position=if narrow then UDim2.new(.5,-12,0,2) else UDim2.new(0,7,.5,-12)
     local glow=b:FindFirstChild("IconGlow");if glow and icon.hd then glow.Position=icon.hd.Position end
    end
    b.TextXAlignment=if narrow then Enum.TextXAlignment.Center else Enum.TextXAlignment.Right
