@@ -340,7 +340,7 @@ do
     end
     function vb:reset()
         self.auto=false;detachTilt()
-        if self.play then self.play.set=false;self.play.spike=false;self.play.ownsTilt=false;self.play.generation+=1;self.play.status="Off | reset" end
+        if self.play then self.play.set=false;self.play.spike=false;self.play.dive=false;self.play.ownsTilt=false;self.play.generation+=1;table.clear(self.play.locks);self.play.status="Off | reset" end
         stopCurve()
         stopStyle()
         table.clear(self.multiplierRequests)
@@ -540,7 +540,7 @@ do
         self.auto=true;self.status="Local tilt correction enabled; ball response depends on style"
     end
     -- Auto Play dispatches normal game inputs; it does not bypass move validation.
-    local play={set=false,spike=false,busy=false,ownsTilt=false,status="Off",lastBall=nil,lastStamp=nil,lastMove=nil,lastAt=0,lastSeen=0,generation=0,attempts=0,hits=0}
+    local play={set=false,spike=false,dive=false,busy=false,ownsTilt=false,status="Off",locks={},nextLockCheck=0,lastAt=0,generation=0,attempts=0,hits=0}
     vb.play=play
     local api,retryAt=nil,0
     local tags=game:GetService("CollectionService")
@@ -562,7 +562,7 @@ do
         local h=require(g.Handlers)
         local bind=require(registry.DoMove)
         assert(type(bind.onMoveRequest)=="function" and type(bind.canDoMove)=="function","Action binding unavailable")
-        return {states=h.States,values=h.Values,input=knit.GetController("InputController"),
+        return {controller=c,service=knit.GetService("BallService"),config=require(ReplicatedStorage.Configuration.Game),states=h.States,values=h.Values,input=knit.GetController("InputController"),
             balls=knit.GetController("BallController"),binding=bind,orch=require(dm.Orchestrator),
             rules=require(dm.Game),special=require(dm.StyleSpecial),hitbox=require(ReplicatedStorage.Tools.Hitbox),
             joint=require(ReplicatedStorage.Tools.TiltJoint),physics=require(ReplicatedStorage.Common.Physics),
@@ -599,41 +599,164 @@ do
         end
         return out
     end
-    local function findReachable(m,char,action)
-        local hitbox=m.hitbox.get({Special=m.special.getSpecial(),MoveId=action})
-        if not hitbox then return nil,"No hitbox for "..action end
-        local offset,size=hitbox.Offset,hitbox.Size
-        if hitbox.Custom and hitbox.Custom.AdjustBoundsLocal then
-            local a,b=hitbox.Custom.AdjustBoundsLocal(offset,size)
+    local function ballKey(ball)
+        local id=ball:GetAttribute("ServerId")
+        return if id~=nil then "ball:"..tostring(id) else ball
+    end
+    local function touchKey(id)
+        if id==nil then id=ReplicatedStorage:GetAttribute("ActiveBall") end
+        if id==nil then return nil end
+        return "ball:"..tostring(id)
+    end
+    local touchConnection
+    local function listenTouches(m)
+        if touchConnection then return end
+        touchConnection=m.service.BallTouched:Connect(function(who,id)
+            local key=touchKey(id)
+            if not key then return end
+            local lock=play.locks[key]
+            if who==player then
+                if lock and lock.pending then play.hits+=1 end
+                if lock then
+                    lock.pending=false;lock.outSince=nil;lock.at=os.clock()
+                elseif play.set or play.spike or play.dive then
+                    for _,ball in candidates(m) do
+                        if ballKey(ball)==key then
+                            play.locks[key]={ball=ball,at=os.clock(),move="Manual",pending=false}
+                            break
+                        end
+                    end
+                end
+            elseif typeof(who)=="Instance" and who:IsA("Player") then
+                play.locks[key]=nil
+            end
+        end)
+    end
+    local function bounds(m,char,action,pad)
+        local h=m.hitbox.get({Special=m.special.getSpecial(),MoveId=action})
+        if not h then return nil end
+        local offset,size=h.Offset,h.Size
+        if h.Custom and h.Custom.AdjustBoundsLocal then
+            local a,b=h.Custom.AdjustBoundsLocal(offset,size)
             if typeof(a)=="CFrame" then offset=a end
             if typeof(b)=="Vector3" then size=b end
         end
         local c0=m.joint.get(char):GetC0()
-        local transform=char.PrimaryPart.CFrame*(c0-c0.Position)*offset
-        local list=candidates(m)
-        if #list==0 then return nil,"No streamed ball" end
-        local chosen,best=nil,math.huge
-        for _,b in list do
-            overlap.FilterDescendantsInstances={b}
-            if #workspace:GetPartBoundsInBox(transform,size,overlap)>0 then
-                local p=b:GetPivot().Position
-                local distance=(p-char.PrimaryPart.Position).Magnitude
-                if distance<best and m.physics.canInteract(player,action,p) and m.rules.isBallInNetBoundary(b) then chosen,best=b,distance end
+        return char.PrimaryPart.CFrame*(c0-c0.Position)*offset,size+Vector3.one*(pad or 0)
+    end
+    local function overlaps(ball,transform,size)
+        if not transform then return false end
+        overlap.FilterDescendantsInstances={ball}
+        return #workspace:GetPartBoundsInBox(transform,size,overlap)>0
+    end
+    local function diveRange(m)
+        local mult=player:GetAttribute("Multiplier_DiveSpeed")
+        if type(mult)~="number" or mult~=mult or mult<=0 then mult=1 end
+        local duration=m.config.Ball.Dive.Duration*.9
+        -- Default move's velocity falls approximately linearly over its duration.
+        return math.clamp(36*mult*duration*.45,7,24)
+    end
+    local function refreshLocks(m,char,now)
+        if now<play.nextLockCheck then return end
+        play.nextLockCheck=now+.08
+        if not next(play.locks) then return end
+        local sf,ss=bounds(m,char,"Set",6)
+        local pf,ps=bounds(m,char,"Spike",6)
+        for key,lock in pairs(play.locks) do
+            local ball=lock.ball
+            if not ball or not ball.Parent or not ball:IsDescendantOf(workspace) or ballKey(ball)~=key then
+                play.locks[key]=nil
+            else
+                local d=ball:GetPivot().Position-char.PrimaryPart.Position
+                local horizontal=Vector3.new(d.X,0,d.Z).Magnitude
+                local close=overlaps(ball,sf,ss) or overlaps(ball,pf,ps)
+                if not sf and not pf then close=d.Magnitude<10 end
+                if lock.move=="Dive" or play.dive then
+                    close=close or (horizontal<diveRange(m)+4 and math.abs(d.Y)<9)
+                end
+                -- Never rearm from cooldown, own timestamp or transient collision changes.
+                if close or now-lock.at<.35 then
+                    lock.outSince=nil
+                elseif not lock.outSince then
+                    lock.outSince=now
+                elseif now-lock.outSince>=.5 then
+                    play.locks[key]=nil
+                end
             end
         end
-        if not chosen then return nil,"Ball outside "..action.." reach or game validation" end
+    end
+    local function findReachable(m,char,action)
+        local transform,size=bounds(m,char,action,0)
+        if not transform then return nil,"No hitbox for "..action end
+        local list=candidates(m)
+        if #list==0 then return nil,"No streamed ball" end
+        local chosen,best,locked=nil,math.huge,false
+        for _,b in list do
+            if overlaps(b,transform,size) then
+                if play.locks[ballKey(b)] then locked=true;continue end
+                local p=b:GetPivot().Position
+                local distance=(p-char.PrimaryPart.Position).Magnitude
+                if distance<best and m.physics.canInteract(player,action,p) and m.rules.isBallInNetBoundary(b) then
+                    chosen,best=b,distance
+                end
+            end
+        end
+        if not chosen then return nil,if locked then "Touch locked | wait for next approach" else "Ball outside "..action.." reach or game validation" end
         return chosen
     end
+    local function findDive(m,char)
+        local root=char.PrimaryPart
+        local setTransform,setSize=bounds(m,char,"Set",0)
+        local range=diveRange(m)
+        local chosen,dir,best=nil,nil,math.huge
+        local scale=ReplicatedStorage:GetAttribute("GlobalTimeScale")
+        if type(scale)~="number" or scale~=scale then scale=1 end
+        if scale<=0 then return nil,"Ball simulation paused" end
+        scale=math.clamp(scale,.01,3)
+        local gravity=ReplicatedStorage:GetAttribute("Modifier_BallGravity")
+        if type(gravity)~="number" or gravity~=gravity then gravity=17 end
+        local mult=player:GetAttribute("Multiplier_DiveSpeed")
+        if type(mult)~="number" or mult~=mult or mult<=0 then mult=1 end
+        for _,ball in candidates(m) do
+            if play.locks[ballKey(ball)] or overlaps(ball,setTransform,setSize) then continue end
+            local p=ball:GetPivot().Position
+            if not m.physics.canInteract(player,"Dive",p) or not m.rules.isBallInNetBoundary(ball) then continue end
+            local id=ball:GetAttribute("ServerId")
+            local state=id~=nil and m.balls.ActiveBalls[id] or nil
+            local vel=state and state.Velocity
+            if typeof(vel)~="Vector3" or vel.Magnitude>500 or vel~=vel then
+                vel=ball.PrimaryPart.AssemblyLinearVelocity
+            end
+            if vel.Y>4 then continue end
+            local delta=p-root.Position
+            local flat=Vector3.new(delta.X,0,delta.Z)
+            if flat.Magnitude<2 or flat.Magnitude>range+8 then continue end
+            -- Estimate a short intercept, not a teleport; use the normal dive action.
+            local t=math.clamp(flat.Magnitude/(36*mult),.08,.55)
+            local st=t*scale
+            local gm=state and state.GravityMultiplier
+            if type(gm)~="number" or gm~=gm then gm=1 end
+            local target=p+vel*st-Vector3.yAxis*(gravity*gm*.5*st*st)
+            local offset=target-root.Position
+            local h=Vector3.new(offset.X,0,offset.Z)
+            if h.Magnitude<2 or h.Magnitude>range or offset.Y>4 or offset.Y< -5 then continue end
+            if h.Magnitude<best then
+                chosen,dir,best=ball,h.Unit*(7*mult),h.Magnitude
+            end
+        end
+        if not chosen then return nil,"Waiting for a low ball within dive range" end
+        return chosen,dir
+    end
     local function stopPlay(reason)
-        play.set=false;play.spike=false;play.generation+=1
+        play.set=false;play.spike=false;play.dive=false;play.generation+=1;table.clear(play.locks)
         if play.ownsTilt and vb.auto then vb:toggleAuto() end
         play.ownsTilt=false;play.status=reason
     end
     function vb:togglePlay(which)
-        local key=if which=="Set" then "set" else "spike"
+        local key=if which=="Set" then "set" elseif which=="Spike" then "spike" else "dive"
         play[key]=not play[key];play.generation+=1
         if play[key] then
-            play.lastBall=nil;retryAt=0;play.status="Waiting for game controller"
+            retryAt=0;play.status="Waiting for game controller"
             if key=="spike" and not self.auto then
                 local ok=pcall(function() self:toggleAuto() end)
                 play.ownsTilt=ok and self.auto
@@ -645,7 +768,7 @@ do
         end
     end
     local function playTick()
-        if not (play.set or play.spike) then return end
+        if not (play.set or play.spike or play.dive) then return end
         if app.stopping or not gui.Parent or app.mode~="Game" then stopPlay("Off | left Game mode");return end
         if play.busy then return end
         local now=os.clock()
@@ -654,39 +777,56 @@ do
             retryAt=now+1
             local ok,m=pcall(resolvePlay)
             if not ok then return waiting("Init: "..tostring(m)) end
-            api=m
+            listenTouches(m);api=m
         end
         local m=api
-        local ready,reason=allowed(m)
-        if not ready then return waiting(reason) end
+        if not m.states.IsPlaying() then table.clear(play.locks);return waiting("Waiting for match") end
         local char=m.states.Character
         if not char or char~=player.Character or not char.PrimaryPart then return waiting("Waiting for character") end
+        refreshLocks(m,char,now)
+        local ready,reason=allowed(m)
+        if not ready then return waiting(reason) end
         local jumping=m.states.IsJumping()==true
         local action=if jumping then "Spike" else "Set"
-        if (jumping and not play.spike) or (not jumping and not play.set) then return waiting("Waiting for "..(if play.spike then "jump" else "landing")) end
         if m.states.Charge()~=nil then return waiting("Manual charge in progress") end
+        if jumping and not play.spike then return waiting("Waiting for landing") end
+        if not jumping and not (play.set or play.dive) then return waiting("Waiting for jump") end
         if m.rules.isHitboxSkipped(action) then return waiting("Game skipped consecutive hit") end
         local valid,why=m.rules.isMoveInvalidOnServe(action)
         if not valid then return waiting("Serve rule: "..tostring(why or action)) end
-        local ball,ballWhy=findReachable(m,char,action)
-        if not ball then
-            if now-play.lastSeen>.18 then play.lastBall=nil end
-            return waiting(ballWhy)
+        local ball,ballWhy,dir
+        if jumping or play.set then ball,ballWhy=findReachable(m,char,action) end
+        if not ball and not jumping and play.dive then
+            local dv,dwhy=m.rules.isMoveInvalidOnServe("Dive")
+            if dv and not m.rules.isHitboxSkipped("Dive") then
+                local b,d=findDive(m,char)
+                if b then ball,dir,action=b,d,"Dive" else ballWhy=ballWhy or d end
+            else
+                ballWhy=ballWhy or ("Dive rule: "..tostring(dwhy))
+            end
         end
-        play.lastSeen=now
-        local stamp=ReplicatedStorage:GetAttribute("LastHitTimestamp")
-        if (play.lastBall==ball and play.lastStamp==stamp and play.lastMove==action) or now-play.lastAt<.35 then return waiting("Waiting for next touch") end
-        local cfg=m.actions[action]
-        if not cfg or cfg.IsAerial~=jumping then return waiting("Action configuration mismatch") end
-        local request={ActionName=action,IsAerial=cfg.IsAerial,InputState=Enum.UserInputState.Begin,Metadata={}}
-        if not m.binding.canDoMove(request) then return waiting("Game input rejected") end
-        play.lastBall=ball;play.lastStamp=stamp;play.lastMove=action;play.lastAt=now
+        if not ball then return waiting(ballWhy or "Waiting for ball") end
+        local key=ballKey(ball)
+        if play.locks[key] or now-play.lastAt<.35 then return waiting("Touch locked | wait for next approach") end
+        local request
+        if action~="Dive" then
+            local cfg=m.actions[action]
+            if not cfg or cfg.IsAerial~=jumping then return waiting("Action configuration mismatch") end
+            request={ActionName=action,IsAerial=cfg.IsAerial,InputState=Enum.UserInputState.Begin,Metadata={}}
+            if not m.binding.canDoMove(request) then return waiting("Game input rejected") end
+        end
+        play.locks[key]={ball=ball,at=now,move=action,pending=true}
+        play.lastAt=now
         play.busy=true;play.attempts+=1;play.status="Executing "..action
         local gen=play.generation
         task.spawn(function()
             local ownedCharge=false
             local ok,err=pcall(function()
                 if gen~=play.generation or not allowed(m) then return end
+                if action=="Dive" then
+                    m.controller:Dive({Target=dir})
+                    return
+                end
                 if jumping and vb.auto and vb.target and vb.tiltFresh and os.clock()-vb.tiltFresh<.25 and typeof(vb.requestedTilt)=="Vector3" then
                     lastManual=m.values.TiltDirection;lastApplied=vb.requestedTilt;m.values.TiltDirection=vb.requestedTilt
                 end
@@ -699,7 +839,6 @@ do
                         m.binding.onMoveRequest(request)
                     end
                 end
-                if ReplicatedStorage:GetAttribute("LastHitTimestamp")~=stamp and ReplicatedStorage:GetAttribute("LastHitter")==player.Name then play.hits+=1 end
             end)
             if ownedCharge and m.binding.AdvancedChargeAction==action then pcall(m.binding.releaseHeldInput) end
             play.busy=false
@@ -716,7 +855,10 @@ do
             api=nil;retryAt=os.clock()+1;play.status="Auto Play error: "..tostring(err)
         end
     end)
-    scope:add(function() stopPlay("Off | unload") end)
+    scope:add(function()
+        stopPlay("Off | unload")
+        if touchConnection then touchConnection:Disconnect();touchConnection=nil end
+    end)
     local elapsed=0
     scope:on(RunService.Heartbeat,function(dt)
         elapsed+=dt

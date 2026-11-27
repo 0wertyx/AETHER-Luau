@@ -850,12 +850,13 @@ function E.render(a,tab,ui)
     if curveElapsed>=.25 then curveElapsed=0;if ui.opened then refreshCurve() end end
    end)
    ui:title("AUTO PLAY / BETA")
-   ui:note("Ground = Set; airborne = Spike. Uses normal move binding and hit validation. Open-court tilt is applied when available.",64)
+   ui:note("Ground = Set; airborne = Spike; low distant ball = Dive. One attempt per ball approach; normal game rules remain active.",64)
    ui:chips({"Auto Set"},function() vb:togglePlay("Set");ui:sync() end,1,function() return if vb.play.set then "Auto Set" else "" end)
    ui:chips({"Auto Spike"},function() vb:togglePlay("Spike");ui:sync() end,1,function() return if vb.play.spike then "Auto Spike" else "" end)
+   ui:chips({"Auto Dive"},function() vb:togglePlay("Dive");ui:sync() end,1,function() return if vb.play.dive then "Auto Dive" else "" end)
    local playStatus=ui:note("",88)
    local function refreshPlay()
-    playStatus.Text=string.format("SET %s | SPIKE %s\n%s\nAttempts %d | observed hits %d",if vb.play.set then "ON" else "OFF",if vb.play.spike then "ON" else "OFF",vb.play.status,vb.play.attempts,vb.play.hits)
+    playStatus.Text=string.format("SET %s | SPIKE %s | DIVE %s\n%s\nAttempts %d | confirmed touches %d",if vb.play.set then "ON" else "OFF",if vb.play.spike then "ON" else "OFF",if vb.play.dive then "ON" else "OFF",vb.play.status,vb.play.attempts,vb.play.hits)
    end
    ui:watch(refreshPlay)
    local playRefresh=0
