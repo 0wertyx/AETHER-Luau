@@ -36,8 +36,8 @@ local function workspacePrefix(s) return "ws"..s.workspaceMode end
 local function layoutKey(s)
  local prefix=workspacePrefix(s)
  local values={s.topX,s.topY,tostring(s.topCustom),s.topScale,tostring(s.layoutCustom),s.layoutX,s.layoutY,s.layoutW,s.layoutH,s.navWidth,s.workspaceMode}
- values[#values+1]=tostring(s[prefix.."AppearanceCustom"])
- for _,node in {"Root","Main","Visuals","Utility","Interface","Page","Appearance"} do
+ values[#values+1]=tostring(s[prefix.."AppearanceCustom"]);values[#values+1]=tostring(s[prefix.."PreviewCustom"])
+ for _,node in {"Root","Main","Visuals","Utility","Interface","Page","Appearance","Preview"} do
   values[#values+1]=s[prefix..node.."X"];values[#values+1]=s[prefix..node.."Y"]
  end
  return table.concat(values,":")
@@ -46,6 +46,11 @@ local function workspaceOffset(self,node)
  local draft=self.workspaceNodeDraft
  if draft and draft.node==node then return draft.offset end
  local s=self.app.s;local prefix=workspacePrefix(s)..node
+ if node=="Preview" and not s[prefix.."Custom"] then
+  local y=0
+  for _,branch in branches do if s["branch"..branch.name] then y+=(self.branchTitleH or 24)+#branch.tabs*(self.branchRowH or 30)+16 end end
+  return Vector2.new((self.branchStack and self.branchStack.Size.X.Offset or 202)+28,y)
+ end
  if node=="Appearance" and not s[prefix.."Custom"] then
   local y=0
   for _,branch in branches do
@@ -527,7 +532,7 @@ function UI.new(app,gui,scope)
  end
  self.linkPool={};self.portPool={}
  local nativePaths=true
- for i=1,6 do
+ for i=1,7 do
   local path
   local ok=pcall(function()
    path=Instance.new("Path2D");path.Name="NodeWire";path.Thickness=2;path.ZIndex=2;path.Visible=false;path.Parent=self.workspaceLinks
@@ -543,7 +548,7 @@ function UI.new(app,gui,scope)
   table.clear(self.linkPool)
  end
  self.nativeWorkspacePaths=nativePaths
- for i=1,12 do
+ for i=1,14 do
   local port=U.frame(self.workspaceLinks,"NodePort",nil,UDim2.fromOffset(7,7),Color3.new(1,1,1),.06)
   port.AnchorPoint=Vector2.new(.5,.5);port.Active=false;port.Interactable=false;port.ZIndex=2;port.Visible=false;U.corner(port,9);self.portPool[i]=port
  end
@@ -575,16 +580,167 @@ function UI.new(app,gui,scope)
   local b=U.button(self.appearancePanel,d[2]);b.Name="Style_"..d[1];b.ZIndex=5;b.TextSize=10;b.AutoButtonColor=false
   b.Position=UDim2.new(((i-1)%2)*.5,if i%2==1 then 8 else 2,0,67+math.floor((i-1)/2)*29)
   b.Size=UDim2.new(.5,-10,0,25);b.TextTruncate=Enum.TextTruncate.AtEnd
-  b:SetAttribute("AETHERKeepFontColor",true)
+  b:SetAttribute("AETHERKeepFontColor",true);b:SetAttribute("AETHERThemeButton",false)
   U.stroke(b,Color3.new(1,1,1),1)
   self.appearanceSamples[d[1]]=b
   scope:on(b.Activated,function() if self.opened then self:open("Interface",d[1]) end end)
  end
  self.appearancePanel.Size=UDim2.new(1,0,0,72+math.ceil(#S.appearance/2)*29)
+ self.stylePreview=U.frame(self.branchStack,"StylePreviewNode",nil,UDim2.fromOffset(500,338),nil,1)
+ self.stylePreview.ZIndex=4;self.stylePreview.Visible=false;self.stylePreview.Active=true;U.corner(self.stylePreview,16)
+ self.stylePreviewDrag=U.label(self.stylePreview,"LIVE PREVIEW / MOVE",11,UDim2.fromOffset(10,4),UDim2.new(1,-20,0,26))
+ self.stylePreviewDrag.ZIndex=6;self.stylePreviewDrag.Active=true;self.stylePreviewDrag.TextXAlignment=Enum.TextXAlignment.Center
+ local previewRule=U.frame(self.stylePreview,"HeaderDivider",UDim2.fromOffset(10,31),UDim2.new(1,-20,0,1),Color3.new(1,1,1),.82)
+ previewRule.ZIndex=5;previewRule.Interactable=false
+ self.stylePreviewName=U.label(self.stylePreview,"ROOT NODE",13,UDim2.fromOffset(12,37),UDim2.new(1,-24,0,22))
+ self.stylePreviewName.ZIndex=5
+ self.stylePreviewStage=U.frame(self.stylePreview,"AppearancePreviewStage",UDim2.fromOffset(10,65),UDim2.new(1,-20,1,-100),Color3.fromRGB(68,64,80),0)
+ self.stylePreviewStage.ZIndex=5;self.stylePreviewStage.ClipsDescendants=true;U.corner(self.stylePreviewStage,12)
+ U.gradient(self.stylePreviewStage,Color3.fromRGB(85,77,100),Color3.fromRGB(28,28,43),45)
+ -- The neutral background makes transparent fills visible. Samples never invoke actions.
+ for i=1,7 do
+  local line=U.frame(self.stylePreviewStage,"Guide",UDim2.fromScale(i/8,0),UDim2.new(0,1,1,0),Color3.new(1,1,1),.93)
+  line.ZIndex=6;line.Interactable=false
+ end
+ for i=1,3 do
+  local line=U.frame(self.stylePreviewStage,"Guide",UDim2.fromScale(0,i/4),UDim2.new(1,0,0,1),Color3.new(1,1,1),.93)
+  line.ZIndex=6;line.Interactable=false
+ end
+ self.stylePreviewContent=U.frame(self.stylePreviewStage,"SampleContent",nil,nil,nil,1)
+ self.stylePreviewContent.ZIndex=7;self.stylePreviewContent.Interactable=false
+ self.stylePreviewInfo=U.label(self.stylePreview,"",10,UDim2.new(0,12,1,-28),UDim2.new(1,-24,0,20));self.stylePreviewInfo.ZIndex=5
  function self:layoutAppearance()
-  self.appearancePanel.Visible=self.branchCards.Interface.expanded
+  local visible=self.branchCards.Interface.expanded
+  self.appearancePanel.Visible=visible;self.stylePreview.Visible=visible
   local pos=workspaceOffset(self,"Appearance")
   self.appearancePanel.Position=UDim2.fromOffset(pos.X,pos.Y)
+  local previewPos=workspaceOffset(self,"Preview")
+  self.stylePreview.Position=UDim2.fromOffset(previewPos.X,previewPos.Y)
+ end
+ function self:refreshStylePreview()
+  local s=self.app.s
+  local id=self.appearanceSelection or self.stylePreviewRole or "Root"
+  local d=S.appearanceById[id] or S.appearanceById.Root
+  self.stylePreviewRole=d[1];id=d[1]
+  self.stylePreviewName.Text=d[2]:upper()
+  local c,t,e,et,w=U.appearanceSample(s,d)
+  self.stylePreviewInfo.Text=string.format("FILL %d%% transparent  /  EDGE %.1f px · %d%% transparent",math.round(t*100),w,math.round(et*100))
+  local parts={id,s.font,s.fontAsset,s.weight,s.uiFontColor,s.uiMutedColor,s.uiPanelColor,s.uiGlassOpacity,s.uiStrokeColor,s.uiSpecularColor,s.uiReflection,s.rim,s.uiButtonColor,s.uiHoverColor,s.uiRowColor,s.clockGlass,s.fpsGlass,s.clockText,s.fpsText,s.glassColor,s.glass,s.moduleTextColor,s.moduleMutedColor,s.modulePanelColor,s.moduleRowColor,s.moduleToggleOnColor,s.moduleToggleOffColor,s.moduleStrokeColor,s.moduleBackgroundOpacity,s.afkBgA,s.afkBgB,s.afkBackground,s.afkGradientAngle,s.afkTitleColor,s.afkBrandColor,s.afkDetailColor,s.afkButtonColor,s.afkButtonText,s.afkButtonEdge,s.afkPatternColor,s.afkPatternOpacity,s.afkImageAsset,s.afkImageOpacity,s.afkImageTint,s.inputColor}
+  for _,role in S.appearance do
+   local p="appearance"..role[1]
+   for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do parts[#parts+1]=tostring(s[p..suffix]) end
+  end
+  local key=table.concat(parts,":")
+  if key==self.stylePreviewKey then return end
+  self.stylePreviewKey=key
+  local host=self.stylePreviewContent
+  -- Reuse sample geometry for slider changes; rebuild only when the selected kind changes.
+  if self.stylePreviewBuilt~=id then
+   host:ClearAllChildren();self.stylePreviewBuilt=id;self.stylePreviewPaint={}
+   local function block(parent,role,name,x,y,width,height,radius)
+    local f=U.frame(parent,name,UDim2.fromOffset(x,y),UDim2.fromOffset(width,height),nil,1)
+    f.ZIndex=parent.ZIndex+1;f.Interactable=false;U.corner(f,radius or 10)
+    table.insert(self.stylePreviewPaint,{frame=f,role=role})
+    return f
+   end
+   local function label(parent,text,x,y,width,height,size,colorKey)
+    local l=U.label(parent,text,size,UDim2.fromOffset(x,y),UDim2.fromOffset(width,height))
+    l.ZIndex=parent.ZIndex+1;l.Interactable=false;l.TextXAlignment=Enum.TextXAlignment.Center;l:SetAttribute("AETHERKeepFontColor",true)
+    table.insert(self.stylePreviewPaint,{label=l,colorKey=colorKey or "uiFontColor"})
+    return l
+   end
+   local function centerBox(role,width,height)
+    local f=block(host,role,"Sample",0,0,width,height,14)
+    f.AnchorPoint=Vector2.new(.5,.5);f.Position=UDim2.fromScale(.5,.5)
+    return f
+   end
+   if id=="Clock" or id=="FPS" then
+    local f=centerBox(id,190,86)
+    label(f,if id=="Clock" then "12:00" else "120 FPS",12,9,166,39,27,if id=="Clock" then "clockText" else "fpsText")
+    label(f,if id=="Clock" then "AETHER · TIME" else "PERFORMANCE",10,51,170,22,12,if id=="Clock" then "clockText" else "fpsText")
+   elseif id=="Input" then
+    local f=U.frame(host,"Keyboard",UDim2.fromScale(.5,.5),UDim2.fromOffset(230,156),nil,1);f.AnchorPoint=Vector2.new(.5,.5);f.ZIndex=8
+    for _,v in {{"W",83,4,58},{"SHIFT",146,4,76},{"A",20,55,58},{"S",83,55,58},{"D",146,55,58},{"SPACE",20,106,184}} do
+     local k=block(f,"Input","Key",v[2],v[3],v[4],44,8);label(k,v[1],0,0,v[4],44,13)
+    end
+   elseif id=="Quick" or id=="QuickRow" or id=="QuickOn" or id=="QuickOff" then
+    local f=centerBox("Quick",300,184)
+    label(f,"MODULES / PREVIEW",8,4,284,24,12,"moduleTextColor")
+    for i,name in {"Example module","Visual setting","Sample toggle"} do
+     local row=block(f,"QuickRow","ModuleRow",10,31+(i-1)*46,280,39,8)
+     label(row,name,6,0,174,39,12,"moduleTextColor")
+     local sw=block(row,if i==2 then "QuickOff" else "QuickOn","State",202,6,61,27,8)
+     label(sw,if i==2 then "OFF" else "ON",0,0,61,27,11,"moduleTextColor")
+    end
+   elseif id=="AFK" or id=="AFKButton" then
+    local f=centerBox("AFK",390,212);f.ClipsDescendants=true
+    local pattern=U.frame(f,"Pattern",nil,nil,nil,1);pattern.ZIndex=f.ZIndex+1;pattern.Interactable=false
+    local pic=U.new("ImageLabel",{Name="Picture",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,ScaleType=Enum.ScaleType.Crop,ZIndex=pattern.ZIndex,Interactable=false},pattern)
+    self.stylePreviewAFKPicture=pic
+    self.stylePreviewAFKStars={}
+    for i=1,24 do
+     local dot=U.frame(pattern,"Star",UDim2.fromScale((i*.618)%1,(i*.413)%1),UDim2.fromOffset(2,2),Color3.new(1,1,1),0);dot.ZIndex=pattern.ZIndex;U.corner(dot,2);self.stylePreviewAFKStars[i]=dot
+    end
+    label(f,"A E T H E R",0,28,390,22,12,"afkBrandColor")
+    label(f,"AFK",0,57,390,52,38,"afkTitleColor")
+    label(f,"Appearance preview",0,111,390,23,13,"afkDetailColor")
+    local b=block(f,"AFKButton","Return",100,153,190,34,10);label(b,"RETURN TO WORKSPACE",0,0,190,34,11,"afkButtonText")
+   elseif id=="Keybind" or id=="Wallhop" then
+    local f=centerBox(id,265,110)
+    label(f,if id=="Keybind" then "KEYBINDS" else "PRACTICE DISPLAY",8,6,249,25,13)
+    label(f,if id=="Keybind" then "No keybinds assigned" else "READY",8,40,249,30,18)
+    label(f,"Preview only",8,78,249,20,11,"uiMutedColor")
+   elseif id=="Top" or id=="Dock" or id=="Header" then
+    local f=centerBox(id,if id=="Header" then 340 else 194,52)
+    label(f,"A E T H E R",0,0,f.Size.X.Offset,52,16)
+   elseif id=="Search" or id=="NavButton" or id=="TabButton" or id=="Row" or id=="Button" then
+    local f=centerBox(id,270,48)
+    label(f,if id=="Search" then "Search functions..." elseif id=="Row" then "Example setting" else d[2],10,0,250,48,15,if id=="Search" then "uiMutedColor" else "uiFontColor")
+   elseif id=="Modes" then
+    local f=centerBox(id,330,48)
+    for i,text in {"GUI VIEW","NODE VIEW","HOME"} do
+     local b=block(f,"Button","Option",6+(i-1)*108,7,102,34,8);label(b,text,0,0,102,34,11)
+    end
+   else
+    local f=centerBox(id,300,204)
+    label(f,d[2]:upper(),8,4,284,24,13)
+    for i,text in {"Appearance","Example setting","Interface option"} do
+     local b=block(f,if id=="Root" then "NavButton" elseif id=="Page" then "Row" else "TabButton","Example",12,33+(i-1)*53,276,43,9)
+     label(b,text,0,0,276,43,14)
+    end
+   end
+  end
+  local glassRoles={Root=true,Appearance=true,Preview=true,Main=true,Visuals=true,Utility=true,Interface=true,Page=true,Header=true,Modes=true,Catalog=true,Top=true,Keybind=true}
+  for _,p in self.stylePreviewPaint do
+   if p.label then
+    p.label.TextColor3=U.hex(s[p.colorKey]);p.label.FontFace=U.font(s)
+   else
+    local role=p.role;local spec=S.appearanceById[role]
+    local fill,alpha,edge,edgeAlpha,width=U.appearanceSample(s,spec)
+    if glassRoles[role] then glassSurface(p.frame,s,role)
+    else
+     p.frame.BackgroundColor3=fill;p.frame.BackgroundTransparency=alpha
+     local rim=p.frame:FindFirstChildOfClass("UIStroke") or U.stroke(p.frame,edge,edgeAlpha,width)
+     rim.Color=edge;rim.Transparency=edgeAlpha;rim.Thickness=width;rim.Enabled=width>0 and edgeAlpha<1
+     if role=="AFK" then
+      p.frame.BackgroundColor3=Color3.new(1,1,1)
+      local grad=p.frame:FindFirstChildOfClass("UIGradient") or U.gradient(p.frame,fill,fill)
+      grad.Color=ColorSequence.new(fill,if s.afkBackground=="Solid" then fill else U.hex(s.afkBgB));grad.Rotation=s.afkGradientAngle
+     elseif role=="Clock" or role=="FPS" or role=="Dock" or role=="Quick" then
+      p.frame.BackgroundColor3=Color3.new(1,1,1)
+      local grad=p.frame:FindFirstChildOfClass("UIGradient") or U.gradient(p.frame,fill,fill)
+      grad.Color=ColorSequence.new(fill,fill:Lerp(Color3.fromRGB(17,16,30),.5));grad.Rotation=90
+     end
+    end
+   end
+  end
+  if id=="AFK" or id=="AFKButton" then
+   local pic=self.stylePreviewAFKPicture
+   pic.Visible=s.afkBackground=="Image" and s.afkImageAsset~=""
+   pic.Image=if pic.Visible then "rbxassetid://"..s.afkImageAsset else ""
+   pic.ImageColor3=U.hex(s.afkImageTint);pic.ImageTransparency=1-s.afkImageOpacity/100
+   for _,dot in self.stylePreviewAFKStars do dot.Visible=s.afkBackground=="Stars";dot.BackgroundColor3=U.hex(s.afkPatternColor);dot.BackgroundTransparency=1-s.afkPatternOpacity/100 end
+  end
  end
  function self:refreshAppearanceSamples()
   local s=self.app.s
@@ -619,7 +775,7 @@ function UI.new(app,gui,scope)
  end
  -- Only two consecutive, nearby background activations close the hub.
  local function isBackground(pos)
-  for _,obj in {self.header,self.modeBar,self.navGlass,self.nav,self.search,self.contentGlass,self.pageBox,self.searchResults,self.status,self.rootDrag,self.pageDrag,self.layoutMove,self.layoutResize,self.layoutDone,self.appearancePanel} do
+  for _,obj in {self.header,self.modeBar,self.navGlass,self.nav,self.search,self.contentGlass,self.pageBox,self.searchResults,self.status,self.rootDrag,self.pageDrag,self.layoutMove,self.layoutResize,self.layoutDone,self.appearancePanel,self.stylePreview} do
    if inside(obj,pos) then return false end
   end
   for _,r in self.branchCards do if inside(r.frame,pos) then return false end end
@@ -860,7 +1016,7 @@ function UI.new(app,gui,scope)
  end
  function self:applyWorkspaceNode(node,offset)
   self.workspaceNodeDraft={node=node,offset=Vector2.new(math.clamp(offset.X,-1000000,1000000),math.clamp(offset.Y,-1000000,1000000)),mode=self.app.s.workspaceMode}
-  if node=="Appearance" then self:layoutAppearance() elseif node=="Root" or node=="Page" then self:layout() else self:refreshBranches(true) end
+  if node=="Appearance" or node=="Preview" then self:layoutAppearance() elseif node=="Root" or node=="Page" then self:layout() else self:refreshBranches(true) end
  end
  function self:finishWorkspaceNode(discard)
   local draft=self.workspaceNodeDraft
@@ -869,7 +1025,7 @@ function UI.new(app,gui,scope)
   if not discard then
    local prefix="ws"..draft.mode..draft.node
    local patch={[prefix.."X"]=math.round(draft.offset.X),[prefix.."Y"]=math.round(draft.offset.Y)}
-   if draft.node=="Appearance" then patch[prefix.."Custom"]=true end
+   if draft.node=="Appearance" or draft.node=="Preview" then patch[prefix.."Custom"]=true end
    self.app:patch(patch)
   end
   self:layout()
@@ -883,7 +1039,7 @@ function UI.new(app,gui,scope)
   if self.app.s.reduce or not self.opened then return end
   local speed=slide.velocity.Magnitude*self.workspaceScale.Scale
   if speed<65 then return end
-  local target=if slide.node=="Root" then self.rootDrag elseif slide.node=="Page" then self.pageDrag elseif slide.node=="Appearance" then self.appearanceDrag else self.branchCards[slide.node].title
+  local target=if slide.node=="Root" then self.rootDrag elseif slide.node=="Page" then self.pageDrag elseif slide.node=="Appearance" then self.appearanceDrag elseif slide.node=="Preview" then self.stylePreviewDrag else self.branchCards[slide.node].title
   if not target or not target.Visible or not target.Parent.Visible then return end
   local direction=slide.velocity.Unit
   local tangent=Vector2.new(-direction.Y,direction.X)
@@ -946,8 +1102,8 @@ function UI.new(app,gui,scope)
   local prefix=workspacePrefix(self.app.s)
   local patch={[prefix.."Zoom"]=100,[prefix.."PanX"]=0,[prefix.."PanY"]=0}
   if all then
-   for _,node in {"Root","Main","Visuals","Utility","Interface","Page","Appearance"} do patch[prefix..node.."X"]=0;patch[prefix..node.."Y"]=0 end
-   patch[prefix.."AppearanceCustom"]=false
+   for _,node in {"Root","Main","Visuals","Utility","Interface","Page","Appearance","Preview"} do patch[prefix..node.."X"]=0;patch[prefix..node.."Y"]=0 end
+   patch[prefix.."AppearanceCustom"]=false;patch[prefix.."PreviewCustom"]=false
   end
   self.app:patch(patch)
  end
@@ -1013,6 +1169,9 @@ function UI.new(app,gui,scope)
   end
   if self.appearancePanel.Visible and self.branchCards.Interface.frame.Visible then
    pairsToDraw[#pairsToDraw+1]={point(self.branchCards.Interface.frame,1,.90),point(self.appearancePanel,0,.035)}
+  end
+  if self.appearancePanel.Visible and self.stylePreview.Visible then
+   pairsToDraw[#pairsToDraw+1]={point(self.appearancePanel,1,.06),point(self.stylePreview,0,.08)}
   end
   local signature={s.accent}
   for _,pair in pairsToDraw do for _,v in pair do signature[#signature+1]=v.X;signature[#signature+1]=v.Y end end
@@ -1226,6 +1385,7 @@ function UI.new(app,gui,scope)
  scope:on(self.rootDrag.InputBegan,function(i) beginWorkspaceNode(i,"Root") end)
  scope:on(self.pageDrag.InputBegan,function(i) beginWorkspaceNode(i,"Page") end)
  scope:on(self.appearanceDrag.InputBegan,function(i) beginWorkspaceNode(i,"Appearance") end)
+ scope:on(self.stylePreviewDrag.InputBegan,function(i) beginWorkspaceNode(i,"Preview") end)
  for name,r in self.branchCards do
   r.title.Active=true
   scope:on(r.title.InputBegan,function(i) beginWorkspaceNode(i,name) end)
@@ -1272,7 +1432,7 @@ function UI.new(app,gui,scope)
   local ctrl=Input:IsKeyDown(Enum.KeyCode.LeftControl) or Input:IsKeyDown(Enum.KeyCode.RightControl)
   local pos=Input:GetMouseLocation()
   if not ctrl then
-   for _,obj in {self.pageBox,self.searchResults,self.search,self.header,self.modeBar,self.navGlass,self.contentGlass,self.rootDrag,self.pageDrag,self.appearancePanel} do if inside(obj,pos) then return end end
+   for _,obj in {self.pageBox,self.searchResults,self.search,self.header,self.modeBar,self.navGlass,self.contentGlass,self.rootDrag,self.pageDrag,self.appearancePanel,self.stylePreview} do if inside(obj,pos) then return end end
    for _,r in self.branchCards do if inside(r.frame,pos) then return end end
   end
   local state=self:workspaceCamera();local zoom=math.clamp(state.zoom*1.12^i.Position.Z,.35,1.8)
@@ -1823,12 +1983,14 @@ function UI:sync()
   local p="appearance"..d[1]
   for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do themeParts[#themeParts+1]=tostring(st[p..suffix]) end
  end
+ if self.stylePreview.Visible then self:refreshStylePreview() end
  local themeKey=table.concat(themeParts,":")
  if not self.themeDirty and self.themeKey==themeKey then return end
  self.themeDirty=false;self.themeKey=themeKey
- for _,entry in {{self.navGlass,"Root"},{self.appearancePanel,"Appearance"},{self.contentGlass,"Page"},{self.header,"Header"},{self.top,"Top"},{self.bindPanel,"Keybind"},{self.modeBar,"Modes"},{self.catalogHost,"Catalog"},{self.catalogHost and self.sc,"Catalog"}} do if entry[1] then glassSurface(entry[1],st,entry[2]) end end
+ for _,entry in {{self.navGlass,"Root"},{self.appearancePanel,"Appearance"},{self.stylePreview,"Preview"},{self.contentGlass,"Page"},{self.header,"Header"},{self.top,"Top"},{self.bindPanel,"Keybind"},{self.modeBar,"Modes"},{self.catalogHost,"Catalog"},{self.catalogHost and self.sc,"Catalog"}} do if entry[1] then glassSurface(entry[1],st,entry[2]) end end
  for id,r in self.branchCards do glassSurface(r.frame,st,id) end
  self:refreshAppearanceSamples()
+ self.stylePreview.HeaderDivider.BackgroundColor3=U.hex(st.uiStrokeColor)
  self.appearancePanel.HeaderDivider.BackgroundColor3=U.hex(st.uiStrokeColor)
  local edge=U.hex(st.uiStrokeColor)
  U.applyBlock(self.search,st,"Search",U.hex(st.uiRowColor),.53,edge,1,1.15)
