@@ -886,8 +886,6 @@ local searchSections={
  {"Character","AETHER MOTION STUDIO V12.14"},
  {"Halos","HALO COLLECTION"},
  {"Wings","WING COLLECTION"},
- {"Neon","EFFECT COLLECTION"},
- {"Neon","EFFECT SETTINGS"},
  {"Halos","Disable all halos"},
  {"Ambient","AMBIENT COLLECTION"},
  {"Ambient","AMBIENT SETTINGS"},
@@ -956,25 +954,6 @@ local searchSections={
  {"Volleyball","Ball size factor (>=1)"},
  {"Volleyball","Curve input strength (0–1)"},
  {"Fonts","Search native typefaces"},
- {"Simulator","WORLD PREVIEW"},
- {"Simulator","Use simulator"},
- {"Simulator","Use game"},
- {"Simulator","Damage −25"},
- {"Simulator","Heal +25"},
- {"Simulator","Respawn"},
- {"Simulator","Add player"},
- {"Simulator","Move players"},
- {"Simulator","Clear players"},
- {"Simulator","Apply virtual vitals"},
- {"Simulator","Set virtual HP"},
- {"Simulator","Virtual max HP"},
- {"List","ROBLOX PLAYER LIST"},
- {"List","Toggle native player list"},
- {"Updates","LIVE UPDATE CENTER"},
- {"Updates","UPDATE LIST"},
- {"Updates","Test update"},
- {"Updates","Check updates"},
- {"Updates","Rollback"},
  {"Diagnostics","SESSION"},
  {"Diagnostics","Refresh"},
  {"Diagnostics","Clear log"},
@@ -999,15 +978,8 @@ local searchSections={
  {"Profiles","Reload bank"},
  {"Profiles","Export bank"},
  {"Profiles","Import bank"},
- {"Scripts","AETHER Lua"},
- {"Scripts","Luau draft"},
- {"Scripts","Template"},
- {"Scripts","Complete symbol"},
- {"Scripts","Select source"},
- {"Scripts","Check"},
  {"Wings","Wing styles"},
  {"Halos","Halo styles"},
- {"Neon","Neon motion"},
  {"Character","Walk animation"},
  {"Character","Pose preview"},
 }
@@ -1089,7 +1061,7 @@ function UI.new(app,gui,scope)
  self.place=U.label(self.panel,"PLACE  /  "..tostring(game.PlaceId),10,nil,nil);self.place.TextColor3=dim
  self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
  self.pageBox=U.new("Frame",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
- self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Interaction","Volleyball","Fonts","Simulator","Scripts","Profiles","Updates","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,if name=="Volleyball" then "Interaction" else name);scope:on(b.Activated,function() if self.opened and os.clock()>=(self.tabInputAfter or 0) then self:open(name) end end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
+ self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Ambient","Indicators","Cursor","Interaction","Volleyball","Fonts","Profiles","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,if name=="Volleyball" then "Interaction" else name);scope:on(b.Activated,function() if self.opened and os.clock()>=(self.tabInputAfter or 0) then self:open(name) end end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
  self.search=U.new("TextBox",{Name="FunctionSearch",Text="",PlaceholderText="Search functions...",ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left,Font=Enum.Font.GothamMedium,TextSize=13,TextColor3=Color3.fromRGB(241,234,255),PlaceholderColor3=dim,BackgroundColor3=soft,BorderSizePixel=0},self.panel)
  U.corner(self.search,8);U.new("UIPadding",{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,10)},self.search)
  self.navGlass=U.frame(self.panel,"TabRailGlass",nil,nil,Color3.fromRGB(25,20,45),.53);U.corner(self.navGlass,18);U.stroke(self.navGlass,Color3.fromRGB(184,151,243),.68);self.navGlass.Active=false;self.navGlass.Interactable=false
@@ -1102,7 +1074,7 @@ function UI.new(app,gui,scope)
  self.searchPool={}
  self.searchIndex={}
  self.fullscreen=true
- for _,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Interaction","Volleyball","Fonts","Simulator","Scripts","Profiles","Updates","List","Diagnostics"} do
+ for _,name in {"Dashboard","HUD","Character","Wings","Halos","Ambient","Indicators","Cursor","Interaction","Volleyball","Fonts","Profiles","Diagnostics"} do
   table.insert(self.searchIndex,{tab=name,label=name,term=name:lower()})
  end
  for _,k in S.order do
@@ -1338,20 +1310,9 @@ function UI:animateBackground(t)
   self.quickRefreshAt=t+.25
   for _,refresh in self.quickAdapter.syncs do pcall(refresh) end
  end
- local live=self.app.liveUpdate
- if live then
-  local unread=live.unread==true
-  local version=live.version..(if (live.testCount or 0)>0 and live.isTest then " · TEST "..tostring(live.testCount) else "")
-  local text=if unread then "v"..version.."  |  VERSION UPDATED  |  CHECK UPDATE LIST" else "v"..version
-  if self.updateChip.Text~=text then self.updateChip.Text=text end
-  local width=if unread then math.min(370,math.max(150,self.stage.AbsoluteSize.X-24)) else math.min(180,math.max(90,#text*7+20))
-  self.updateChip.Size=UDim2.fromOffset(width,if unread then 28 else 22)
-  self.updateChip.BackgroundColor3=if unread then accent:Lerp(Color3.fromRGB(22,17,35),.65) else Color3.fromRGB(24,20,40)
-  self.updateRim.Color=accent
-  self.updateRim.Transparency=if unread then .15 else .55
- end
+ self.updateChip.Visible=false
  self.topRim.Color=accent;self.quickRim.Color=accent
- local below=6+self.updateChip.Size.Y.Offset+4
+ local below=6
  self.quickArrow.Position=UDim2.new(.5,0,1,below)
  self:layoutAuxWidgets(below)
  self.topButtons[1].TextColor3=U.hex(s.uiFontColor or "F1E6FF")
@@ -1747,7 +1708,7 @@ function UI:jumpTo(item)
   end
  end)
 end
-local visualTabs={Halos=true,Wings=true,Neon=true,Ambient=true}
+local visualTabs={Halos=true,Wings=true,Ambient=true}
 function UI:open(tab)
  if tab=="Camera" then tab="Interaction" end
  if self.search then self.search.Text="" end
@@ -1801,7 +1762,7 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.." / "..(self.app.liveUpdate and self.app.liveUpdate.version or "LIVE 1.0")
+ self.tag.Text="AETHER / VISUALS"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  local iconKey=tostring(st.iconAtlas)..":"..tostring(st.iconAtlasTile)
@@ -4759,13 +4720,6 @@ local function effectThumbnail(ui,card,a,item,kind)
   local sun=U.frame(host,"Sun",UDim2.fromScale(.67,.28),UDim2.fromOffset(16,16),Color3.fromRGB(255,241,211),.1);U.corner(sun,99)
   return
  end
- if kind=="Neon" then
-  local shade=U.hex(a.s.neonColor)
-  local symbol=U.label(host,item.icon or "✦",35)
-  symbol.TextXAlignment=Enum.TextXAlignment.Center;symbol.TextColor3=shade;symbol:SetAttribute("AETHERKeepFontColor",true)
-  U.gradient(host,Color3.fromRGB(39,30,66),Color3.fromRGB(17,14,32),45)
-  return
- end
  local vp=U.new("ViewportFrame",{Name="Effect3D",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Ambient=Color3.fromRGB(165,145,200),LightColor=Color3.fromRGB(245,230,255)},host)
  local wm=U.new("WorldModel",{},vp)
  local cam=U.new("Camera",{FieldOfView=40},vp);vp.CurrentCamera=cam
@@ -4822,9 +4776,6 @@ local function visualsHub(a,kind,ui)
   for _,style in S.defs.haloStyle.min do items[#items+1]={id="classic:"..style,name=style,classic=true} end
  elseif kind=="Wings" then
   for _,style in S.defs.wingStyle.min do items[#items+1]={id=style,name=style} end
- elseif kind=="Neon" then
-  for i,style in S.defs.neonMotion.min do items[#items+1]={id=style,name=style,icon=({"◇","◉","✧","♥","≈","✦"})[(i-1)%6+1]} end
-  items[#items+1]={id="aura",name="Aura",icon="✺"};items[#items+1]={id="trail",name="Trail",icon="≋"}
  else
   for _,row in S.skies do items[#items+1]={id=row[1],name=row[1],sky=row} end
  end
@@ -4838,7 +4789,6 @@ local function visualsHub(a,kind,ui)
   local s=a.s
   if kind=="Halos" then return if item.classic then s.halo and s.haloStyle==item.name else s[item.key.."Enabled"] end
   if kind=="Wings" then return s.wings and s.wingStyle==item.name end
-  if kind=="Neon" then return if item.id=="aura" or item.id=="trail" then s[item.id] else s.neon and s.neonMotion==item.name end
   return s.ambient and s.skyA==item.sky[2] and s.skyB==item.sky[3] and s.skyC==item.sky[4]
  end
  local function equip(item,on)
@@ -4847,9 +4797,6 @@ local function visualsHub(a,kind,ui)
    else a:set(item.key.."Enabled",on) end
   elseif kind=="Wings" then
    if on then a:patch({wings=true,wingStyle=item.name}) elseif active(item) then a:set("wings",false) end
-  elseif kind=="Neon" then
-   if item.id=="aura" or item.id=="trail" then a:set(item.id,on)
-   elseif on then a:patch({neon=true,neonMotion=item.name}) elseif active(item) then a:set("neon",false) end
   else
    if on then a:patch(S.sky(item.sky)) elseif active(item) then a:set("ambient",false) end
   end
@@ -4912,9 +4859,6 @@ local function visualsHub(a,kind,ui)
      local patch={halo=false};for i in S.haloV2Styles do patch["haloV2"..i.."Enabled"]=false end;a:patch(patch)
     end,1)
    elseif kind=="Wings" then ed:group("Wings",{wingStyle=true,wings=true})
-   elseif kind=="Neon" then
-    ed:group("Neon",{visualBloom=true,visualBloomStrength=true,visualBloomRadius=true,neonMotion=true})
-    for _,k in {"auraRate","trailLife","auraColor"} do ed:control(k) end
    else
     ed:group("Ambient",{starfallA=true,starfallB=true,bloom=true,worldBloomSize=true,worldExposure=true})
     ed:colorPicker("starfallA");ed:colorPicker("starfallB")
@@ -4944,10 +4888,6 @@ local function visualsHub(a,kind,ui)
  end
  ui.page:on(prev.Activated,function() move(-1) end);ui.page:on(nextButton.Activated,function() move(1) end)
  ui:watch(drawCards);buildEditor()
-end
-local function simMap(ui,a)
- local map=ui:row(132,"VirtualMap");map.ClipsDescendants=true;map.BackgroundColor3=U.hex("211E36");local center=U.label(map,"CAMERA ↑",11,UDim2.new(.5,-32,.5,-8),UDim2.fromOffset(70,18));center.TextColor3=U.hex(a.s.accent)
- for _,p in a.sim.players do local b=U.button(map,tostring(p.id));b.AnchorPoint=Vector2.new(.5,.5);b.Size=UDim2.fromOffset(27,25);b.Position=UDim2.fromScale(.5+p.x*.45,.5+p.y*.45);ui.page:on(b.InputBegan,function(i) ui:begin(i,function(pos) local rel=pos-map.AbsolutePosition;p.x=math.clamp((rel.X/map.AbsoluteSize.X-.5)/.45,-1,1);p.y=math.clamp((rel.Y/map.AbsoluteSize.Y-.5)/.45,-1,1);b.Position=UDim2.fromScale(.5+p.x*.45,.5+p.y*.45) end) end) end
 end
 local function configs(ui,a)
  local selected=a.configSelection
@@ -5013,11 +4953,7 @@ local function configs(ui,a)
   end,2)
  end
 end
-local function scripts(ui,a)
- local draft=a.scriptTab=="Luau draft";ui:chips({"AETHER Lua","Luau draft"},function(n) a:stopCue();a.scriptTab=n;ui:open("Scripts") end,2,function() return a.scriptTab or "AETHER Lua" end)
- ui:note(if draft then "Author Studio source here. Copy it to a ModuleScript in Studio for compilation. In-game checks are lexical only." else "Bounded HUD language: local values, arithmetic, if/elseif/else, hud calls, onHealthChanged(hp,maxHP) and onEvent(name,hp).",42)
- local k=if draft then "luau" else "cue";local box=ui:box("Source",a.s[k],125,function(v) if a.s[k]~=v then a:stopCue();a:set(k,v) end end);box.TextTruncate=Enum.TextTruncate.None
- local function esc(v) return (v:gsub("&","&amp;"):gsub("<","&lt;"):gsub(">","&gt;")) end
+local function esc(v) return (v:gsub("&","&amp;"):gsub("<","&lt;"):gsub(">","&gt;")) end
  local syntax=ui:note("",45);syntax.RichText=true;local function highlight() local code=esc(box.Text:sub(1,280));syntax.Text=code:gsub("[%a_][%w_]*",function(w) return if table.find({"local","function","if","then","else","end","return","and","or","nil","true","false"},w) then '<font color="#CF9BFF">'..w..'</font>' else w end) end;ui.page:on(box:GetPropertyChangedSignal("Text"),highlight);highlight()
  ui:chips({"Template","Complete symbol","Select source","Check"},function(op)
   if op=="Template" then a:set(k,S.defs[k].default);box.Text=a.s[k]
@@ -5106,31 +5042,16 @@ local function statePanel(ui,a)
   elapsed+=dt
   if elapsed>=.35 then elapsed=0;if ui.opened then refresh() end end
  end)
- ui:title("STATE OVERRIDE / SIMULATOR")
- ui:note("Test only: simulate a Busy state, then override it to Free. This affects virtual jump permission only; the Game mode monitor never writes states.",76)
- ui:chips({"Open simulator mode"},function() a:modeSet("Simulator");ui:sync() end,1)
- ui:chips({"Simulated Busy"},function()
-  assert(a.mode=="Simulator","Switch to Simulator first")
-  a.sim.stateBusy=not a.sim.stateBusy
-  a:log("State",if a.sim.stateBusy then "Simulated Busy" else "Simulated Free")
-  ui:sync()
- end,1,function() return if a.mode=="Simulator" and a.sim.stateBusy then "Simulated Busy" else "" end)
- ui:chips({"State Override"},function()
-  assert(a.mode=="Simulator","Switch to Simulator first")
-  a.sim.stateOverride=not a.sim.stateOverride
-  a:log("State",if a.sim.stateOverride then "Simulator override ON" else "Simulator override OFF")
-  ui:sync()
- end,1,function() return if a.mode=="Simulator" and a.sim.stateOverride then "State Override" else "" end)
 end
 function E.render(a,tab,ui)
- if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. Custom lock keybind is in Interaction. Menu uses F8 (F7 when F8 is assigned to lock). Native Shift Lock is disabled where Roblox allows it.",43);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme",{topCapsule=true,robloxRail=true,menuDock=true,menuWidth=true,menuHeight=true,menuFloatX=true,menuFloatY=true,menuResize=true,menuDrag=true,constellationBgA=true,constellationBgB=true,constellationLineA=true,constellationLineB=true,constellationNodeA=true,constellationNodeB=true});ui:title("CONSTELLATION COLORS");for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end;ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
+ if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Custom lock keybind is in Interaction. Menu uses F8 (F7 when F8 is assigned to lock). Native Shift Lock is disabled where Roblox allows it.",43);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme",{topCapsule=true,robloxRail=true,menuDock=true,menuWidth=true,menuHeight=true,menuFloatX=true,menuFloatY=true,menuResize=true,menuDrag=true,constellationBgA=true,constellationBgB=true,constellationLineA=true,constellationLineB=true,constellationNodeA=true,constellationNodeB=true});ui:title("CONSTELLATION COLORS");for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end;ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
  elseif tab=="HUD" then preview(ui,a,true);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:title("TOP PANEL");for _,v in {"topCapsule","movePanels"} do ui:control(v) end;ui:note("Enable moving panels to drag the AETHER capsule.",34);ui:chips({"Reset panel position"},function() a:patch({topCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness"} do ui:control(k) end;ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);local widgets={"clock","profile","dock","top"};if not table.find(widgets,a.hudTab) then a.hudTab="clock" end;ui:chips(widgets,function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
   if k=="top" then for _,v in {k.."Custom",k.."X",k.."Y"} do ui:control(v) end
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
  elseif tab=="Character" then
   ui:title("AETHER MOTION STUDIO V12.14")
   MotionStudio.mount(ui,a)
- elseif tab=="Wings" or tab=="Halos" or tab=="Neon" or tab=="Ambient" then
+ elseif tab=="Wings" or tab=="Halos" or tab=="Ambient" then
   if ui.catalogHost then visualsHub(a,tab,ui) end
  elseif tab=="Indicators" then preview(ui,a);gallery(ui,a);ui:group(tab,{shape=true});ui:title("PER-PLAYER OVERRIDE");local id=ui:box("UserId or simulator ID","1");local label=ui:box("Label override","");local color=ui:box("Override hex",a.s.arrowA);ui:chips({"Assign current shape","Remove override"},function(k) local p=S.copy(a.s.players);if k=="Assign current shape" then p[id.Text]={label=label.Text,color=color.Text,shape=a.s.shape} else p[id.Text]=nil end;a:set("players",p);ui:message("Overrides updated") end,2)
  elseif tab=="Cursor" then local f=ui:row(94,"CursorPreview");local host=U.frame(f,"OriginalCursorPreview",UDim2.fromScale(.5,.5),UDim2.fromOffset(60,60),nil,1);host.AnchorPoint=Vector2.new(.5,.5);a.preview={cursorHost=host};preset(ui,a,tab);ui:group(tab,{cursorTrailA=true,cursorTrailB=true});ui:title("TRAIL COLORS");ui:colorPicker("cursorTrailA");ui:colorPicker("cursorTrailB");ui:note("Cursor animation never moves its click hotspot. Enable Show hotspot marker to compare the real mouse position with the skin; use Pointer offset X/Y only for calibration. EditableImage renders desktop SVG; imports need an authorized asset ID.",57)
@@ -5384,40 +5305,7 @@ function E.render(a,tab,ui)
   end
   airControls(ui,a)
  elseif tab=="Fonts" then local text=ui:note(a.s.sample,62);text:SetAttribute("AETHERKeepFontColor",true);text.TextXAlignment=Enum.TextXAlignment.Center;local gradient=U.gradient(text,Color3.new(),Color3.new(),10);local glow=U.stroke(text,U.hex(a.s.fontB),.8);glow.ApplyStrokeMode=Enum.ApplyStrokeMode.Contextual;ui:watch(function() local s=a.s;text.Text=s.sample;text.FontFace=U.font(s);text.TextSize=s.fontSize*.23;text.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA);text.TextStrokeTransparency=1-s.fontOutline/100;gradient.Enabled=s.fontGradient;gradient.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB));glow.Color=U.hex(s.fontB);glow.Transparency=1-s.fontGlow*.008;glow.Thickness=1+s.fontGlow*.023 end);local query=ui:box("Search native typefaces",a.fontQuery or "",32,function(q) if q~=(a.fontQuery or "") then a.fontQuery=q;ui:open("Fonts") end end);local fonts={};for _,n in S.fonts do if n:lower():find((a.fontQuery or ""):lower(),1,true) then table.insert(fonts,n) end end;ui:chips(fonts,function(n) a:patch({font=n,fontAsset=""}) end,3,function() return a.s.font end);ui:group(tab,{font=true});preset(ui,a,tab)
- elseif tab=="Simulator" then preview(ui,a);ui:title("WORLD PREVIEW");ui:control("airControl");ui:control("airControlStrength");ui:control("airControlSpeed");ui:control("airTiltAngle");ui:control("bunnyHop");avatarPreview(ui,a,true);statePanel(ui,a);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
- elseif tab=="Scripts" then scripts(ui,a)
  elseif tab=="Profiles" then configs(ui,a)
- elseif tab=="List" then
-  ui:title("ROBLOX PLAYER LIST")
-  ui:chips({"Toggle native player list"},function() ui:togglePlayerList() end,1)
-  ui:note("Roblox updates its own player list automatically as players join or leave.",36)
- elseif tab=="Updates" then
-  ui:title("LIVE UPDATE CENTER")
-  local state=a.liveUpdate
-  state.unread=false
-  local version=ui:note("",36)
-  local status=ui:note("",48)
-  local notes=ui:note("",52)
-  local function sync()
-   version.Text="RUNNING VERSION  /  "..state.version..(if state.isTest then " · TEST "..tostring(state.testCount) else "").."\nWEBSITE  /  "..(if state.connected then (state.relayStatus or "CONNECTED · AUTO") else "RELAY OFFLINE")
-   status.Text=state.status
-   notes.Text=state.notes or "No update applied. Your HUD, configs and menu stay active during an update."
-  end
-  ui:watch(sync)
-  ui:chips({"Test update","Check updates","Rollback"},function(n)
-   if n=="Test update" then a:testLiveUpdate() elseif n=="Check updates" then a:checkLiveUpdate() else a:rollbackLiveUpdate() end
-  end,3)
-  ui:note("RELAY OFFLINE: install the server relay in your own place. HTTP DISABLED: enable Allow HTTP Requests in experience settings. ONLINE: website releases apply automatically.",65)
-  ui:title("UPDATE LIST")
-  local changelog=ui:note("",280)
-  ui:watch(function()
-   local rows={}
-   for i,release in state.releases do
-    if i>5 then break end
-    table.insert(rows,"v"..release.version.."  /  "..release.source.."  /  "..release.time.."\n"..release.notes)
-   end
-   changelog.Text=if #rows>0 then table.concat(rows,"\n\n") else "No updates applied in this session yet."
-  end)
  elseif tab=="Diagnostics" then local info=ui:note("",54);local log=ui:box("Session events","",165);log.TextEditable=false;local function refresh() info.Text=string.format("%s  ·  HP %s / %s  ·  %d tracked\n%s",a.mode,tostring(a.frame.hp),tostring(a.frame.max),#a.frame.targets,a.store.status);log.Text=table.concat(a.logs,"\n") end;ui:chips({"Refresh","Clear log","Reset settings"},function(n) if n=="Clear log" then table.clear(a.logs) elseif n=="Reset settings" then a:replace(S.defaults()) end;refresh() end,3);refresh();ui:title("SESSION");ui:note("Unload stops AETHER, removes its HUD and effects, and releases its camera and mouse controls. Export a bank first to retain local-only settings.",52);-- Allocate one confirmation row, once per Diagnostics page. Never append rows from clicks.
   local page=ui.page
   local row=ui:row(40,"UnloadConfirmation")
@@ -5848,7 +5736,7 @@ for index,style in S.haloV2Styles do
  range("Halos",k.."Count","Shape count",if index==5 then 7 else 8,3,12)
  range("Halos",k.."Tilt","Tilt degrees",0,-60,60)
 end
-toggle("Neon","neon","Character outline",true);range("Neon","neonFill","Body tint %",10,0,65);range("Neon","neonLight","Light intensity %",40,0,100);color("Neon","neonColor","Neon color","AB87FF");toggle("Neon","neonRainbow","Rainbow neon",false);choice("Neon","neonMotion","Neon animation","Breathe",{"Solid","Breathe","Aurora","Heartbeat","Flow","Reactive"});range("Neon","neonMotionSpeed","Neon animation speed %",90,0,180);range("Neon","neonMotionStrength","Neon animation intensity %",65,0,100);range("Neon","neonRange","Light radius (studs)",9,2,20);toggle("Neon","visualBloom","Legacy bloom (inactive)",false);range("Neon","visualBloomStrength","Visual bloom strength %",70,0,100);range("Neon","visualBloomRadius","Visual bloom radius",28,8,56)
+toggle("Neon","neon","Character outline",false);range("Neon","neonFill","Body tint %",10,0,65);range("Neon","neonLight","Light intensity %",40,0,100);color("Neon","neonColor","Neon color","AB87FF");toggle("Neon","neonRainbow","Rainbow neon",false);choice("Neon","neonMotion","Neon animation","Breathe",{"Solid","Breathe","Aurora","Heartbeat","Flow","Reactive"});range("Neon","neonMotionSpeed","Neon animation speed %",90,0,180);range("Neon","neonMotionStrength","Neon animation intensity %",65,0,100);range("Neon","neonRange","Light radius (studs)",9,2,20);toggle("Neon","visualBloom","Legacy bloom (inactive)",false);range("Neon","visualBloomStrength","Visual bloom strength %",70,0,100);range("Neon","visualBloomRadius","Visual bloom radius",28,8,56)
 toggle("Ambient","ambient","Apply local atmosphere",false);color("Ambient","skyA","High sky","282057");color("Ambient","skyB","Horizon","8C70C2");color("Ambient","skyC","Ground light","EAB6CD");range("Ambient","fog","Fog density %",35,0,90);range("Ambient","bloom","Legacy bloom (inactive)",0,0,100);range("Ambient","time","Time (tenths of an hour)",166,0,239);range("Ambient","light","Brightness %",105,25,180);range("Ambient","saturation","Saturation %",9,-85,85);range("Ambient","blur","Depth blur",0,0,16);range("Ambient","fade","Atmosphere fade (ms)",700,0,3500);range("Ambient","worldContrast","Contrast %",0,-80,80);range("Ambient","worldExposure","Exposure %",0,-100,100);range("Ambient","worldGlare","Atmospheric glare %",0,0,100);range("Ambient","worldRays","Sun rays %",0,0,100);range("Ambient","worldFocus","Depth of field %",0,0,100);range("Ambient","worldFocusDistance","Focus distance (studs)",60,8,250);range("Ambient","worldBloomSize","Bloom radius",26,0,56);toggle("Ambient","starfall","Falling shapes",false);choice("Ambient","starfallShape","Falling shape","Rounded Star",{"Mixed","Rounded Star","Soft Star","Sparkle","Long Sparkle","Six Point Star","Eight Point Star","Circle","Rounded Square","Diamond","Rounded Triangle","Rounded Hexagon","Rounded Pentagon","Heart"});range("Ambient","starfallRotation","Star rotation (degrees/sec)",8,0,25);choice("Ambient","starfallMaterial","Star material","Neon",{"Neon","Glass","SmoothPlastic","Metal"});range("Ambient","starfallCount","Star count",8,1,16);range("Ambient","starfallSpeed","Fall speed (studs/sec)",35,10,90);range("Ambient","starfallSize","Star size (tenths of stud)",18,5,40);range("Ambient","starfallOpacity","Star opacity %",85,10,100);range("Ambient","starfallGlow","Star neon glow %",80,0,100);toggle("Ambient","starfallTail","Star streaks",true);toggle("Ambient","starfallRainbow","Rainbow stars",false);color("Ambient","starfallA","Star color start","E5D1FF");color("Ambient","starfallB","Star color end","83CFFF")
 toggle("Indicators","indicators","Directional indicators",true);choice("Indicators","shape","Indicator shape","Soft Triangle",S.shapes);range("Indicators","size","Size (px)",31,14,72);range("Indicators","corners","Corner softness %",30,0,100);range("Indicators","edge","Distance from edges %",11,4,30);range("Indicators","turn","Rotation smoothing (ms)",180,0,800);range("Indicators","ink","Neon intensity %",60,0,100);range("Indicators","spread","Neon spread (px)",6,0,18);range("Indicators","arrowAlpha","Opacity %",95,10,100);range("Indicators","arrowSpeed","Animation speed %",100,40,220);color("Indicators","arrowA","Gradient start","BFA2FF");color("Indicators","arrowB","Gradient end","FF9ECE");toggle("Indicators","arrowRainbow","Rainbow gradient",false);toggle("Indicators","pulse","Pulsation",true);choice("Indicators","labels","Arrow labels","Both",{"Off","Name","Distance","Both"});toggle("Indicators","nearby","Nearby nameplates",false);range("Indicators","reach","Tracking range (studs)",800,50,2500)
 toggle("Cursor","cursor","Custom game pointer",false);choice("Cursor","cursorShape","Pointer shape","Rounded Triangle",{"Rounded Triangle","Soft Arrow","Diamond","Orbit","Spark","Chevron","Neon Pointer","Arrowhead","Split Arrow","Needle","Crystal","Spear","Star Pointer","Compass","Crosshair","Heart","Image"});range("Cursor","cursorSize","Pointer size",30,12,72);range("Cursor","cursorGlow","Pointer glow %",55,0,100);choice("Cursor","cursorPalette","Desktop AETHER palette","Aurora",{"Aurora","Sunset","Ocean","Rainbow","Mono","Custom"});range("Cursor","hotX","Hotspot X %",19,0,100);range("Cursor","hotY","Hotspot Y %",8,0,100);color("Cursor","cursorA","Gradient start","BA99FF");color("Cursor","cursorB","Gradient end","69D9FA");toggle("Cursor","cursorRainbow","Rainbow pointer",true);range("Cursor","cursorSpeed","Gradient speed %",65,10,200);choice("Cursor","cursorAnimation","Cursor animation","Sway",{"Off","Breathe","Sway","Spin","Pulse"});range("Cursor","cursorMotionSpeed","Animation speed %",100,20,200);toggle("Cursor","cursorTrail","Cursor motion trail",false);choice("Cursor","cursorTrailStyle","Trail style","Triple",{"Triple","Single","Dots"});range("Cursor","cursorTrailLength","Trail lifetime (ms)",220,80,450);range("Cursor","cursorTrailWidth","Trail width (tenths of px)",12,5,35);range("Cursor","cursorTrailSpread","Trail spacing (px)",6,2,16);range("Cursor","cursorTrailGlow","Trail glow %",65,0,100);color("Cursor","cursorTrailA","Trail start","F5E5FF");color("Cursor","cursorTrailB","Trail end","9B6BFF");range("Cursor","cursorOffsetX","Pointer offset X (px)",0,-120,120);range("Cursor","cursorOffsetY","Pointer offset Y (px)",0,-120,120);toggle("Cursor","cursorDebug","Show hotspot marker",false);def("Cursor","image","Roblox image asset ID","asset","")
@@ -5881,6 +5769,8 @@ local function str(s,n) return type(s)=="string" and #s<=n and utf8.len(s)~=nil 
 local function name(s) return str(s,48) and s:match("%S") and not s:find("%c") end
 local function hex(s) return type(s)=="string" and #s==6 and s:match("^%x+$")~=nil end
 function S.value(k,v)
+ -- Deprecated effects stay readable in old banks but cannot be enabled in this edition.
+ if (k=="neon" or k=="aura" or k=="trail" or k=="visualBloom") and type(v)=="boolean" then return false end
  local d=S.defs[k];if not d then error("Unknown setting: "..tostring(k),0) end
  local a=d.kind
  if a=="bool" and type(v)=="boolean" then return v end
@@ -5899,11 +5789,11 @@ function S.value(k,v)
 end
 -- Same-server opt-in cosmetic protocol. No account information, chat, inventory,
 -- controls, HUD, targeting, scripts, world lighting or external endpoints.
-local peerGroups={Character=true,Wings=true,Halos=true,Neon=true}
+local peerGroups={Character=true,Wings=true,Halos=true}
 S.peerKeys={}
 for _,k in S.order do
  local d=S.defs[k]
- if (peerGroups[d.group] and k~="motionPlayback" and k~="motionStudioConfig" and not k:find("^visualBloom")) or k=="reduce" or k=="secondary" then
+ if (peerGroups[d.group] and k~="aura" and k~="trail" and k~="motionPlayback" and k~="motionStudioConfig" and not k:find("^visualBloom")) or k=="reduce" or k=="secondary" then
   if d.kind=="bool" or d.kind=="number" or d.kind=="choice" or d.kind=="color" then S.peerKeys[k]=true end
  end
 end
@@ -5919,6 +5809,8 @@ function S.peerPacket(raw)
   if S.peerKeys[k] then
    local value=S.value(k,v)
    if value~=S.defs[k].default then packet[k]=value end
+  elseif S.defs[k] and (S.defs[k].group=="Neon" or k=="aura" or k=="trail") then
+   -- Ignore removed cosmetics from older compatible peers.
   elseif k=="motionStudioConfig" then
    assert(type(v)=="string" and #v<=2048,"Invalid motion config")
    local ok,config=pcall(function() return game:GetService("HttpService"):JSONDecode(v) end)
@@ -5999,9 +5891,8 @@ for _,row in {
  {"Amber Horizon","442C35","DF8652","FFE0A6",26,56,176,114,14,12,8,22,45,20},
  } do table.insert(S.skies,row) end
 function S.sky(row) return {ambient=true,skyA=row[2],skyB=row[3],skyC=row[4],fog=row[5],bloom=0,time=row[7],light=row[8],saturation=row[9],worldContrast=row[10] or 0,worldExposure=0,worldGlare=row[12] or 0,worldRays=row[13] or 0,worldFocus=row[14] or 0,worldFocusDistance=60,worldBloomSize=26} end
-S.presets={Theme={Violet={accent="A68AFF",secondary="FF89C7",glassColor="211C35"},Ocean={accent="68CEF4",secondary="9B91FF",glassColor="112636"},Rose={accent="F699C6",secondary="D8A5FF",glassColor="301B31"}},HUD={Classic={hpX=82,hpY=13,clockX=3,clockY=93,compact=false},Broadcast={hpX=3,hpY=78,clockX=95,clockY=5,hpScale=115},Compact={compact=true,hpX=96,hpY=16,hpScale=80}},Motion={Calm={speed=70,duration=520},Swift={speed=155,duration=150},Still={reduce=true}},Wings={Seraph={wings=true,wingStyle="Seraph",wingSpan=115},Blade={wings=true,wingStyle="Blade",wingColor="76E3FF"},Sylph={wings=true,wingStyle="Sylph",wingRainbow=true}},Halos={Crown={halo=true,haloStyle="Crown"},Binary={halo=true,haloStyle="Binary",haloColor="82D9FF"}},Character={Comet={aura=true,trail=true,auraColor="AA89FE"}},Neon={Pulse={neon=true,neonRainbow=true,neonLight=65}},Cursor={Aurora={cursor=true,cursorShape="Rounded Triangle",cursorRainbow=true},Diamond={cursor=true,cursorShape="Diamond",hotX=50,hotY=50}},Camera={Portrait={camera=true,cameraMode="Orbit",fov=55,radius=8,lock=false},Shoulder={camera=true,cameraMode="Follow",lock=true}},Fonts={Terminal={font="Code",weight="Bold",fontAsset="",fontGradient=false},Soft={font="FredokaOne",weight="Regular",fontAsset=""}},Indicators={},Ambient={},Scripts={Vitals={cue=S.example}}}
+S.presets={Theme={Violet={accent="A68AFF",secondary="FF89C7",glassColor="211C35"},Ocean={accent="68CEF4",secondary="9B91FF",glassColor="112636"},Rose={accent="F699C6",secondary="D8A5FF",glassColor="301B31"}},HUD={Classic={hpX=82,hpY=13,clockX=3,clockY=93,compact=false},Broadcast={hpX=3,hpY=78,clockX=95,clockY=5,hpScale=115},Compact={compact=true,hpX=96,hpY=16,hpScale=80}},Motion={Calm={speed=70,duration=520},Swift={speed=155,duration=150},Still={reduce=true}},Wings={Seraph={wings=true,wingStyle="Seraph",wingSpan=115},Blade={wings=true,wingStyle="Blade",wingColor="76E3FF"},Sylph={wings=true,wingStyle="Sylph",wingRainbow=true}},Halos={Crown={halo=true,haloStyle="Crown"},Binary={halo=true,haloStyle="Binary",haloColor="82D9FF"}},Character={},Neon={},Cursor={Aurora={cursor=true,cursorShape="Rounded Triangle",cursorRainbow=true},Diamond={cursor=true,cursorShape="Diamond",hotX=50,hotY=50}},Camera={Portrait={camera=true,cameraMode="Orbit",fov=55,radius=8,lock=false},Shoulder={camera=true,cameraMode="Follow",lock=true}},Fonts={Terminal={font="Code",weight="Bold",fontAsset="",fontGradient=false},Soft={font="FredokaOne",weight="Regular",fontAsset=""}},Indicators={},Ambient={},Scripts={Vitals={cue=S.example}}}
 for _,v in S.shapes do S.presets.Indicators[v]={shape=v,indicators=true} end
-for _,v in S.defs.neonMotion.min do S.presets.Neon[v]={neon=true,neonMotion=v,neonRainbow=(v=="Aurora")} end
 S.presets.HUD.GlassMotion={hudMotion="Glass",hudMotionStrength=65,hudShine=true,hudReaction=true}
 S.presets.HUD.FloatMotion={hudMotion="Float",hudMotionStrength=75,hudShine=true,hudReaction=true}
 S.presets.HUD.PulseMotion={hudMotion="Pulse",hudMotionStrength=80,hudShine=true,hudReaction=true}
@@ -10820,7 +10711,7 @@ local function restoreModuleTick()
     if changed then syncModuleUI() end
 end
 function app:modeSet(mode)
-    assert(mode == "Game" or mode == "Simulator", "Invalid AETHER mode")
+    if mode~="Game" then return end
     if mode=="Game" and self.mode~=mode then self.moduleRestoreRequested=true end
     self.mode = mode
     if self.ui then self.ui:sync() end
@@ -10849,105 +10740,6 @@ end
 function app:stopCue()
     if self.cues then self.cues:stop(); self.cues = nil end
 end
-function app:runCue()
-    self:stopCue()
-    local ok, vm = pcall(Cues.start, self.s.cue, self.grants)
-    if ok then self.cues = vm; self:log("Scripts", "HUD script started")
-    else self:log("Scripts", vm); error(vm, 0) end
-end
--- Live updates are bounded data packages, never downloaded executable Luau.
-local updateHttp=game:GetService("HttpService")
-local updateState={version="1.0.0",publishedVersion="1.0.0",revision=0,status="Waiting for update relay",busy=false,history={},releases={},generation=0,connected=false,unread=false,testCount=0,isTest=false}
-app.liveUpdate=updateState
-local function validateUpdate(raw)
-    assert(type(raw)=="table" and raw.format=="aether.live/1","Invalid update format")
-    assert(type(raw.revision)=="number" and raw.revision%1==0 and raw.revision>=1 and raw.revision<=1000000,"Invalid revision")
-    assert(type(raw.version)=="string" and #raw.version<=20 and raw.version:match("^%d+%.%d+%.%d+$"),"Invalid version")
-    assert(type(raw.notes)=="string" and #raw.notes<=240,"Invalid release notes")
-    assert(type(raw.presets)=="table","Missing preset data")
-    local presets={};local count=0
-    for group,items in raw.presets do
-        assert(table.find({"Theme","Wings","Halos","Character","Neon","Ambient","Motion","HUD","Cursor","Camera","Fonts"},group) and type(items)=="table","Invalid preset group")
-        presets[group]={}
-        for name,values in items do
-            count+=1
-            assert(count<=24 and type(name)=="string" and #name>=1 and #name<=40 and not name:find("%c"),"Invalid preset name/count")
-            presets[group][name]=S.settings(values,group)
-        end
-    end
-    return {revision=raw.revision,version=raw.version,notes=raw.notes,presets=presets}
-end
-local function versionGreater(a,b)
-    local ax,ay,az=a:match("^(%d+)%.(%d+)%.(%d+)$")
-    local bx,by,bz=b:match("^(%d+)%.(%d+)%.(%d+)$")
-    local aa={tonumber(ax),tonumber(ay),tonumber(az)}
-    local bb={tonumber(bx),tonumber(by),tonumber(bz)}
-    for i=1,3 do if aa[i]~=bb[i] then return aa[i]>bb[i] end end
-    return false
-end
-function app:updateStatus(message)
-    updateState.status=message
-    self:log("Update",message)
-    if self.ui then self.ui:sync() end
-end
-function app:applyLiveUpdate(raw,force)
-    if updateState.busy or self.stopping then return end
-    updateState.busy=true;updateState.generation+=1
-    local gen=updateState.generation
-    self:updateStatus("Validating update...")
-    task.delay(.35,function()
-        if self.stopping or gen~=updateState.generation then return end
-        local ok,pack=pcall(validateUpdate,raw)
-        if not ok then updateState.busy=false;self:updateStatus("Rejected: "..tostring(pack):sub(-100));return end
-        if not force and (pack.revision<=updateState.revision or not versionGreater(pack.version,updateState.publishedVersion)) then updateState.busy=false;self:updateStatus("Already up to date");return end
-        local before={version=updateState.version,publishedVersion=updateState.publishedVersion,revision=updateState.revision,notes=updateState.notes,presets=S.copy(S.presets),isTest=updateState.isTest}
-        local staged=S.copy(S.presets)
-        for group,items in pack.presets do
-            staged[group]=staged[group] or {}
-            for name,values in items do staged[group][name]=values end
-        end
-        -- Swap one validated data table. Preserve all settings, profile bank,
-        -- current page, HUD, avatar, render callbacks and the session itself.
-        S.presets=staged
-        updateState.version=pack.version;updateState.isTest=force==true;if not force then updateState.revision=pack.revision;updateState.publishedVersion=pack.version end;updateState.notes=pack.notes
-        local applied,err=pcall(function() self:updateStatus("Updated live to "..pack.version) end)
-        if not applied then
-            S.presets=before.presets;updateState.version=before.version;updateState.publishedVersion=before.publishedVersion;updateState.revision=before.revision;updateState.notes=before.notes;updateState.isTest=before.isTest
-            updateState.status="Update rolled back: "..tostring(err):sub(-100)
-        else
-            table.insert(updateState.history,before)
-            while #updateState.history>5 do table.remove(updateState.history,1) end
-            if force then updateState.testCount+=1 end
-            table.insert(updateState.releases,1,{version=pack.version,notes=pack.notes,source=if force then "LOCAL TEST "..tostring(updateState.testCount) else "WEBSITE",time=os.date("%H:%M:%S")})
-            while #updateState.releases>12 do table.remove(updateState.releases) end
-            updateState.unread=not (self.ui and self.ui.opened and self.ui.tab=="Updates")
-        end
-        updateState.busy=false
-        if self.ui then self.ui:sync() end
-    end)
-end
-function app:testLiveUpdate()
-    local revision=updateState.revision+1
-    self:applyLiveUpdate({format="aether.live/1",revision=revision,version=updateState.publishedVersion,notes="Live test: new Aurora glass theme and Lunar halo preset. Existing settings remain intact.",presets={Theme={["Live Aurora"]={accent="8DEBFF",secondary="D8ACFF",glassColor="22243E"}},Halos={["Live Lunar"]={halo=true,haloStyle="Lunar",haloColor="C4B5FF"}}}},true)
-end
-function app:checkLiveUpdate()
-    if updateState.busy then return end
-    local manifest=game:GetService("ReplicatedStorage"):FindFirstChild("AetherLiveManifestV1")
-    if not manifest or not manifest:IsA("StringValue") or manifest.Value=="" then self:updateStatus("No update manifest available. Use Test update or enable the server relay.");return end
-    if #manifest.Value>32000 then self:updateStatus("Manifest too large");return end
-    local ok,raw=pcall(function() return updateHttp:JSONDecode(manifest.Value) end)
-    if not ok then self:updateStatus("Invalid manifest JSON");return end
-    self:applyLiveUpdate(raw,false)
-end
-function app:rollbackLiveUpdate()
-    if updateState.busy then return end
-    local before=table.remove(updateState.history)
-    if not before then self:updateStatus("No previous update");return end
-    S.presets=before.presets;updateState.version=before.version;updateState.publishedVersion=before.publishedVersion;updateState.revision=before.revision;updateState.notes=before.notes;updateState.isTest=before.isTest
-    updateState.unread=false
-    self:updateStatus("Rolled back to "..before.version)
-end
-
 function app:page(tab, ui)
     Pages.render(self, tab, ui)
 end
@@ -11034,60 +10826,6 @@ scope:on(RunService.Heartbeat,function(dt)
     if moduleRestoreElapsed<.5 then return end
     moduleRestoreElapsed=0
     restoreModuleTick()
-end)
-
--- Observe the first-party replicated manifest. A revision that arrives
--- during validation remains queued; rollback is not immediately undone.
-local updateRS=game:GetService("ReplicatedStorage")
-local relayConnection=nil
-local relayStatusConnection=nil
-local relayInstance=nil
-local pendingManifest=nil
-local lastManifest=nil
-local function observeRelay(value)
-    if value.Name~="AetherLiveManifestV1" or not value:IsA("StringValue") then return end
-    if relayConnection then relayConnection:Disconnect() end
-    if relayStatusConnection then relayStatusConnection:Disconnect() end
-    relayInstance=value
-    updateState.connected=true
-    local function receive()
-        if value.Value~="" and value.Value~=lastManifest then
-            lastManifest=value.Value
-            pendingManifest=value.Value
-        end
-    end
-    relayConnection=value:GetPropertyChangedSignal("Value"):Connect(receive)
-    local function refreshRelayStatus()
-        updateState.relayStatus=tostring(value:GetAttribute("RelayStatus") or "CONNECTED / STATUS UNKNOWN")
-        if app.ui then app.ui:sync() end
-    end
-    relayStatusConnection=value:GetAttributeChangedSignal("RelayStatus"):Connect(refreshRelayStatus)
-    refreshRelayStatus()
-    receive()
-    app:updateStatus("Website update relay connected")
-end
-scope:on(updateRS.ChildAdded,observeRelay)
-scope:on(updateRS.ChildRemoved,function(value)
-    if value~=relayInstance then return end
-    if relayConnection then relayConnection:Disconnect();relayConnection=nil end
-    if relayStatusConnection then relayStatusConnection:Disconnect();relayStatusConnection=nil end
-    relayInstance=nil;pendingManifest=nil;lastManifest=nil;updateState.connected=false;updateState.relayStatus=nil
-    app:updateStatus("Website update relay disconnected")
-end)
-scope:add(function()
-    if relayConnection then relayConnection:Disconnect() end
-    if relayStatusConnection then relayStatusConnection:Disconnect() end
-end)
-local existingRelay=updateRS:FindFirstChild("AetherLiveManifestV1")
-if existingRelay then observeRelay(existingRelay) end
-scope:on(RunService.Heartbeat,function()
-    if app.stopping or updateState.busy or not pendingManifest then return end
-    local body=pendingManifest;pendingManifest=nil
-    if #body>32000 then app:updateStatus("Manifest too large");return end
-    local ok,raw=pcall(function() return updateHttp:JSONDecode(body) end)
-    if not ok then app:updateStatus("Invalid manifest JSON");return end
-    if type(raw)=="table" and type(raw.revision)=="number" and raw.revision<=updateState.revision then return end
-    app:applyLiveUpdate(raw,false)
 end)
 
 -- Non-persistent editing session. Handles exist only while arranging the live HUD.
