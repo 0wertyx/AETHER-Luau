@@ -887,8 +887,8 @@ function E.render(a,tab,ui)
    ui:title("VOLLEYBALL MODIFIERS / BETA")
    local availability=ui:note("",64)
    ui:watch(function() availability.Text=vb:availabilityStatus() end)
-   ui:note("Session only. Values are written locally; server acceptance is not guaranteed. Controls remain visible while waiting for game attributes.",64)
-   for _,name in {"BlockPower","BumpPower","DashPower","DiveSpeed","DrawPower","JumpPower","ServePower","SetPower","Speed"} do
+   ui:note("Numeric preferences are included in configs. Local values depend on available game attributes; server acceptance is not guaranteed.",64)
+   for _,name in S.vbMultiplierNames do
     local key="Multiplier_"..name
     local field=ui:box(name,tostring(lp:GetAttribute(key) or ""),32,function(value)
      vb:setMultiplier(name,assert(tonumber(value),"Enter a number"))
@@ -897,7 +897,8 @@ function E.render(a,tab,ui)
     local function refresh()
      if not field:IsFocused() then
       local requested=vb.multiplierRequests[name]
-      local value=if requested~=nil then requested else lp:GetAttribute(key)
+      local saved=a.s["vbMultiplier_"..name]
+      local value=if type(saved)=="number" then saved elseif requested~=nil then requested else lp:GetAttribute(key)
       local shown=tostring(value or "")
       if field.Text~=shown then field.Text=shown end
      end
@@ -910,7 +911,7 @@ function E.render(a,tab,ui)
      if elapsed>=.25 then elapsed=0;if ui.opened then refresh() end end
     end)
    end
-   ui:chips({"Restore original values"},function() vb:reset();ui:sync() end,1)
+   ui:chips({"Restore original values"},function() vb:reset();a:clearSavedMultipliers();ui:sync() end,1)
    ui:title("BALL HITBOX EXPANDER / BETA")
    ui:note("Purple box shows the actual oriented bounds of the queryable mesh; the faint sphere is an approximation. Mesh bounds do not guarantee hit acceptance.",72)
    local radiusField=ui:box("Ball size factor (>=1)",tostring(vb.ballRadius.factor),32,function(raw)
