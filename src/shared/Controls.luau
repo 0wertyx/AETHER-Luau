@@ -186,8 +186,8 @@ function UI.new(app,gui,scope)
  end
  self.constellationLayer=U.frame(self.geoLayer,"ConstellationLinks",nil,nil,nil,1);self.constellationLayer.Active=false;self.constellationLayer.Interactable=false
  self.constellation=Constellation.new(self.constellationLayer)
+ self.backdropHit=U.new("TextButton",{Name="CloseOnBackground",Text="",AutoButtonColor=false,BackgroundTransparency=1,BorderSizePixel=0,Size=UDim2.fromScale(1,1),ZIndex=2,Modal=false},self.panel)
  self.header=U.frame(self.panel,"Titlebar",nil,UDim2.new(1,0,0,46),nil,1);self.header.Active=false;self.header.BackgroundColor3=Color3.fromRGB(28,23,48);self.header.BackgroundTransparency=.19;U.corner(self.header,24);U.stroke(self.header,Color3.fromRGB(192,158,255),.55);self.brand=U.label(self.header,"AETHER   VISUALS   HUB",20,UDim2.fromOffset(16,2),UDim2.fromOffset(135,40));self.tag=U.label(self.header,"",10,UDim2.fromOffset(147,3),UDim2.new(1,-190,0,40));self.tag.TextColor3=dim
- self.close=U.button(self.header,"×");self.close.Modal=false;self.close.Size=UDim2.fromOffset(33,29);self.close.Position=UDim2.new(1,-43,0,8);scope:on(self.close.Activated,function() self:show(false) end)
  self.dockPicker=U.button(self.header,"←");self.dockPicker.Size=UDim2.fromOffset(32,29);self.dockPicker.Position=UDim2.new(1,-79,0,8);self.dockPicker.TextSize=18
  local sides={"Left","Right","Top","Bottom","Floating"}
  scope:on(self.dockPicker.Activated,function()
@@ -208,6 +208,22 @@ function UI.new(app,gui,scope)
  self.searchResults=U.new("ScrollingFrame",{Name="FunctionSearchResults",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=4,Visible=false},self.panel)
  U.new("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder},self.searchResults)
  self.searchResults.ZIndex=3
+ self.header.ZIndex=3;self.navGlass.ZIndex=3;self.contentGlass.ZIndex=3;self.status.ZIndex=3
+ self.pageBox.Active=true;self.header.Active=true
+ local function inside(obj,pos)
+  if not obj or not obj.Visible then return false end
+  local a,b=obj.AbsolutePosition,obj.AbsoluteSize
+  return pos.X>=a.X and pos.X<=a.X+b.X and pos.Y>=a.Y and pos.Y<=a.Y+b.Y
+ end
+ scope:on(self.backdropHit.Activated,function(input)
+  if not self.opened or self.drag or os.clock()<(self.tabInputAfter or 0) then return end
+  if not input or (input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch) then return end
+  local pos=Vector2.new(input.Position.X,input.Position.Y)
+  for _,obj in {self.header,self.navGlass,self.nav,self.search,self.pageBox,self.searchResults,self.status} do
+   if inside(obj,pos) then return end
+  end
+  self:show(false)
+ end)
  self.searchPool={}
  self.searchIndex={}
  self.fullscreen=true
@@ -288,7 +304,6 @@ function UI.new(app,gui,scope)
   self.brand.Position=UDim2.fromOffset(10,0);self.brand.Size=UDim2.new(1,-20,1,0);self.brand.TextXAlignment=Enum.TextXAlignment.Center
   self.brand.TextSize=if sz.X<500 then 14 else 20
   self.brand.Font=Enum.Font.Code;self.tag.Visible=false
-  self.close.Position=UDim2.new(1,-42,.5,-14)
   local narrow=sz.X<740
   local rail=if narrow then 68 else 124
   local pad=if narrow then 8 else math.max(22,math.round(sz.X*.025))
