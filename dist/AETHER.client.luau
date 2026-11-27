@@ -896,6 +896,15 @@ local function glassSurface(frame,s,role)
   NumberSequenceKeypoint.new(.74,.78),NumberSequenceKeypoint.new(1,.15)
  })
 end
+-- Cache keys may contain numbers, strings and boolean settings.
+local function scalarKey(values)
+ local encoded=table.create(#values)
+ for i,v in ipairs(values) do
+  local raw=tostring(v)
+  encoded[i]=tostring(#raw)..":"..raw
+ end
+ return table.concat(encoded,"|")
+end
 local function workspacePrefix(s) return "ws"..s.workspaceMode end
 local function layoutKey(s)
  local prefix=workspacePrefix(s)
@@ -904,7 +913,7 @@ local function layoutKey(s)
  for _,node in {"Root","Main","Visuals","Utility","Interface","Page","Appearance","Preview"} do
   values[#values+1]=s[prefix..node.."X"];values[#values+1]=s[prefix..node.."Y"]
  end
- return table.concat(values,":")
+ return scalarKey(values)
 end
 local function workspaceOffset(self,node)
  local draft=self.workspaceNodeDraft
@@ -1145,7 +1154,7 @@ function UI.new(app,gui,scope)
   local parts={s.afkBackground,s.afkBgA,s.afkBgB,s.afkPatternColor,s.afkBrandColor,s.afkTitleColor,s.afkDetailColor,s.afkButtonColor,s.afkButtonText,s.afkButtonEdge,s.afkImageTint,s.afkGradientAngle,s.afkPatternOpacity,s.afkImageOpacity,s.afkImageAsset}
   for _,role in {"AFK","AFKButton"} do for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do parts[#parts+1]=tostring(s["appearance"..role..suffix]) end end
   for _,role in {"AFK","AFKButton"} do for _,extra in S.appearanceExtras[role] do parts[#parts+1]=tostring(s[extra.key]);parts[#parts+1]=tostring(s[extra.flag]) end end
-  local key=table.concat(parts,":")
+  local key=scalarKey(parts)
   if self.afkThemeKey==key then return end
   self.afkThemeKey=key
   local a,b=U.hex(if s.appearanceAFKCustom then s.appearanceAFKColor else s.afkBgA),U.appearanceColor(s,"AFK","GradientEnd",U.hex(s.afkBgB))
@@ -1482,12 +1491,12 @@ function UI.new(app,gui,scope)
    for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do parts[#parts+1]=tostring(s[p..suffix]) end
    for _,extra in S.appearanceExtras[role[1]] do parts[#parts+1]=tostring(s[extra.key]);parts[#parts+1]=tostring(s[extra.flag]) end
   end
-  local key=table.concat(parts,":")
+  local key=scalarKey(parts)
   if key==self.stylePreviewKey then return end
   local host=self.stylePreviewContent
   -- Reuse sample geometry for slider changes; rebuild only when the selected kind changes.
   if self.stylePreviewBuilt~=id then
-   host:ClearAllChildren();self.stylePreviewBuilt=id;self.stylePreviewPaint={}
+   host:ClearAllChildren();self.stylePreviewBuilt=nil;self.stylePreviewPaint={}
    local function block(parent,role,name,x,y,width,height,radius)
     local f=U.frame(parent,name,UDim2.fromOffset(x,y),UDim2.fromOffset(width,height),nil,1)
     f.ZIndex=parent.ZIndex+1;f.Interactable=false;U.corner(f,radius or 10)
@@ -1619,7 +1628,7 @@ function UI.new(app,gui,scope)
    for _,line in self.stylePreviewAFKGrid do line.Visible=s.afkBackground=="Grid";line.BackgroundColor3=U.hex(s.afkPatternColor);line.BackgroundTransparency=1-.35*s.afkPatternOpacity/100 end
    for _,ring in self.stylePreviewAFKOrbits do ring.frame.Visible=s.afkBackground=="Orbits";ring.stroke.Color=U.hex(s.afkPatternColor);ring.stroke.Transparency=1-.55*s.afkPatternOpacity/100 end
   end
-  self.stylePreviewKey=key
+  self.stylePreviewBuilt=id;self.stylePreviewKey=key
  end
  function self:refreshAppearanceSamples()
   local s=self.app.s
@@ -2055,7 +2064,7 @@ function UI.new(app,gui,scope)
   local bounds=self.workspaceLinks.AbsoluteSize
   local signature={s.accent,bounds.X,bounds.Y}
   for _,pair in pairsToDraw do for _,v in pair do signature[#signature+1]=v.X;signature[#signature+1]=v.Y end end
-  local key=table.concat(signature,":")
+  local key=scalarKey(signature)
   if self.workspaceLinkKey==key then return end
   for _,pair in pairsToDraw do wire(pair[1],pair[2]) end
   self.workspaceLinkKey=key
@@ -2865,8 +2874,14 @@ function UI:sync()
   for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do themeParts[#themeParts+1]=tostring(st[p..suffix]) end
   for _,extra in S.appearanceExtras[d[1]] do themeParts[#themeParts+1]=tostring(st[extra.key]);themeParts[#themeParts+1]=tostring(st[extra.flag]) end
  end
- if self.stylePreview.Visible then self:refreshStylePreview() end
- local themeKey=table.concat(themeParts,":")
+ if self.stylePreview.Visible then
+  local ok,err=pcall(self.refreshStylePreview,self)
+  if not ok then
+   self.stylePreviewKey=nil;self.stylePreviewBuilt=nil
+   if self.stylePreviewError~=tostring(err) then self.stylePreviewError=tostring(err);self.app:log("Appearance preview",self.stylePreviewError) end
+  else self.stylePreviewError=nil end
+ end
+ local themeKey=scalarKey(themeParts)
  if not self.themeDirty and self.themeKey==themeKey then return end
  self.themeDirty=false;self.themeKey=themeKey
  for _,entry in {{self.navGlass,"Root"},{self.appearancePanel,"Appearance"},{self.stylePreview,"Preview"},{self.contentGlass,"Page"},{self.header,"Header"},{self.top,"Top"},{self.bindPanel,"Keybind"},{self.modeBar,"Modes"},{self.catalogHost,"Catalog"},{self.catalogHost and self.sc,"Catalog"}} do if entry[1] then glassSurface(entry[1],st,entry[2]) end end
@@ -9706,6 +9721,7 @@ function app:log(topic, message)
     while #self.logs > 35 do table.remove(self.logs, 1) end
 end
 function app:dirty()
+    if not self.store then self.pendingStoreEdit=true;return end
     self.store:edit()
 end
 function app:set(key, value)
@@ -12360,6 +12376,11 @@ local motionProps = PreviewProps.new(workspace, true)
 local world = World.new()
 local view = View.new(player, pointer)
 app.view = view
+-- Restore the bank before constructing any interactive UI. A restore during
+-- Storage.new must not re-enter UI:open while the store is still nil.
+local store = Storage.new(app, scope)
+app.store = store
+if app.pendingStoreEdit then app.pendingStoreEdit=nil;store:edit() end
 local ui = Controls.new(app, studioLayer, scope)
 app.ui = ui
 -- The high-order cursor is decorative. HUD and Studio buttons retain their
@@ -12372,8 +12393,6 @@ do
     for _,obj in pointer:GetDescendants() do pointerOnly(obj) end
     scope:on(pointer.DescendantAdded,pointerOnly)
 end
-local store = Storage.new(app, scope)
-app.store = store
 app.moduleRestoreRequested=true
 local moduleRestoreElapsed=0
 scope:on(RunService.Heartbeat,function(dt)

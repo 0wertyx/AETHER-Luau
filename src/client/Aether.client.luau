@@ -78,6 +78,7 @@ function app:log(topic, message)
     while #self.logs > 35 do table.remove(self.logs, 1) end
 end
 function app:dirty()
+    if not self.store then self.pendingStoreEdit=true;return end
     self.store:edit()
 end
 function app:set(key, value)
@@ -2732,6 +2733,11 @@ local motionProps = PreviewProps.new(workspace, true)
 local world = World.new()
 local view = View.new(player, pointer)
 app.view = view
+-- Restore the bank before constructing any interactive UI. A restore during
+-- Storage.new must not re-enter UI:open while the store is still nil.
+local store = Storage.new(app, scope)
+app.store = store
+if app.pendingStoreEdit then app.pendingStoreEdit=nil;store:edit() end
 local ui = Controls.new(app, studioLayer, scope)
 app.ui = ui
 -- The high-order cursor is decorative. HUD and Studio buttons retain their
@@ -2744,8 +2750,6 @@ do
     for _,obj in pointer:GetDescendants() do pointerOnly(obj) end
     scope:on(pointer.DescendantAdded,pointerOnly)
 end
-local store = Storage.new(app, scope)
-app.store = store
 app.moduleRestoreRequested=true
 local moduleRestoreElapsed=0
 scope:on(RunService.Heartbeat,function(dt)
