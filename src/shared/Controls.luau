@@ -21,11 +21,11 @@ local searchSections={
  {"HUD","Edit HUD on screen"},
  {"HUD","Reset panel position"},
  {"Character","AETHER MOTION STUDIO V12.14"},
- {"Character","HALO COLLECTION"},
- {"Character","WING COLLECTION"},
- {"Character","EFFECT COLLECTION"},
- {"Character","EFFECT SETTINGS"},
- {"Character","Disable all halos"},
+ {"Halos","HALO COLLECTION"},
+ {"Wings","WING COLLECTION"},
+ {"Neon","EFFECT COLLECTION"},
+ {"Neon","EFFECT SETTINGS"},
+ {"Halos","Disable all halos"},
  {"Ambient","AMBIENT COLLECTION"},
  {"Ambient","AMBIENT SETTINGS"},
  {"Ambient","STARFALL COLORS"},
@@ -177,19 +177,8 @@ function UI.new(app,gui,scope)
  self.screenFX.Visible=false
  self.screenDim=U.frame(self.screenFX,"Veil",nil,nil,Color3.fromRGB(19,12,38),1)
  self.screenDim.Active=false;self.screenDim.Interactable=false
+ -- Fullscreen hub: one static star field, not 48 animated multi-part particles.
  self.stars={}
- for i=1,48 do
-  local root=U.frame(self.screenFX,"Particle"..i,nil,UDim2.fromOffset(12,12),nil,1)
-  root.Active=false;root.Interactable=false;root.AnchorPoint=Vector2.new(.5,.5)
-  local bars={}
-  for j=1,4 do
-   local line=U.frame(root,"Ray",UDim2.fromScale(.5,.5),UDim2.fromScale(1,.13),Color3.new(1,1,1),1)
-   line.AnchorPoint=Vector2.new(.5,.5);line.Active=false;line.Interactable=false;line.Rotation=(j-1)*45;U.corner(line,9);bars[j]=line
-  end
-  local dot=U.frame(root,"Core",UDim2.fromScale(.5,.5),UDim2.fromScale(.5,.5),Color3.new(1,1,1),1)
-  dot.AnchorPoint=Vector2.new(.5,.5);dot.Active=false;dot.Interactable=false;U.corner(dot,99)
-  self.stars[i]={root=root,bars=bars,dot=dot}
- end
  self.top,self.topRim,self.topButtons=U.topPanel(self.stage)
  self.updateChip=U.label(self.top,"v1.0.0",10)
  self.updateChip.TextXAlignment=Enum.TextXAlignment.Center;self.updateChip.Active=false;self.updateChip.Interactable=false
@@ -217,7 +206,14 @@ function UI.new(app,gui,scope)
  self.backgroundGradient=U.gradient(self.panelBackground,bg,Color3.fromRGB(39,30,58),82)
  self.geoLayer=U.frame(self.panel,"GeometryBackground",UDim2.fromOffset(3,3),UDim2.new(1,-6,1,-6),nil,1)
  self.geoLayer.ClipsDescendants=true;self.geoLayer.Active=false;self.geoLayer.ZIndex=1
- self.constellation=Constellation.new(self.geoLayer)
+ self.starField=U.frame(self.geoLayer,"DistantStars",nil,nil,nil,1);self.starField.Active=false;self.starField.Interactable=false
+ for i=1,36 do
+  local r=if i%7==0 then 3 else 2
+  local dot=U.frame(self.starField,"Star",UDim2.fromScale((i*.6180339)%1,(i*.4142135)%1),UDim2.fromOffset(r,r),Color3.fromRGB(221,207,255),.37+(i%5)*.10)
+  dot.AnchorPoint=Vector2.new(.5,.5);dot.Active=false;dot.Interactable=false;U.corner(dot,8)
+ end
+ self.constellationLayer=U.frame(self.geoLayer,"ConstellationLinks",nil,nil,nil,1);self.constellationLayer.Active=false;self.constellationLayer.Interactable=false
+ self.constellation=Constellation.new(self.constellationLayer)
  self.header=U.frame(self.panel,"Titlebar",nil,UDim2.new(1,0,0,46),nil,1);self.header.Active=false;self.header.BackgroundColor3=Color3.fromRGB(28,23,48);self.header.BackgroundTransparency=.19;U.corner(self.header,24);U.stroke(self.header,Color3.fromRGB(192,158,255),.55);self.brand=U.label(self.header,"AETHER   VISUALS   HUB",20,UDim2.fromOffset(16,2),UDim2.fromOffset(135,40));self.tag=U.label(self.header,"",10,UDim2.fromOffset(147,3),UDim2.new(1,-190,0,40));self.tag.TextColor3=dim
  self.close=U.button(self.header,"×");self.close.Modal=false;self.close.Size=UDim2.fromOffset(33,29);self.close.Position=UDim2.new(1,-43,0,8);scope:on(self.close.Activated,function() self:show(false) end)
  self.dockPicker=U.button(self.header,"←");self.dockPicker.Size=UDim2.fromOffset(32,29);self.dockPicker.Position=UDim2.new(1,-79,0,8);self.dockPicker.TextSize=18
@@ -420,6 +416,7 @@ function UI.new(app,gui,scope)
   end,origin)
   if self.drag then self.drag.finish=function(point) self:finishMenuDrag(point,true) end end
  end)
+ scope:on(self.pageBox:GetPropertyChangedSignal("AbsoluteSize"),function() self:layoutCatalog() end)
  scope:on(self.stage:GetPropertyChangedSignal("AbsoluteSize"),function() self:layout() end);self:layout()
  scope:on(Input.InputChanged,function(i) local d=self.drag;if d and (i==d.i or d.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseMovement) then d.fn(Vector2.new(i.Position.X,i.Position.Y),d.start,d.origin) end end)
  scope:on(Input.InputEnded,function(i) if self.drag and (self.drag.i==i or self.drag.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseButton1) then local d=self.drag;self.drag=nil;if d.finish then d.finish(Vector2.new(i.Position.X,i.Position.Y)) end end end)
@@ -485,41 +482,13 @@ function UI:animateBackground(t)
  self.quickArrow.Position=UDim2.new(.5,0,1,below)
  self:layoutAuxWidgets(below)
  self.topButtons[1].TextColor3=U.hex(s.uiFontColor or "F1E6FF")
- local visible=s.screenParticles and q>.001 and not self.fullscreen
+ local visible=s.screenParticles and q>.001
  local decorDt=(self.decorElapsed or 0)+dt
  self.decorElapsed=decorDt
  local decorDue=decorDt>=1/20 or self.decorSettings~=s or self.lastDecorVisible~=visible
  if decorDue then self.decorElapsed=0;self.decorSettings=s;self.lastDecorVisible=visible end
- self.screenFX.Visible=visible
- if visible and (decorDue or self.menuProgress<1) then
-  local motion=if s.reduce then 0 else t*s.menuMotion/100
-  local alpha=q*s.screenParticleOpacity/100
-  self.screenDim.BackgroundTransparency=1-alpha*.12
-  local style=s.screenParticleStyle
-  for index,particle in self.stars do
-   local active=index<=s.screenParticleCount
-   particle.root.Visible=active
-   if not active then continue end
-   local kind=if style=="Mixed" then ({"Stars","Dust","Diamonds"})[index%3+1] else style
-   local phase=motion*.64+index*1.73
-   local twinkle=if s.reduce then .7 else .54+.46*math.sin(phase)
-   local size=(if kind=="Dust" then 3+index%4 else 7+index%10)*( .82+.18*twinkle)
-   particle.root.Size=UDim2.fromOffset(math.max(2,math.round(size)),math.max(2,math.round(size)))
-   particle.root.Position=UDim2.fromScale(.03+((index*.618)%1)*.94+math.sin(phase*.43)*.014,(index*.381+1-motion*.012)%1)
-   particle.root.Rotation=if kind=="Diamonds" then 45+motion*4 elseif kind=="Stars" then motion*5+index*19 else 0
-   local color=accent:Lerp(secondary,(index%7)/6)
-   particle.dot.BackgroundColor3=color
-   particle.dot.BackgroundTransparency=1-alpha*twinkle*.65
-   particle.dot.Size=if kind=="Diamonds" then UDim2.fromScale(.65,.65) else UDim2.fromScale(.45,.45)
-   for j,bar in particle.bars do
-    bar.Visible=kind=="Stars"
-    if bar.Visible then
-     bar.Size=UDim2.fromOffset(math.max(1,math.round(size*(if j%2==1 then 1 else .63))),math.max(1,math.round(size*.13)))
-     bar.BackgroundColor3=color;bar.BackgroundTransparency=1-alpha*twinkle*.77
-    end
-   end
-  end
- end
+ self.screenFX.Visible=false
+ self.starField.Visible=visible
  if not self.panel.Visible then return end
  local tm=if s.reduce then 0 else t*s.speed/100
  self.outline.Color=accent:Lerp(U.hex(s.secondary),if s.reduce or not s.navGlow then 0 else .18+.15*math.sin(tm*1.6))
@@ -541,8 +510,9 @@ function UI:animateBackground(t)
   b.BackgroundColor3=soft:Lerp(accent:Lerp(bg,.42),amount)
  end
  end
- self.geoLayer.Visible=s.menuGeometry and self.panel.Visible
- if self.geoLayer.Visible and decorDue then self.constellation:step(math.min(.1,decorDt),s) end
+ self.geoLayer.Visible=(s.menuGeometry or s.screenParticles) and self.panel.Visible
+ self.constellationLayer.Visible=s.menuGeometry
+ if self.geoLayer.Visible and s.menuGeometry and decorDue then self.constellation:step(math.min(.1,decorDt),s) end
 end
 function UI:begin(i,fn,origin) if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end;local v=Vector2.new(i.Position.X,i.Position.Y);self.drag={i=i,start=v,fn=fn,origin=origin};fn(v,v,origin) end
 function UI:show(on)
@@ -937,7 +907,6 @@ function UI:makeCatalogEditor()
  function editor:begin(...) owner:begin(...) end
  function editor:message(msg) owner:message(msg) end
  function editor:open(tab) owner:open(tab) end
- if not self.editorCleanup then self.editorCleanup=true end
  self.editorAdapter=editor
  self.themeDirty=true
  return editor
