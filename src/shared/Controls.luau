@@ -202,7 +202,7 @@ function UI.new(app,gui,scope)
   self:message(if enabled then "Roblox player list hidden" else "Roblox player list enabled")
  end
  self.panel=U.new("Frame",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=1,BorderSizePixel=0,Size=UDim2.fromScale(1,1),Visible=false,Active=true},self.stage);U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3)
- self.panelBackground=U.frame(self.panel,"GlassBackground",nil,nil,Color3.new(1,1,1),.09);self.panelBackground.Active=false;self.panelBackground.Interactable=false;self.panelBackground.ZIndex=1;U.corner(self.panelBackground,17)
+ self.panelBackground=U.frame(self.panel,"GlassBackground",nil,nil,Color3.new(1,1,1),.025);self.panelBackground.Active=false;self.panelBackground.Interactable=false;self.panelBackground.ZIndex=1;U.corner(self.panelBackground,17)
  self.backgroundGradient=U.gradient(self.panelBackground,bg,Color3.fromRGB(39,30,58),82)
  self.geoLayer=U.frame(self.panel,"GeometryBackground",UDim2.fromOffset(3,3),UDim2.new(1,-6,1,-6),nil,1)
  self.geoLayer.ClipsDescendants=true;self.geoLayer.Active=false;self.geoLayer.ZIndex=1
@@ -229,9 +229,9 @@ function UI.new(app,gui,scope)
  self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Interaction","Volleyball","Fonts","Simulator","Scripts","Profiles","Updates","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,if name=="Volleyball" then "Interaction" else name);scope:on(b.Activated,function() if self.opened and os.clock()>=(self.tabInputAfter or 0) then self:open(name) end end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
  self.search=U.new("TextBox",{Name="FunctionSearch",Text="",PlaceholderText="Search functions...",ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left,Font=Enum.Font.GothamMedium,TextSize=13,TextColor3=Color3.fromRGB(241,234,255),PlaceholderColor3=dim,BackgroundColor3=soft,BorderSizePixel=0},self.panel)
  U.corner(self.search,8);U.new("UIPadding",{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,10)},self.search)
- self.navGlass=U.frame(self.panel,"TabRailGlass",nil,nil,Color3.fromRGB(25,20,45),.26);U.corner(self.navGlass,18);U.stroke(self.navGlass,Color3.fromRGB(184,151,243),.68);self.navGlass.Active=false;self.navGlass.Interactable=false
+ self.navGlass=U.frame(self.panel,"TabRailGlass",nil,nil,Color3.fromRGB(25,20,45),.53);U.corner(self.navGlass,18);U.stroke(self.navGlass,Color3.fromRGB(184,151,243),.68);self.navGlass.Active=false;self.navGlass.Interactable=false
  self.nav.ZIndex=3
- self.contentGlass=U.frame(self.panel,"ContentGlass",nil,nil,Color3.fromRGB(25,20,45),.32);U.corner(self.contentGlass,18);U.stroke(self.contentGlass,Color3.fromRGB(184,151,243),.68);self.contentGlass.Active=false;self.contentGlass.Interactable=false
+ self.contentGlass=U.frame(self.panel,"ContentGlass",nil,nil,Color3.fromRGB(25,20,45),.55);U.corner(self.contentGlass,18);U.stroke(self.contentGlass,Color3.fromRGB(184,151,243),.68);self.contentGlass.Active=false;self.contentGlass.Interactable=false
  self.pageBox.ZIndex=3;self.search.ZIndex=4
  self.searchResults=U.new("ScrollingFrame",{Name="FunctionSearchResults",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=4,Visible=false},self.panel)
  U.new("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder},self.searchResults)
@@ -311,19 +311,27 @@ function UI.new(app,gui,scope)
   self.xy=Vector2.zero;self.panelExtent=sz;self.layoutSide="Fullscreen"
   self.panel.Size=UDim2.fromScale(1,1);self.panel.Position=UDim2.fromOffset(0,0)
   self.grip.Visible=false;self.dockPicker.Visible=false;self.place.Visible=false
-  self.header.AnchorPoint=Vector2.new(.5,0);self.header.Position=UDim2.new(.5,0,0,12)
-  self.header.Size=UDim2.fromOffset(math.min(850,math.max(160,sz.X-24)),46)
+  self.header.AnchorPoint=Vector2.new(.5,0);self.header.Position=UDim2.new(.5,0,0,math.max(12,math.round(sz.Y*.045)))
+  self.header.Size=UDim2.fromOffset(math.min(720,math.max(160,sz.X-24)),46)
   self.brand.Position=UDim2.fromOffset(10,0);self.brand.Size=UDim2.new(1,-20,1,0);self.brand.TextXAlignment=Enum.TextXAlignment.Center
   self.brand.TextSize=if sz.X<500 then 14 else 20
   self.brand.Font=Enum.Font.Code;self.tag.Visible=false
   self.close.Position=UDim2.new(1,-42,.5,-14)
   local narrow=sz.X<740
-  local rail=if narrow then 76 else 148
-  local pad=if narrow then 8 else 16
-  local y=70
-  local contentX=pad+rail+12
-  self.navGlass.Position=UDim2.fromOffset(pad,y);self.navGlass.Size=UDim2.new(0,rail,1,-y-34)
-  self.nav.Position=UDim2.fromOffset(pad+6,y+7);self.nav.Size=UDim2.new(0,rail-12,1,-y-48)
+  local rail=if narrow then 68 else 124
+  local pad=if narrow then 8 else math.max(22,math.round(sz.X*.025))
+  local isCatalog=self.catalogHost~=nil and self.catalogHost.Parent~=nil
+  local gap=if narrow then 10 else 22
+  local maxWidth=math.max(1,sz.X-2*pad-rail-gap)
+  local bodyW=math.min(maxWidth,if isCatalog then 1080 else 820,math.round(sz.X*(if narrow then .9 elseif isCatalog then .73 else .57)))
+  local availableH=math.max(100,sz.Y-100)
+  local bodyH=math.min(availableH,if isCatalog then 610 else 590,math.max(240,math.round(sz.Y*(if narrow then .76 else .61))))
+  local y=math.max(70,math.round((sz.Y-bodyH-44)*.5))
+  local contentX=math.max(pad+rail+gap,math.round((sz.X-bodyW)*.5+rail*.24))
+  contentX=math.min(contentX,sz.X-pad-bodyW)
+  local railH=math.min(bodyH+40,math.max(100,sz.Y-y-12))
+  self.navGlass.Position=UDim2.fromOffset(pad,y);self.navGlass.Size=UDim2.fromOffset(rail,railH)
+  self.nav.Position=UDim2.fromOffset(pad+6,y+7);self.nav.Size=UDim2.fromOffset(rail-12,math.max(1,railH-14))
   self.navList.FillDirection=Enum.FillDirection.Vertical
   self.nav.AutomaticCanvasSize=Enum.AutomaticSize.Y;self.nav.ScrollingDirection=Enum.ScrollingDirection.Y
   for name,b in self.buttons do
@@ -341,12 +349,14 @@ function UI.new(app,gui,scope)
    b.TextXAlignment=if narrow then Enum.TextXAlignment.Center else Enum.TextXAlignment.Right
    b.TextYAlignment=if narrow then Enum.TextYAlignment.Bottom else Enum.TextYAlignment.Center
   end
-  self.search.Position=UDim2.fromOffset(contentX,y);self.search.Size=UDim2.new(1,-contentX-pad,0,32)
-  self.search.BackgroundTransparency=.22
-  self.contentGlass.Position=UDim2.fromOffset(contentX,y+42);self.contentGlass.Size=UDim2.new(1,-contentX-pad,1,-y-76)
+  self.search.Position=UDim2.fromOffset(contentX,y);self.search.Size=UDim2.fromOffset(bodyW,32)
+  self.search.BackgroundTransparency=.53
+  self.contentGlass.Position=UDim2.fromOffset(contentX,y+42);self.contentGlass.Size=UDim2.fromOffset(bodyW,bodyH)
+  -- Catalog and editor have their own glass, so do not put a third layer behind them.
+  self.contentGlass.Visible=not isCatalog or self.searchResults.Visible
   self.pageBox.Position=self.contentGlass.Position;self.pageBox.Size=self.contentGlass.Size
   self.searchResults.Position=self.pageBox.Position;self.searchResults.Size=self.pageBox.Size
-  self.status.Position=UDim2.new(0,contentX,1,-29);self.status.Size=UDim2.new(1,-contentX-pad,0,21)
+  self.status.Position=UDim2.fromOffset(contentX,y+bodyH+47);self.status.Size=UDim2.fromOffset(bodyW,21)
   self.top.Size=UDim2.fromOffset(math.min(136,math.max(90,sz.X-24)),38)
   self.top.Position=UDim2.new(.5,0,0,if narrow then 48 else 12)
   if s.topCustom and not (s.topX==0 and s.topY==0) then
@@ -811,6 +821,7 @@ function UI:refreshSearch()
  local has=q~=""
  self.searchResults.Visible=has
  self.pageBox.Visible=not has
+ self.contentGlass.Visible=has or not (self.catalogHost and self.catalogHost.Parent)
  if not has then return end
  local matches,seen={},{}
  for _,item in self.searchIndex do
@@ -889,11 +900,11 @@ function UI:open(tab)
  local sc=self.page:add(U.new("ScrollingFrame",{Name="Page_"..tab,Size=UDim2.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=4,ScrollBarImageColor3=dim,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y},self.pageBox))
  U.new("UIListLayout",{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder},sc);self.sc=sc
  if visualTabs[tab] then
-  self.catalogHost=self.page:add(U.frame(self.pageBox,"VisualCatalog",nil,nil,Color3.fromRGB(24,19,43),.28));U.corner(self.catalogHost,17);U.stroke(self.catalogHost,Color3.fromRGB(181,145,244),.64)
-  sc.BackgroundColor3=Color3.fromRGB(25,20,44);sc.BackgroundTransparency=.24;U.corner(sc,16)
+  self.catalogHost=self.page:add(U.frame(self.pageBox,"VisualCatalog",nil,nil,Color3.fromRGB(24,19,43),.49));U.corner(self.catalogHost,17);U.stroke(self.catalogHost,Color3.fromRGB(181,145,244),.64)
+  sc.BackgroundColor3=Color3.fromRGB(25,20,44);sc.BackgroundTransparency=.49;U.corner(sc,16)
   U.new("UIPadding",{PaddingTop=UDim.new(0,8),PaddingBottom=UDim.new(0,8),PaddingLeft=UDim.new(0,8),PaddingRight=UDim.new(0,4)},sc)
  else self:title(tab:upper().."   /   AETHER VISUALS HUB") end
- self:layoutCatalog();self.app:page(tab,self);self:sync()
+ self:layout();self.app:page(tab,self);self:sync()
 end
 -- A dedicated short-lived editor scope keeps grid cards and navigation intact.
 function UI:makeCatalogEditor()
@@ -911,14 +922,15 @@ function UI:makeCatalogEditor()
  self.themeDirty=true
  return editor
 end
-function UI:row(h,name) self.seq+=1;local f=U.frame(self.sc,name or "Row",nil,UDim2.new(1,-8,0,h),soft,.47);f.LayoutOrder=self.seq;U.corner(f,8);return f end
+function UI:row(h,name) self.seq+=1;local f=U.frame(self.sc,name or "Row",nil,UDim2.new(1,-8,0,h),soft,.62);f.LayoutOrder=self.seq;U.corner(f,8);return f end
 function UI:title(str) local f=self:row(26,"Heading");f.BackgroundTransparency=1;local n=U.label(f,str,13);n.TextColor3=U.hex(self.app.s.accent);self.titleLabel=n;return n end
 function UI:note(str,h) local f=self:row(h or 36,"Note");f.BackgroundTransparency=1;local l=U.label(f,str,12);l.TextWrapped=true;l.TextTruncate=Enum.TextTruncate.None;l.TextColor3=dim;l:SetAttribute("AETHERMuted",true);return l end
 function UI:watch(fn) table.insert(self.syncs,fn);fn() end
 function UI:sync()
  if not self.panel.Parent then return end
  local st=self.app.s
- self.backgroundGradient.Color=ColorSequence.new(U.hex(st.constellationBgA),U.hex(st.constellationBgB))
+ local space=Color3.fromRGB(7,9,22)
+ self.backgroundGradient.Color=ColorSequence.new(U.hex(st.constellationBgA):Lerp(space,.64),U.hex(st.constellationBgB):Lerp(space,.53))
  self.backgroundGradient.Rotation=st.constellationAngle
  local layoutKey=table.concat({st.topX,st.topY,tostring(st.topCustom)},":")
  if self.layoutKey~=layoutKey and not self.menuDraft then self:layout() end
