@@ -1227,8 +1227,17 @@ function UI.new(app,gui,scope)
   port.AnchorPoint=Vector2.new(.5,.5);port.Active=false;port.Interactable=false;port.ZIndex=2;port.Visible=false;U.corner(port,9);self.portPool[i]=port
  end
  for _,obj in {self.navGlass,self.nav,self.branchStack,self.contentGlass,self.pageBox,self.search,self.searchResults,self.status,self.layoutMove,self.layoutResize,self.layoutDone} do obj.Parent=self.workspace end
- self.rootDrag=U.button(self.workspace,"AETHER / MOVE");self.rootDrag.ZIndex=5;self.rootDrag.TextSize=11
- self.pageDrag=U.button(self.workspace,"MOVE PANEL");self.pageDrag.ZIndex=5;self.pageDrag.TextSize=11
+ -- Drag headers are inset hit targets inside a single continuous glass silhouette.
+ local function integratedHeader(text)
+  local b=U.button(self.workspace,text)
+  b.ZIndex=5;b.TextSize=11;b.BackgroundTransparency=1;b.AutoButtonColor=false
+  b:SetAttribute("AETHERThemeButton",false)
+  local rule=U.frame(b,"HeaderDivider",UDim2.new(0,5,1,0),UDim2.new(1,-10,0,1),Color3.new(1,1,1),.82)
+  rule.ZIndex=5;rule.Active=false;rule.Interactable=false
+  return b
+ end
+ self.rootDrag=integratedHeader("AETHER / MOVE")
+ self.pageDrag=integratedHeader("MOVE PANEL")
  self.modeBar=U.frame(self.panel,"WorkspaceModes",nil,UDim2.fromOffset(320,30),nil,.5)
  self.modeBar.AnchorPoint=Vector2.new(.5,0);self.modeBar.ZIndex=12;U.corner(self.modeBar,14)
  self.modeButtons={}
@@ -1495,10 +1504,19 @@ function UI.new(app,gui,scope)
   local pairsToDraw={}
   for _,branch in branches do
    local r=self.branchCards[branch.name]
-   if r.frame.Visible and r.frame.AbsoluteSize.Y>4 then pairsToDraw[#pairsToDraw+1]={point(self.branchButtons[branch.name].button,1,.5),point(r.frame,0,.5)} end
+   if r.frame.Visible and r.frame.AbsoluteSize.Y>4 then
+    local source=point(self.branchButtons[branch.name].button,1,.5)
+    local outerRight=point(self.navGlass,1,0).X
+    pairsToDraw[#pairsToDraw+1]={Vector2.new(outerRight,source.Y),point(r.frame,0,.5)}
+   end
   end
   local selected=self.buttons[self.tab];local group=tabBranch[self.tab]
-  if selected and group and self.branchCards[group].frame.Visible and self.pageBox.Visible then pairsToDraw[#pairsToDraw+1]={point(selected,1,.5),point(self.pageBox,0,.08)} end
+  if selected and group and self.branchCards[group].frame.Visible and self.pageBox.Visible then
+   local source=point(selected,1,.5)
+   local outerRight=point(self.branchCards[group].frame,1,0).X
+   local destination=point(self.pageBox,0,.08)
+   pairsToDraw[#pairsToDraw+1]={Vector2.new(outerRight,source.Y),Vector2.new(point(self.contentGlass,0,0).X,destination.Y)}
+  end
   local signature={s.accent}
   for _,pair in pairsToDraw do for _,v in pair do signature[#signature+1]=v.X;signature[#signature+1]=v.Y end end
   local key=table.concat(signature,":")
@@ -1549,9 +1567,9 @@ function UI.new(app,gui,scope)
   local buttonH=math.min(54,math.max(22,math.floor((workH-38)/4)))
   local railH=buttonH*4+40
   local rootOffset=workspaceOffset(self,"Root");local rootX,rootY=x+rootOffset.X,y+rootOffset.Y
-  self.navGlass.Position=UDim2.fromOffset(rootX,rootY);self.navGlass.Size=UDim2.fromOffset(rail,railH)
+  self.navGlass.Position=UDim2.fromOffset(rootX,rootY-30);self.navGlass.Size=UDim2.fromOffset(rail,railH+30)
   self.nav.Position=UDim2.fromOffset(rootX+7,rootY+8);self.nav.Size=UDim2.fromOffset(math.max(1,rail-14),math.max(1,railH-16))
-  self.rootDrag.Position=UDim2.fromOffset(rootX,rootY-30);self.rootDrag.Size=UDim2.fromOffset(rail,26)
+  self.rootDrag.Position=UDim2.fromOffset(rootX+7,rootY-25);self.rootDrag.Size=UDim2.fromOffset(math.max(1,rail-14),25)
   for _,b in self.branchButtons do
    b.button.Size=UDim2.new(1,0,0,buttonH)
    b.button.TextSize=if narrow then 12 else 16
@@ -1562,13 +1580,14 @@ function UI.new(app,gui,scope)
   self.branchRowH=math.clamp(math.floor((workH-4*(self.branchTitleH+6)-30)/14),8,36)
   self:refreshBranches(true)
   local pageOffset=workspaceOffset(self,"Page");local pageX,pageY=contentX+pageOffset.X,y+pageOffset.Y
-  self.pageDrag.Position=UDim2.fromOffset(pageX,pageY-30);self.pageDrag.Size=UDim2.fromOffset(bodyW,26);self.pageDrag.Text=self.tab:upper().." / MOVE PANEL"
-  self.search.Position=UDim2.fromOffset(pageX,pageY);self.search.Size=UDim2.fromOffset(bodyW,32)
+  local inset=math.min(8,math.floor((bodyW-1)/2))
+  local innerW=math.max(1,bodyW-2*inset)
+  self.pageDrag.Position=UDim2.fromOffset(pageX+inset,pageY-25);self.pageDrag.Size=UDim2.fromOffset(innerW,25);self.pageDrag.Text=self.tab:upper().." / MOVE PANEL"
+  self.search.Position=UDim2.fromOffset(pageX+inset,pageY+4);self.search.Size=UDim2.fromOffset(innerW,30)
   self.search.BackgroundTransparency=.53
-  self.contentGlass.Position=UDim2.fromOffset(pageX,pageY+42);self.contentGlass.Size=UDim2.fromOffset(bodyW,bodyH)
-  local isCatalog=self.catalogHost~=nil and self.catalogHost.Parent~=nil
-  self.contentGlass.Visible=not isCatalog or self.searchResults.Visible
-  self.pageBox.Position=self.contentGlass.Position;self.pageBox.Size=self.contentGlass.Size
+  self.contentGlass.Position=UDim2.fromOffset(pageX,pageY-30);self.contentGlass.Size=UDim2.fromOffset(bodyW,bodyH+72)
+  self.contentGlass.Visible=true
+  self.pageBox.Position=UDim2.fromOffset(pageX+inset,pageY+42);self.pageBox.Size=UDim2.fromOffset(innerW,math.max(1,bodyH-8))
   self.searchResults.Position=self.pageBox.Position;self.searchResults.Size=self.pageBox.Size
   self.status.Position=UDim2.fromOffset(pageX,pageY+workH+5);self.status.Size=UDim2.fromOffset(bodyW,21)
   self.layoutMove.Position=UDim2.fromOffset(x,math.max(55,y-34));self.layoutMove.Size=UDim2.fromOffset(100,28)
@@ -2135,7 +2154,7 @@ function UI:refreshSearch()
  local has=q~=""
  self.searchResults.Visible=has
  self.pageBox.Visible=not has
- self.contentGlass.Visible=has or not (self.catalogHost and self.catalogHost.Parent)
+ self.contentGlass.Visible=true
  if not has then return end
  local matches,seen={},{}
  for _,item in self.searchIndex do
@@ -2272,7 +2291,10 @@ function UI:sync()
  for _,r in self.branchCards do glassSurface(r.frame,st) end
  self.search.BackgroundColor3=U.hex(st.uiRowColor)
  self.quickArrow.BackgroundColor3=U.hex(st.uiButtonColor)
- self.rootDrag.BackgroundColor3=U.hex(st.uiButtonColor);self.pageDrag.BackgroundColor3=U.hex(st.uiButtonColor);self.homeButton.BackgroundColor3=U.hex(st.uiButtonColor)
+ for _,header in {self.rootDrag,self.pageDrag} do
+  header.BackgroundTransparency=1;header.HeaderDivider.BackgroundColor3=U.hex(st.uiStrokeColor)
+ end
+ self.homeButton.BackgroundColor3=U.hex(st.uiButtonColor)
  for _,obj in {self.layoutMove,self.layoutResize,self.layoutDone} do obj.BackgroundColor3=U.hex(st.uiHoverColor) end
  -- Only recolor editor controls, not HUD/3D previews or their own palette.
  for _,obj in self.panel:GetDescendants() do
