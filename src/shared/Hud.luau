@@ -1,7 +1,7 @@
 local U=require(script.Parent.Util);local Symbol=require(script.Parent.Symbol);local Icons=require(script.Parent.Icons)
 local H={};H.__index=H
 local UIS=game:GetService("UserInputService")
-local sizes={hp=Vector2.new(264,94),clock=Vector2.new(116,58),profile=Vector2.new(124,58),dock=Vector2.new(239,49),cross=Vector2.new(18,18)}
+local sizes={hp=Vector2.new(264,94),clock=Vector2.new(116,58),profile=Vector2.new(124,58),dock=Vector2.new(136,44),cross=Vector2.new(18,18)}
 local heartPalettes={
  Aurora={"7DE3FF","B78AFF","FC82D6"},
  Amethyst={"7550E8","BB8CFF","F2B8FF"},
@@ -123,17 +123,12 @@ function H.new(scope,parent,preview,go,drag,close,showPanels)
    scope:on(button.Activated,function() close(key) end)
   end
  end
- for i,item in {{"HOME","Dashboard"},{"HUD","HUD"},{"FX","Character"},{"SKY","Ambient"},{"MORE","Profiles"}} do
-  local b=U.button(dock,item[1])
-  b.Name="Dock_"..item[2]
-  b:SetAttribute("AETHERIconOnly",true)
-  b:SetAttribute("AETHERText",item[1])
-  b.Size=UDim2.fromOffset(42,35)
-  b.Position=UDim2.fromOffset(6+(i-1)*46,7)
-  b.TextSize=11
-  table.insert(self.dockIcons,Icons.new(b,item[2]))
-  scope:on(b.Activated,function() go(item[2]) end)
- end
+ local b=U.button(dock,"A E T H E R")
+ b.Name="OpenAetherMenu";b.Size=UDim2.new(1,-10,1,-10);b.Position=UDim2.fromOffset(5,5)
+ b.TextSize=13;b.ZIndex=4;b.BackgroundTransparency=.18
+ self.menuButton=b
+ if preview then b.Active=false;b.Interactable=false;b.AutoButtonColor=false
+ else scope:on(b.Activated,function() go() end) end
  local cr=self.widgets.cross.p
  cr.BackgroundTransparency=1
  self.widgets.cross.rim.Enabled=false
@@ -279,7 +274,7 @@ function H:setStyle(s)
  self.reticleKey=nil
  self.hpAccent.BackgroundColor3=accent
  self.profileDot.BackgroundColor3=U.hex(s.secondary)
- for _,icon in self.dockIcons do icon:sync(s.iconAtlas,s.iconAtlasTile) end
+ self.menuButton.FontFace=face;self.menuButton.TextColor3=U.hex(s.uiFontColor or "F1E6FF")
  for _,item in {{self.clock,21},{self.clockSub,9},{self.hpTitle,10},{self.value,19},{self.stateText,10},{self.name,15},{self.profileTitle,9}} do
   local n=item[1]
   n.FontFace=face

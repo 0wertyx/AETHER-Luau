@@ -181,7 +181,9 @@ function UI.new(app,gui,scope)
   self.stars[i]={root=root,bars=bars,dot=dot}
  end
  self.top,self.topRim,self.topButtons=U.topPanel(self.stage)
- self.updateChip=U.button(self.top,"v1.0.0")
+ self.updateChip=U.label(self.top,"v1.0.0",10)
+ self.updateChip.TextXAlignment=Enum.TextXAlignment.Center;self.updateChip.Active=false;self.updateChip.Interactable=false
+ U.corner(self.updateChip,8)
  self.updateChip.Name="LiveVersion"
  self.updateChip.AnchorPoint=Vector2.new(.5,0)
  self.updateChip.Position=UDim2.new(.5,0,1,6)
@@ -189,8 +191,6 @@ function UI.new(app,gui,scope)
  self.updateChip.TextSize=10;self.updateChip.ZIndex=self.top.ZIndex+2
  self.updateChip.BackgroundTransparency=.15
  self.updateRim=U.stroke(self.updateChip,Color3.fromRGB(166,138,255),.45)
- scope:on(self.updateChip.Activated,function() self:openShortcut("Updates",true) end)
- scope:on(self.topButtons[1].Activated,function() self:show(not self.opened) end)
  local coreOriginal,coreApplied={},{}
  scope:add(function()
   for kind,original in coreOriginal do pcall(function() if StarterGui:GetCoreGuiEnabled(kind)==coreApplied[kind] then StarterGui:SetCoreGuiEnabled(kind,original) end end) end
@@ -482,7 +482,7 @@ function UI:animateBackground(t)
  local below=6+self.updateChip.Size.Y.Offset+4
  self.quickArrow.Position=UDim2.new(.5,0,1,below)
  self.quick.Position=UDim2.new(.5,0,1,below+26)
- self.topButtons[1].BackgroundColor3=if self.opened then accent:Lerp(bg,.55) else soft
+ self.topButtons[1].TextColor3=U.hex(s.uiFontColor or "F1E6FF")
  local visible=s.screenParticles and q>.001
  self.screenFX.Visible=visible
  if visible then

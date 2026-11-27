@@ -1044,7 +1044,9 @@ function UI.new(app,gui,scope)
   self.stars[i]={root=root,bars=bars,dot=dot}
  end
  self.top,self.topRim,self.topButtons=U.topPanel(self.stage)
- self.updateChip=U.button(self.top,"v1.0.0")
+ self.updateChip=U.label(self.top,"v1.0.0",10)
+ self.updateChip.TextXAlignment=Enum.TextXAlignment.Center;self.updateChip.Active=false;self.updateChip.Interactable=false
+ U.corner(self.updateChip,8)
  self.updateChip.Name="LiveVersion"
  self.updateChip.AnchorPoint=Vector2.new(.5,0)
  self.updateChip.Position=UDim2.new(.5,0,1,6)
@@ -1052,8 +1054,6 @@ function UI.new(app,gui,scope)
  self.updateChip.TextSize=10;self.updateChip.ZIndex=self.top.ZIndex+2
  self.updateChip.BackgroundTransparency=.15
  self.updateRim=U.stroke(self.updateChip,Color3.fromRGB(166,138,255),.45)
- scope:on(self.updateChip.Activated,function() self:openShortcut("Updates",true) end)
- scope:on(self.topButtons[1].Activated,function() self:show(not self.opened) end)
  local coreOriginal,coreApplied={},{}
  scope:add(function()
   for kind,original in coreOriginal do pcall(function() if StarterGui:GetCoreGuiEnabled(kind)==coreApplied[kind] then StarterGui:SetCoreGuiEnabled(kind,original) end end) end
@@ -1345,7 +1345,7 @@ function UI:animateBackground(t)
  local below=6+self.updateChip.Size.Y.Offset+4
  self.quickArrow.Position=UDim2.new(.5,0,1,below)
  self.quick.Position=UDim2.new(.5,0,1,below+26)
- self.topButtons[1].BackgroundColor3=if self.opened then accent:Lerp(bg,.55) else soft
+ self.topButtons[1].TextColor3=U.hex(s.uiFontColor or "F1E6FF")
  local visible=s.screenParticles and q>.001
  self.screenFX.Visible=visible
  if visible then
@@ -1965,7 +1965,7 @@ __aether_factories["Hud"] = function()
 local U=__aether_require("Util");local Symbol=__aether_require("Symbol");local Icons=__aether_require("Icons")
 local H={};H.__index=H
 local UIS=game:GetService("UserInputService")
-local sizes={hp=Vector2.new(264,94),clock=Vector2.new(116,58),profile=Vector2.new(124,58),dock=Vector2.new(239,49),cross=Vector2.new(18,18)}
+local sizes={hp=Vector2.new(264,94),clock=Vector2.new(116,58),profile=Vector2.new(124,58),dock=Vector2.new(136,44),cross=Vector2.new(18,18)}
 local heartPalettes={
  Aurora={"7DE3FF","B78AFF","FC82D6"},
  Amethyst={"7550E8","BB8CFF","F2B8FF"},
@@ -2087,17 +2087,12 @@ function H.new(scope,parent,preview,go,drag,close,showPanels)
    scope:on(button.Activated,function() close(key) end)
   end
  end
- for i,item in {{"HOME","Dashboard"},{"HUD","HUD"},{"FX","Character"},{"SKY","Ambient"},{"MORE","Profiles"}} do
-  local b=U.button(dock,item[1])
-  b.Name="Dock_"..item[2]
-  b:SetAttribute("AETHERIconOnly",true)
-  b:SetAttribute("AETHERText",item[1])
-  b.Size=UDim2.fromOffset(42,35)
-  b.Position=UDim2.fromOffset(6+(i-1)*46,7)
-  b.TextSize=11
-  table.insert(self.dockIcons,Icons.new(b,item[2]))
-  scope:on(b.Activated,function() go(item[2]) end)
- end
+ local b=U.button(dock,"A E T H E R")
+ b.Name="OpenAetherMenu";b.Size=UDim2.new(1,-10,1,-10);b.Position=UDim2.fromOffset(5,5)
+ b.TextSize=13;b.ZIndex=4;b.BackgroundTransparency=.18
+ self.menuButton=b
+ if preview then b.Active=false;b.Interactable=false;b.AutoButtonColor=false
+ else scope:on(b.Activated,function() go() end) end
  local cr=self.widgets.cross.p
  cr.BackgroundTransparency=1
  self.widgets.cross.rim.Enabled=false
@@ -2243,7 +2238,7 @@ function H:setStyle(s)
  self.reticleKey=nil
  self.hpAccent.BackgroundColor3=accent
  self.profileDot.BackgroundColor3=U.hex(s.secondary)
- for _,icon in self.dockIcons do icon:sync(s.iconAtlas,s.iconAtlasTile) end
+ self.menuButton.FontFace=face;self.menuButton.TextColor3=U.hex(s.uiFontColor or "F1E6FF")
  for _,item in {{self.clock,21},{self.clockSub,9},{self.hpTitle,10},{self.value,19},{self.stateText,10},{self.name,15},{self.profileTitle,9}} do
   local n=item[1]
   n.FontFace=face
@@ -5580,11 +5575,11 @@ color("Theme","accent","Accent","A68AFF");color("Theme","secondary","Second neon
 range("Theme","glass","Glass opacity %",81,10,100);range("Theme","rim","Neon rim %",55,0,100);toggle("Theme","sparkles","Floating sparkles",true)
 toggle("Motion","reduce","Reduce motion",false);range("Motion","speed","Animation speed %",100,40,200);range("Motion","duration","Transition (ms)",380,80,1400);choice("Motion","ease","Interpolation","Smooth",{"Smooth","Linear","Sine"});choice("Motion","menuTransition","Menu transition","Glass",{"Glass","Slide","Fade","Off"});range("Motion","menuAnimStrength","Menu motion intensity %",75,0,100);toggle("Motion","tabTransition","Animated page transitions",true);toggle("Motion","navGlow","Animated navigation glow",true)
 toggle("Theme","menuGeometry","Animated geometric background",true);choice("Theme","menuShape","Background style","Mixed",{"Mixed","Rings","Crystals","Triangles","Hexagons","Squares","Stars","Dots","Rounded Star","Soft Star","Sparkle","Long Sparkle","Six Point Star","Eight Point Star","Circle","Rounded Square","Diamond","Rounded Triangle","Rounded Hexagon","Rounded Pentagon","Heart"});range("Theme","menuDensity","Background density",14,4,24);range("Theme","menuMotion","Background speed %",65,0,180);range("Theme","menuOpacity","Background intensity %",55,0,100);
-range("Theme","constellationLinks","Maximum connections",100,0,100);range("Theme","constellationDistance","Connection distance (px)",115,25,220);range("Theme","constellationThickness","Line width (tenths of px)",7,3,20);range("Theme","constellationSize","Figure size (px)",5,2,14);range("Theme","constellationAngle","Background gradient angle",45,0,360);color("Theme","constellationBgA","Background start","10091C");color("Theme","constellationBgB","Background end","35204D");color("Theme","constellationLineA","Line start","ECE0FF");color("Theme","constellationLineB","Line end","A66AFF");color("Theme","constellationNodeA","Figure start","FFFFFF");color("Theme","constellationNodeB","Figure end","BE8AFF");toggle("Theme","screenParticles","Menu screen particles",true);choice("Theme","screenParticleStyle","Screen particle style","Mixed",{"Mixed","Stars","Dust","Diamonds"});range("Theme","screenParticleCount","Screen particle count",24,8,48);range("Theme","screenParticleOpacity","Screen particle intensity %",55,0,100);toggle("Theme","robloxRail","Roblox shortcuts rail",true);toggle("Theme","topCapsule","Interactive top capsule",true)
+range("Theme","constellationLinks","Maximum connections",100,0,100);range("Theme","constellationDistance","Connection distance (px)",115,25,220);range("Theme","constellationThickness","Line width (tenths of px)",7,3,20);range("Theme","constellationSize","Figure size (px)",5,2,14);range("Theme","constellationAngle","Background gradient angle",45,0,360);color("Theme","constellationBgA","Background start","10091C");color("Theme","constellationBgB","Background end","35204D");color("Theme","constellationLineA","Line start","ECE0FF");color("Theme","constellationLineB","Line end","A66AFF");color("Theme","constellationNodeA","Figure start","FFFFFF");color("Theme","constellationNodeB","Figure end","BE8AFF");toggle("Theme","screenParticles","Menu screen particles",true);choice("Theme","screenParticleStyle","Screen particle style","Mixed",{"Mixed","Stars","Dust","Diamonds"});range("Theme","screenParticleCount","Screen particle count",24,8,48);range("Theme","screenParticleOpacity","Screen particle intensity %",55,0,100);toggle("Theme","robloxRail","Roblox shortcuts rail",true);toggle("Theme","topCapsule","Top AETHER title",true)
 choice("Theme","menuDock","Menu docking side","Left",{"Left","Right","Top","Bottom","Floating"});range("Theme","menuWidth","Menu width (px)",438,280,1600);range("Theme","menuHeight","Menu height (px)",600,260,1200);toggle("Theme","menuDrag","Drag / snap menu",true);toggle("Theme","menuResize","Resize with corner grip",true);range("Theme","menuFloatX","Floating horizontal %",35,0,100);range("Theme","menuFloatY","Floating vertical %",40,0,100)
 toggle("HUD","locked","Lock widget positions",true);toggle("HUD","movePanels","Allow moving top and left panels",false);toggle("HUD","topCustom","Custom top panel position",false);range("HUD","topX","Top panel X %",50,0,100);range("HUD","topY","Top panel Y %",2,0,100);toggle("HUD","railCustom","Custom left panel position",false);range("HUD","railX","Left panel X %",1,0,100);range("HUD","railY","Left panel Y %",46,0,100);toggle("HUD","compact","Compact health panel",true);choice("HUD","layoutMode","HUD layout","Sketch",{"Sketch","Custom"});choice("HUD","hudMotion","Widget animation","Glass",{"Glass","Float","Pulse","Off"});range("HUD","hudMotionStrength","Widget motion intensity %",65,0,100);toggle("HUD","hudShine","Health bar shimmer",true);toggle("HUD","hudReaction","Damage and healing glow",true);range("HUD","hudSmoothness","HUD smoothing (ms)",320,100,900)
 choice("HUD","heartPalette","Heart gradient","Adaptive",{"Adaptive","Aurora","Amethyst","Ocean","Sakura","Sunset","Ember","Mint","Ice","Galaxy","Rainbow","Custom"});choice("HUD","heartDirection","Heart gradient direction","Vertical",{"Vertical","Horizontal","Diagonal","Reverse","Orbit"});range("HUD","heartGradientSpeed","Heart gradient speed %",60,0,150);color("HUD","heartA","Heart custom start","BA99FF");color("HUD","heartMid","Heart custom middle","F8CCFF");color("HUD","heartB","Heart custom end","69D9FA");range("HUD","heartGlow","Heart glow %",65,0,100)
-for _,row in {{"hp","Health",3,9},{"clock","Clock",3,96},{"profile","Player card",97,9},{"dock","Studio dock",50,96},{"cross","Reticle",50,50}} do
+for _,row in {{"hp","Health",3,9},{"clock","Clock",3,96},{"profile","Player card",97,9},{"dock","AETHER menu button",50,96},{"cross","Reticle",50,50}} do
  local k,t=row[1],row[2];toggle("HUD",k,t,true); range("HUD",k.."X",t.." · horizontal %",row[3],0,100);range("HUD",k.."Y",t.." · vertical %",row[4],0,100)
  range("HUD",k.."Scale",t.." · scale %",100,50,160);range("HUD",k.."Turn",t.." · rotation",0,-180,180);range("HUD",k.."Alpha",t.." · opacity %",100,10,100)
 end
@@ -6472,13 +6467,11 @@ function U.topPanel(parent)
  local panel=U.frame(parent,"TopCapsule",nil,UDim2.fromOffset(136,38),Color3.fromRGB(19,16,32),.12)
  panel.AnchorPoint=Vector2.new(.5,0);U.corner(panel,18)
  local rim=U.stroke(panel,Color3.fromRGB(166,138,255),.42)
- local buttons={}
- for index,label in {"AETHER"} do
-  local button=U.button(panel,label);button.BackgroundTransparency=.42;button.TextSize=11
-  button.Position=UDim2.fromOffset(4,4);button.Size=UDim2.new(1,-8,1,-8)
-  buttons[index]=button
- end
- return panel,rim,buttons
+ panel.BackgroundTransparency=1;rim.Enabled=false
+ local label=U.label(panel,"A E T H E R",14,UDim2.fromOffset(4,4),UDim2.new(1,-8,1,-8))
+ label.Name="AetherTitle";label.TextXAlignment=Enum.TextXAlignment.Center
+ label.Active=false;label.Interactable=false
+ return panel,rim,{label}
 end
 function U.hex(s) return Color3.fromHex(s) end
 function U.font(s) local w=Enum.FontWeight[s.weight];if s.fontAsset~="" then return Font.new("rbxassetid://"..s.fontAsset,w) end;local base=Font.fromEnum(Enum.Font[s.font]);return Font.new(base.Family,w,base.Style) end
@@ -10500,7 +10493,9 @@ function app:drag(input, key, widget, frame, source)
     end)
 end
 
-local hud = Hud.new(scope, overlay, false, function(tab) app.ui:openShortcut(tab) end,nil,function(key) app:set(key,false) end)
+local hud = Hud.new(scope, overlay, false, function()
+    if app.ui and not app.editingHUD and not app.stopping then app.ui:show(not app.ui.opened) end
+end,nil,function(key) app:set(key,false) end)
 local avatar = Avatar.new(workspace, false)
 local walkMotion = WalkMotion.new()
 app.walkMotion = walkMotion

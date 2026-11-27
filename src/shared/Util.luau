@@ -21,13 +21,11 @@ function U.topPanel(parent)
  local panel=U.frame(parent,"TopCapsule",nil,UDim2.fromOffset(136,38),Color3.fromRGB(19,16,32),.12)
  panel.AnchorPoint=Vector2.new(.5,0);U.corner(panel,18)
  local rim=U.stroke(panel,Color3.fromRGB(166,138,255),.42)
- local buttons={}
- for index,label in {"AETHER"} do
-  local button=U.button(panel,label);button.BackgroundTransparency=.42;button.TextSize=11
-  button.Position=UDim2.fromOffset(4,4);button.Size=UDim2.new(1,-8,1,-8)
-  buttons[index]=button
- end
- return panel,rim,buttons
+ panel.BackgroundTransparency=1;rim.Enabled=false
+ local label=U.label(panel,"A E T H E R",14,UDim2.fromOffset(4,4),UDim2.new(1,-8,1,-8))
+ label.Name="AetherTitle";label.TextXAlignment=Enum.TextXAlignment.Center
+ label.Active=false;label.Interactable=false
+ return panel,rim,{label}
 end
 function U.hex(s) return Color3.fromHex(s) end
 function U.font(s) local w=Enum.FontWeight[s.weight];if s.fontAsset~="" then return Font.new("rbxassetid://"..s.fontAsset,w) end;local base=Font.fromEnum(Enum.Font[s.font]);return Font.new(base.Family,w,base.Style) end
