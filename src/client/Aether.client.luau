@@ -107,7 +107,9 @@ function app:restore(bank)
     self.bank = S.bank(bank)
     self.s = self.bank.settings
     self:stopCue()
-    if self.ui and self.ui.tab then self.ui:open(self.ui.tab) end
+    if self.ui and self.ui.tab then
+        if self.ui.opened then self.ui:open(self.ui.tab) else self.ui:sync() end
+    end
 end
 function app:library(bank)
     self.bank = S.bank(bank)
@@ -227,7 +229,7 @@ do
     end
     local attrs={
         BlockPower=true,BumpPower=true,DashPower=true,DiveSpeed=true,
-        DrawPower=true,JumpPower=true,ServePower=true,SetPower=true
+        DrawPower=true,JumpPower=true,ServePower=true,SetPower=true,Speed=true
     }
     local tiltKey="Gameplay_TiltDirection"
     local rf=game:GetService("ReplicatedFirst")
@@ -537,10 +539,10 @@ do
         self.tiltWrites=0;self.tiltHooks=0;self.requestedTilt=nil
         self.auto=true;self.status="Local tilt correction enabled; ball response depends on style"
     end
-    -- Auto Play uses the ordinary action binding, not direct server calls.
-    local play={set=false,spike=false,busy=false,ownsTilt=false,status="Off",lastBall=nil,lastStamp=nil,lastMove=nil,lastAt=0,lastSeen=0,generation=0}
+    -- Auto Play dispatches normal game inputs; it does not bypass move validation.
+    local play={set=false,spike=false,busy=false,ownsTilt=false,status="Off",lastBall=nil,lastStamp=nil,lastMove=nil,lastAt=0,lastSeen=0,generation=0,attempts=0,hits=0}
     vb.play=play
-    local api
+    local api,retryAt=nil,0
     local tags=game:GetService("CollectionService")
     local overlap=OverlapParams.new()
     overlap.FilterType=Enum.RaycastFilterType.Include
@@ -555,127 +557,166 @@ do
         local dm=move and move:FindFirstChild("DoMove")
         assert(g and registry and dm,"Game action modules unavailable")
         local knit=require(ReplicatedStorage.Packages.Knit)
-        local controller=knit.GetController("GameController")
-        assert(controller and controller.Loaded,"Game controller not ready")
-        local handlers=require(g.Handlers)
-        return {states=handlers.States,values=handlers.Values,input=knit.GetController("InputController"),
-            binding=require(registry.DoMove),orch=require(dm.Orchestrator),rules=require(dm.Game),
-            special=require(dm.StyleSpecial),hitbox=require(ReplicatedStorage.Tools.Hitbox),
-            joint=require(ReplicatedStorage.Tools.TiltJoint),physics=require(ReplicatedStorage.Common.Physics)}
+        local c=knit.GetController("GameController")
+        assert(c and c.Loaded,"GameController is loading")
+        local h=require(g.Handlers)
+        local bind=require(registry.DoMove)
+        assert(type(bind.onMoveRequest)=="function" and type(bind.canDoMove)=="function","Action binding unavailable")
+        return {states=h.States,values=h.Values,input=knit.GetController("InputController"),
+            balls=knit.GetController("BallController"),binding=bind,orch=require(dm.Orchestrator),
+            rules=require(dm.Game),special=require(dm.StyleSpecial),hitbox=require(ReplicatedStorage.Tools.Hitbox),
+            joint=require(ReplicatedStorage.Tools.TiltJoint),physics=require(ReplicatedStorage.Common.Physics),
+            actions=require(ReplicatedStorage.Configuration.Actions)}
     end
-    local function activeBall()
-        local active=ReplicatedStorage:GetAttribute("ActiveBall")
-        local only,count=nil,0
-        for _,b in tags:GetTagged("Ball") do
-            if not b:IsA("Model") or not b.PrimaryPart or not b:IsDescendantOf(workspace) then continue end
-            if active~=nil and tostring(b:GetAttribute("ServerId"))==tostring(active) then return b end
-            only=b;count+=1
-        end
-        return if count==1 then only else nil
+    local function waiting(reason)
+        play.status=reason
+        return nil
     end
     local function allowed(m)
         local s=m.states
-        return s.IsPlaying() and not s.IsBusy() and not s.IsStunned() and not s.IsServing()
-            and not m.orch.isOnCooldown() and not m.input.GameplaySuppressed()
-            and game:GetService("UserInputService"):GetFocusedTextBox()==nil
+        if not s.IsPlaying() then return false,"Waiting for match" end
+        if s.IsStunned() then return false,"Stunned" end
+        if s.IsServing() then return false,"Serving" end
+        if s.IsBusy() then return false,"Move already active" end
+        if m.orch.isOnCooldown() then return false,"Game cooldown" end
+        if m.input.GameplaySuppressed() or game:GetService("UserInputService"):GetFocusedTextBox() then return false,"Gameplay input suppressed" end
+        return true
     end
-    local function inReach(m,char,ball,action)
-        local h=m.hitbox.get({Special=m.special.getSpecial(),MoveId=action})
-        if not h then return false end
-        local offset,size=h.Offset,h.Size
-        if h.Custom and h.Custom.AdjustBoundsLocal then offset,size=h.Custom.AdjustBoundsLocal(offset,size) end
-        local rotation=m.joint.get(char):GetC0().Rotation
-        overlap.FilterDescendantsInstances={ball}
-        return #workspace:GetPartBoundsInBox(char.PrimaryPart.CFrame*rotation*offset,size,overlap)>0
+    local function candidates(m)
+        local out,seen={},{}
+        local function add(b)
+            if typeof(b)=="Instance" and b:IsA("Model") and b.PrimaryPart and b:IsDescendantOf(workspace) and not seen[b] then
+                seen[b]=true;table.insert(out,b)
+            end
+        end
+        for _,state in pairs(m.balls.ActiveBalls) do if type(state)=="table" then add(state.Ball) end end
+        for _,b in tags:GetTagged("Ball") do add(b) end
+        local active=ReplicatedStorage:GetAttribute("ActiveBall")
+        if active~=nil then
+            for _,b in out do
+                if tostring(b:GetAttribute("ServerId"))==tostring(active) or b.Name=="CLIENT_BALL_"..tostring(active) then return {b} end
+            end
+        end
+        return out
+    end
+    local function findReachable(m,char,action)
+        local hitbox=m.hitbox.get({Special=m.special.getSpecial(),MoveId=action})
+        if not hitbox then return nil,"No hitbox for "..action end
+        local offset,size=hitbox.Offset,hitbox.Size
+        if hitbox.Custom and hitbox.Custom.AdjustBoundsLocal then
+            local a,b=hitbox.Custom.AdjustBoundsLocal(offset,size)
+            if typeof(a)=="CFrame" then offset=a end
+            if typeof(b)=="Vector3" then size=b end
+        end
+        local c0=m.joint.get(char):GetC0()
+        local transform=char.PrimaryPart.CFrame*(c0-c0.Position)*offset
+        local list=candidates(m)
+        if #list==0 then return nil,"No streamed ball" end
+        local chosen,best=nil,math.huge
+        for _,b in list do
+            overlap.FilterDescendantsInstances={b}
+            if #workspace:GetPartBoundsInBox(transform,size,overlap)>0 then
+                local p=b:GetPivot().Position
+                local distance=(p-char.PrimaryPart.Position).Magnitude
+                if distance<best and m.physics.canInteract(player,action,p) and m.rules.isBallInNetBoundary(b) then chosen,best=b,distance end
+            end
+        end
+        if not chosen then return nil,"Ball outside "..action.." reach or game validation" end
+        return chosen
+    end
+    local function stopPlay(reason)
+        play.set=false;play.spike=false;play.generation+=1
+        if play.ownsTilt and vb.auto then vb:toggleAuto() end
+        play.ownsTilt=false;play.status=reason
     end
     function vb:togglePlay(which)
         local key=if which=="Set" then "set" else "spike"
+        play[key]=not play[key];play.generation+=1
         if play[key] then
-            play[key]=false;play.generation+=1
+            play.lastBall=nil;retryAt=0;play.status="Waiting for game controller"
+            if key=="spike" and not self.auto then
+                local ok=pcall(function() self:toggleAuto() end)
+                play.ownsTilt=ok and self.auto
+            end
+        else
             if key=="spike" and play.ownsTilt and self.auto then self:toggleAuto() end
             if key=="spike" then play.ownsTilt=false end
-            play.status="Auto "..which.." off";return
+            play.status="Auto "..which.." off"
         end
-        if not available() then play.status=self:availabilityStatus();return end
-        local ok,m=pcall(resolvePlay)
-        if not ok then play.status=tostring(m);return end
-        api=m
-        if key=="spike" and not self.auto then
-            self:toggleAuto()
-            if not self.auto then play.status="Auto Spike: "..self.status;return end
-            play.ownsTilt=true
-        end
-        play[key]=true;play.lastBall=nil
-        play.status="Auto "..which.." enabled"
     end
     local function playTick()
         if not (play.set or play.spike) then return end
-        if app.stopping or not gui.Parent or app.mode~="Game" then
-            play.set=false;play.spike=false;play.ownsTilt=false;play.generation+=1;play.status="Off | left Game mode";return
-        end
+        if app.stopping or not gui.Parent or app.mode~="Game" then stopPlay("Off | left Game mode");return end
         if play.busy then return end
+        local now=os.clock()
+        if not api then
+            if now<retryAt then return end
+            retryAt=now+1
+            local ok,m=pcall(resolvePlay)
+            if not ok then return waiting("Init: "..tostring(m)) end
+            api=m
+        end
         local m=api
-        if not m or not allowed(m) then return end
+        local ready,reason=allowed(m)
+        if not ready then return waiting(reason) end
         local char=m.states.Character
-        if not char or char~=player.Character or not char.PrimaryPart then return end
+        if not char or char~=player.Character or not char.PrimaryPart then return waiting("Waiting for character") end
         local jumping=m.states.IsJumping()==true
         local action=if jumping then "Spike" else "Set"
-        if (jumping and not play.spike) or (not jumping and not play.set) then return end
-        if jumping and (not vb.auto or not vb.target or not vb.tiltFresh or os.clock()-vb.tiltFresh>.25) then play.status="Waiting for aim / court";return end
-        local ball=activeBall()
-        if not ball then play.status="Waiting for active ball";return end
-        local now=os.clock()
-        local stamp=ReplicatedStorage:GetAttribute("LastHitTimestamp")
-        if not inReach(m,char,ball,action) then
+        if (jumping and not play.spike) or (not jumping and not play.set) then return waiting("Waiting for "..(if play.spike then "jump" else "landing")) end
+        if m.states.Charge()~=nil then return waiting("Manual charge in progress") end
+        if m.rules.isHitboxSkipped(action) then return waiting("Game skipped consecutive hit") end
+        local valid,why=m.rules.isMoveInvalidOnServe(action)
+        if not valid then return waiting("Serve rule: "..tostring(why or action)) end
+        local ball,ballWhy=findReachable(m,char,action)
+        if not ball then
             if now-play.lastSeen>.18 then play.lastBall=nil end
-            play.status="Waiting for ball in "..action.." range";return
+            return waiting(ballWhy)
         end
         play.lastSeen=now
-        if (play.lastBall==ball and play.lastStamp==stamp and play.lastMove==action) or now-play.lastAt<.35 then return end
-        if m.rules.isHitboxSkipped(action) or not m.rules.isMoveInvalidOnServe(action) or not m.rules.isBallInNetBoundary(ball)
-            or not m.physics.canInteract(player,action,ball:GetPivot().Position) then return end
-        if m.states.Charge()~=nil then return end
-        local request={ActionName=action,IsAerial=jumping,InputState=Enum.UserInputState.Begin,Metadata={}}
-        if not m.binding.canDoMove(request) then return end
-        play.lastBall=ball;play.lastStamp=stamp;play.lastMove=action;play.lastAt=now;play.busy=true
-        play.status="Executing "..action
+        local stamp=ReplicatedStorage:GetAttribute("LastHitTimestamp")
+        if (play.lastBall==ball and play.lastStamp==stamp and play.lastMove==action) or now-play.lastAt<.35 then return waiting("Waiting for next touch") end
+        local cfg=m.actions[action]
+        if not cfg or cfg.IsAerial~=jumping then return waiting("Action configuration mismatch") end
+        local request={ActionName=action,IsAerial=cfg.IsAerial,InputState=Enum.UserInputState.Begin,Metadata={}}
+        if not m.binding.canDoMove(request) then return waiting("Game input rejected") end
+        play.lastBall=ball;play.lastStamp=stamp;play.lastMove=action;play.lastAt=now
+        play.busy=true;play.attempts+=1;play.status="Executing "..action
         local gen=play.generation
         task.spawn(function()
-            local charged=false
+            local ownedCharge=false
             local ok,err=pcall(function()
                 if gen~=play.generation or not allowed(m) then return end
-                if jumping and typeof(vb.requestedTilt)=="Vector3" then
+                if jumping and vb.auto and vb.target and vb.tiltFresh and os.clock()-vb.tiltFresh<.25 and typeof(vb.requestedTilt)=="Vector3" then
                     lastManual=m.values.TiltDirection;lastApplied=vb.requestedTilt;m.values.TiltDirection=vb.requestedTilt
                 end
-                local advanced=m.binding.isAdvanced(action)
                 m.binding.onMoveRequest(request)
-                charged=advanced and m.binding.AdvancedChargeAction==action and m.states.Charge()~=nil
-                if charged then
-                    task.wait(.12)
+                ownedCharge=m.binding.AdvancedChargeAction==action and m.states.Charge()~=nil
+                if ownedCharge then
+                    task.wait(.06)
                     request.InputState=Enum.UserInputState.End
-                    if gen==play.generation and allowed(m) and m.binding.canDoMove(request) and player.Character==char then
+                    if gen==play.generation and player.Character==char and m.binding.canDoMove(request) then
                         m.binding.onMoveRequest(request)
                     end
                 end
+                if ReplicatedStorage:GetAttribute("LastHitTimestamp")~=stamp and ReplicatedStorage:GetAttribute("LastHitter")==player.Name then play.hits+=1 end
             end)
-            if charged and m.binding.AdvancedChargeAction==action then pcall(m.binding.releaseHeldInput) end
+            if ownedCharge and m.binding.AdvancedChargeAction==action then pcall(m.binding.releaseHeldInput) end
             play.busy=false
-            if gen==play.generation then play.status=if ok then action.." action returned" else action.." error: "..tostring(err) end
+            if gen==play.generation then play.status=if ok then action.." returned | attempts "..play.attempts.." | observed hits "..play.hits else action.." error: "..tostring(err) end
         end)
     end
     local playElapsed=0
     scope:on(RunService.Heartbeat,function(dt)
         playElapsed+=dt
-        if playElapsed<.035 then return end
+        if playElapsed<.016 then return end
         playElapsed=0
         local ok,err=pcall(playTick)
         if not ok then
-            play.set=false;play.spike=false;play.generation+=1
-            if play.ownsTilt and vb.auto then pcall(function() vb:toggleAuto() end) end
-            play.ownsTilt=false;play.status="Auto Play error: "..tostring(err)
+            api=nil;retryAt=os.clock()+1;play.status="Auto Play error: "..tostring(err)
         end
     end)
-    scope:add(function() play.set=false;play.spike=false;play.generation+=1 end)
+    scope:add(function() stopPlay("Off | unload") end)
     local elapsed=0
     scope:on(RunService.Heartbeat,function(dt)
         elapsed+=dt
@@ -802,6 +843,251 @@ do
     scope:add(function() vb:reset() end)
 end
 
+
+-- Local ball mesh radius experiment. Visual copy and guide never participate in queries.
+do
+    local vb=app.volleyball
+    local rs=game:GetService("ReplicatedStorage")
+    local tags=game:GetService("CollectionService")
+    local exp={factor=2,enabled=false,show=true,status="Off"}
+    vb.ballRadius=exp
+    local entry,folder
+    local searchAt=0
+    local function clear()
+        local e=entry;entry=nil
+        if e and e.part.Parent then
+            pcall(function()
+                if e.part.Size==e.applied then e.part.Size=e.base end
+                if e.part.LocalTransparencyModifier==1 then e.part.LocalTransparencyModifier=e.ltm end
+            end)
+        end
+        if folder then folder:Destroy();folder=nil end
+    end
+    local function reset(reason)
+        clear();searchAt=0;exp.enabled=false;exp.status=reason or "Off"
+    end
+    local function resolvePart(model)
+        if not model or not model:IsA("Model") or not model.Name:match("^CLIENT_BALL_") or not model:IsDescendantOf(workspace) then return nil end
+        local p=model.PrimaryPart
+        if p and p:IsA("MeshPart") and p.CanQuery then return p end
+        local found
+        for _,child in model:GetChildren() do
+            if child:IsA("MeshPart") and child.CanQuery then
+                if found then return nil end
+                found=child
+            end
+        end
+        return found
+    end
+    local function findPart()
+        local seen,models={},{}
+        local function add(obj)
+            if obj:IsA("BasePart") then obj=obj.Parent end
+            if obj and not seen[obj] then
+                seen[obj]=true
+                if resolvePart(obj) then table.insert(models,obj) end
+            end
+        end
+        for _,obj in tags:GetTagged("Ball") do add(obj) end
+        if #models==0 then
+            for _,obj in workspace:GetDescendants() do
+                if obj.Name:match("^CLIENT_BALL_") then add(obj) end
+            end
+        end
+        local active=rs:GetAttribute("ActiveBall")
+        if active~=nil then
+            for _,model in models do
+                if model.Name=="CLIENT_BALL_"..tostring(active) or tostring(model:GetAttribute("ServerId"))==tostring(active) then
+                    return resolvePart(model)
+                end
+            end
+        end
+        if #models==1 then return resolvePart(models[1]) end
+        return nil
+    end
+    local function nonInteractive(p)
+        p.Anchored=true;p.CanCollide=false;p.CanTouch=false;p.CanQuery=false;p.CastShadow=false
+        for _,tag in tags:GetTags(p) do tags:RemoveTag(p,tag) end
+    end
+    local function attach(p)
+        clear()
+        local base=p.Size
+        local oldArchivable=p.Archivable
+        p.Archivable=true
+        local ok,copy=pcall(function() return p:Clone() end)
+        p.Archivable=oldArchivable
+        if not ok or not copy then error("Ball visual copy unavailable") end
+        for _,child in copy:GetChildren() do
+            if not (child:IsA("SurfaceAppearance") or child:IsA("Decal") or child:IsA("Texture")) then child:Destroy() end
+        end
+        for _,obj in copy:GetDescendants() do
+            for _,tag in tags:GetTags(obj) do tags:RemoveTag(obj,tag) end
+        end
+        nonInteractive(copy);copy.Name="NormalBallVisual";copy.Size=base;copy.LocalTransparencyModifier=0
+        copy.CFrame=p.CFrame
+        folder=Instance.new("Folder");folder.Name="AETHER_BallHitboxPreview";folder.Parent=workspace
+        copy.Parent=folder
+        -- Adorn the queried part itself, not a separately sized physics part.
+        -- The box is its actual oriented bounding box, not the mesh collision hull.
+        local outline=Instance.new("SelectionBox")
+        outline.Name="ActualBallBounds";outline.Adornee=p
+        outline.Color3=Color3.fromRGB(185,125,255);outline.LineThickness=.025
+        outline.SurfaceTransparency=1;outline.Transparency=.05;outline.Parent=folder
+        local guide=Instance.new("SphereHandleAdornment")
+        guide.Name="ApproximateBallRadius";guide.Adornee=p
+        guide.Color3=outline.Color3;guide.Transparency=.94
+        guide.AlwaysOnTop=false;guide.Radius=base.X*.5;guide.Parent=folder
+        entry={part=p,base=base,applied=base,ltm=p.LocalTransparencyModifier,copy=copy,guide=guide,outline=outline}
+    end
+    function vb:setBallRadiusFactor(value)
+        assert(type(value)=="number" and value==value and value>=1 and value<math.huge,"Enter a finite number >= 1")
+        exp.factor=value
+    end
+    function vb:toggleBallRadiusGuide() exp.show=not exp.show end
+    function vb:toggleBallRadius()
+        if exp.enabled then reset();return end
+        if app.mode~="Game" then exp.status="Switch to Game mode";return end
+        exp.enabled=true;exp.status="Waiting for match ball";searchAt=0
+    end
+    local oldReset=vb.reset
+    function vb:reset()
+        reset()
+        oldReset(self)
+    end
+    local function tick()
+        if not exp.enabled then return end
+        if app.stopping or not gui.Parent or app.mode~="Game" then reset("Off | left Game mode");return end
+        if player:GetAttribute("Gameplay_InGame")~=true then
+            if entry then reset("Off | match ended") else exp.status="Waiting for match" end
+            return
+        end
+        if entry and (not entry.part:IsDescendantOf(workspace) or not entry.part.CanQuery or not folder or not folder.Parent) then
+            clear();searchAt=0
+        end
+        if os.clock()>=searchAt then
+            searchAt=os.clock()+.5
+            local p=findPart()
+            if entry and p~=entry.part then clear() end
+            if p and not entry then attach(p) end
+        end
+        if not entry then exp.status="Waiting for one identifiable queryable ball mesh";return end
+        local e=entry
+        local p=e.part
+        if p.Size~=e.applied then e.base=p.Size end
+        if p.LocalTransparencyModifier~=1 then e.ltm=p.LocalTransparencyModifier end
+        local target=e.base*exp.factor
+        if target.X>=math.huge or target.Y>=math.huge or target.Z>=math.huge then error("Size exceeds numeric range") end
+        -- Remember the engine readback so clamped dimensions never compound.
+        if e.requested~=target or p.Size~=e.applied then p.Size=target;e.requested=target end
+        e.applied=p.Size
+        p.LocalTransparencyModifier=1
+        e.copy.Size=e.base;e.copy.CFrame=p.CFrame
+        e.copy.Transparency=p.Transparency;e.copy.Color=p.Color;e.copy.Material=p.Material
+        local size=e.applied
+        local round=math.abs(size.X-size.Y)<.01 and math.abs(size.X-size.Z)<.01
+        e.guide.Radius=size.X*.5
+        e.guide.Visible=exp.show and round
+        e.outline.Visible=exp.show
+        exp.status=string.format("Requested %.5gx | actual %.5gx | bounds %.2f x %.2f x %.2f studs",exp.factor,size.X/e.base.X,size.X,size.Y,size.Z)
+    end
+    scope:on(RunService.RenderStepped,function()
+        local ok,err=pcall(tick)
+        if not ok then reset("Ball hitbox error: "..tostring(err)) end
+    end)
+    scope:add(function() reset() end)
+end
+
+-- Multi-style beta: visualize the replicated horizontal tilt vector only.
+-- This does not expose input, predict a hit, or modify the game state.
+do
+    local vb=app.volleyball
+    local esp={enabled=false,status="Off"}
+    vb.jinkoDirection=esp
+    local entries={}
+    local folder=nil
+    local elapsed=0
+    local tint=Color3.fromRGB(190,150,255)
+    local projectionLength=36 -- Direction guide in studs, not a ball flight model.
+    -- Public names and internal aliases, including observed TheTwins special ID.
+    local supported={Jester=true,Jinko=true,Rintaro=true,Sanju=true,Sanu=true,Kijo=true,Okuro=true,Twin1=true,Twin2=true,TheTwins=true}
+    local function clear()
+        if folder then folder:Destroy();folder=nil end
+        table.clear(entries)
+    end
+    local function part(parent)
+        local p=Instance.new("Part")
+        p.Name="TiltArrow";p.Anchored=true;p.CanCollide=false;p.CanTouch=false;p.CanQuery=false
+        p.CastShadow=false;p.Material=Enum.Material.Neon;p.Color=tint;p.Parent=parent
+        return p
+    end
+    local function make()
+        if not folder then
+            folder=Instance.new("Folder");folder.Name="AETHER_JinkoTiltBeta";folder.Parent=workspace
+        end
+        local model=Instance.new("Folder");model.Parent=folder
+        local guide=part(model);guide.Name="TiltProjection";guide.Transparency=.3
+        return {model=model,shaft=part(model),left=part(model),right=part(model),guide=guide}
+    end
+    local function segment(p,a,b,width)
+        local delta=b-a
+        local w=width or .12
+        p.Size=Vector3.new(w,w,delta.Magnitude)
+        p.CFrame=CFrame.lookAt((a+b)*.5,b)
+    end
+    function vb:toggleJinkoDirection()
+        esp.enabled=not esp.enabled
+        clear()
+        esp.status=if esp.enabled then "Waiting for supported style tilt" else "Off"
+    end
+    local function tick(dt)
+        elapsed+=dt
+        if elapsed<.05 then return end
+        elapsed=0
+        if not esp.enabled or app.stopping or not gui.Parent or app.mode~="Game" then
+            if folder then clear() end
+            return
+        end
+        if folder and not folder.Parent then clear() end
+        local camera=workspace.CurrentCamera
+        local seen={}
+        local count=0
+        for _,other in Players:GetPlayers() do
+            if other==player or other:GetAttribute("Gameplay_InGame")~=true then continue end
+            local style=other:GetAttribute("Gameplay_Style")
+            local special=other:GetAttribute("Gameplay_Special")
+            if not supported[style] and not supported[special] then continue end
+            local v=other:GetAttribute("Gameplay_TiltDirection")
+            if typeof(v)~="Vector3" then continue end
+            local planar=Vector3.new(v.X,0,v.Z)
+            local mag=planar.Magnitude
+            if mag~=mag or mag<.05 or mag>10 then continue end
+            local char=other.Character
+            local root=char and char:FindFirstChild("HumanoidRootPart")
+            local hum=char and char:FindFirstChildOfClass("Humanoid")
+            if not root or not root:IsA("BasePart") or not hum or hum.Health<=0 or not camera then continue end
+            if (root.Position-camera.CFrame.Position).Magnitude>150 then continue end
+            local dir=planar.Unit
+            local right=Vector3.new(-dir.Z,0,dir.X)
+            local start=root.Position+Vector3.new(0,2.6,0)
+            local tip=start+dir*6
+            local back=tip-dir*1.35
+            local entry=entries[other]
+            if not entry then entry=make();entries[other]=entry end
+            segment(entry.guide,start,start+dir*projectionLength,.2)
+            segment(entry.shaft,start,tip)
+            segment(entry.left,tip,back+right*.75)
+            segment(entry.right,tip,back-right*.75)
+            seen[other]=true;count+=1
+            if count>=16 then break end
+        end
+        for other,entry in entries do
+            if not seen[other] then entry.model:Destroy();entries[other]=nil end
+        end
+        esp.status=if count>0 then string.format("%d active | 36-stud tilt guide | flight unverified",count) else "Waiting for supported style tilt"
+    end
+    scope:on(RunService.Heartbeat,tick)
+    scope:add(clear)
+end
 
 -- Read-only trajectory preview. Prefer existing controller velocity and retain
 -- position sampling as fallback. No network events or ball state are modified.
@@ -1252,7 +1538,7 @@ function app:drag(input, key, widget, frame, source)
     end)
 end
 
-local hud = Hud.new(scope, overlay, false, function(tab) app.ui:open(tab) end,nil,function(key) app:set(key,false) end)
+local hud = Hud.new(scope, overlay, false, function(tab) app.ui:openShortcut(tab) end,nil,function(key) app:set(key,false) end)
 local avatar = Avatar.new(workspace, false)
 local walkMotion = WalkMotion.new()
 app.walkMotion = walkMotion
