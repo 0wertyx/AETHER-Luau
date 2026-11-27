@@ -103,6 +103,17 @@ range("Interface","layoutW","GUI width %",86,50,98)
 range("Interface","layoutH","GUI height %",72,40,95)
 range("Interface","navWidth","Branch rail width",156,100,220)
 range("Interface","topScale","Top capsule scale %",100,60,180)
+choice("Interface","workspaceMode","Workspace view","GUI",{"GUI","Nodes"})
+for _,mode in {"GUI","Nodes"} do
+ local prefix="ws"..mode
+ range("Interface",prefix.."Zoom","Workspace zoom %",100,35,180)
+ for _,axis in {"X","Y"} do
+  range("Interface",prefix.."Pan"..axis,"Workspace camera "..axis,0,-1000000,1000000)
+  for _,node in {"Root","Main","Visuals","Utility","Interface","Page"} do
+   range("Interface",prefix..node..axis,"Workspace "..node.." "..axis,0,-1000000,1000000)
+  end
+ end
+end
 function S.copy(v) if type(v)~="table" then return v end;local r={};for k,x in v do r[k]=S.copy(x) end;return r end
 local function str(s,n) return type(s)=="string" and #s<=n and utf8.len(s)~=nil end
 local function name(s) return str(s,48) and s:match("%S") and not s:find("%c") end
