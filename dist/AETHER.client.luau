@@ -1218,7 +1218,7 @@ function UI.new(app,gui,scope)
   end)
  end
  self.homeButton=U.button(self.modeBar,"HOME");self.homeButton.Position=UDim2.new(.8,2,0,3);self.homeButton.Size=UDim2.new(.2,-6,1,-6);self.homeButton.ZIndex=13;self.homeButton.TextSize=10
- scope:on(self.homeButton.Activated,function() self:resetWorkspace(false) end)
+ scope:on(self.homeButton.Activated,function() self:resetWorkspace(Input:IsKeyDown(Enum.KeyCode.LeftShift) or Input:IsKeyDown(Enum.KeyCode.RightShift)) end)
  local function inside(obj,pos)
   if not obj or not obj.Visible then return false end
   local a,b=obj.AbsolutePosition,obj.AbsoluteSize
@@ -1331,7 +1331,7 @@ function UI.new(app,gui,scope)
  function self:updateWorkspaceLinks()
   local s=self.app.s
   self.workspaceLinks.Visible=s.workspaceMode=="Nodes"
-  if not self.workspaceLinks.Visible then return end
+  if not self.workspaceLinks.Visible then self.workspaceLinkKey=nil;return end
   local zoom=self.workspaceScale.Scale;local origin=self.workspace.AbsolutePosition
   local color=U.hex(s.accent);local lineIndex,portIndex=0,0
   local function point(obj,x,y)
@@ -1358,12 +1358,19 @@ function UI.new(app,gui,scope)
     prev=next
    end
   end
+  local pairsToDraw={}
   for _,branch in branches do
    local r=self.branchCards[branch.name]
-   if r.frame.Visible and r.frame.AbsoluteSize.Y>4 then wire(point(self.branchButtons[branch.name].button,1,.5),point(r.frame,0,.5)) end
+   if r.frame.Visible and r.frame.AbsoluteSize.Y>4 then pairsToDraw[#pairsToDraw+1]={point(self.branchButtons[branch.name].button,1,.5),point(r.frame,0,.5)} end
   end
   local selected=self.buttons[self.tab];local group=tabBranch[self.tab]
-  if selected and group and self.branchCards[group].frame.Visible and self.pageBox.Visible then wire(point(selected,1,.5),point(self.pageBox,0,.08)) end
+  if selected and group and self.branchCards[group].frame.Visible and self.pageBox.Visible then pairsToDraw[#pairsToDraw+1]={point(selected,1,.5),point(self.pageBox,0,.08)} end
+  local signature={s.accent}
+  for _,pair in pairsToDraw do for _,v in pair do signature[#signature+1]=math.round(v.X*4);signature[#signature+1]=math.round(v.Y*4) end end
+  local key=table.concat(signature,":")
+  if self.workspaceLinkKey==key then return end
+  self.workspaceLinkKey=key
+  for _,pair in pairsToDraw do wire(pair[1],pair[2]) end
   for i=lineIndex+1,#self.linkPool do self.linkPool[i].Visible=false end
   for i=portIndex+1,#self.portPool do self.portPool[i].Visible=false end
  end
@@ -1557,7 +1564,7 @@ function UI.new(app,gui,scope)
  end
  scope:on(Input.InputBegan,function(i)
   if not self.opened or Input:GetFocusedTextBox() then return end
-  if i.KeyCode==Enum.KeyCode.Home then self:resetWorkspace(false);return end
+  if i.KeyCode==Enum.KeyCode.Home then self:resetWorkspace(Input:IsKeyDown(Enum.KeyCode.LeftShift) or Input:IsKeyDown(Enum.KeyCode.RightShift));return end
   if i.UserInputType~=Enum.UserInputType.MouseButton3 or self.drag then return end
   local state=self:workspaceCamera()
   self.workspacePan={origin=Vector2.new(i.Position.X,i.Position.Y),pan=state.pan,zoom=state.zoom}
@@ -1571,7 +1578,7 @@ function UI.new(app,gui,scope)
   end
   if i.UserInputType~=Enum.UserInputType.MouseWheel or self.drag or pan then return end
   local ctrl=Input:IsKeyDown(Enum.KeyCode.LeftControl) or Input:IsKeyDown(Enum.KeyCode.RightControl)
-  local pos=Vector2.new(i.Position.X,i.Position.Y)
+  local pos=Input:GetMouseLocation()
   if not ctrl then
    for _,obj in {self.pageBox,self.searchResults,self.search,self.header,self.modeBar,self.navGlass} do if inside(obj,pos) then return end end
    for _,r in self.branchCards do if inside(r.frame,pos) then return end end
@@ -1588,7 +1595,7 @@ function UI.new(app,gui,scope)
  scope:on(Input.InputEnded,function(i)
   if i.UserInputType==Enum.UserInputType.MouseButton3 and self.workspacePan then self.workspacePan=nil;self:commitWorkspaceCamera() end
  end)
- scope:on(self.pageBox:GetPropertyChangedSignal("AbsoluteSize"),function() self:layoutCatalog() end)
+ scope:on(self.pageBox:GetPropertyChangedSignal("Size"),function() self:layoutCatalog() end)
  scope:on(self.stage:GetPropertyChangedSignal("AbsoluteSize"),function() self:layout() end);self:layout()
  scope:on(Input.InputChanged,function(i) local d=self.drag;if d and (i==d.i or d.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseMovement) then d.fn(Vector2.new(i.Position.X,i.Position.Y),d.start,d.origin) end end)
  scope:on(Input.InputEnded,function(i) if self.drag and (self.drag.i==i or self.drag.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseButton1) then local d=self.drag;self.drag=nil;if d.finish then d.finish(Vector2.new(i.Position.X,i.Position.Y)) end end end)
@@ -1675,7 +1682,7 @@ end
 function UI:begin(i,fn,origin) if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end;local v=Vector2.new(i.Position.X,i.Position.Y);self.drag={i=i,start=v,fn=fn,origin=origin};fn(v,v,origin) end
 function UI:show(on)
  if on then self:setQuick(false) end
- if not on then self.workspacePan=nil;self:commitWorkspaceCamera();self.workspaceNodeDraft=nil end
+ if not on then self.workspacePan=nil;self:commitWorkspaceCamera();if self.workspaceNodeDraft then self.workspaceNodeDraft=nil;self:layout() end end
  if not on and self.opened then
   self.lastClosedTab=self.tab
   self.lastClosedPage=self.sc
@@ -5480,7 +5487,7 @@ function E.render(a,tab,ui)
   ui:chips({"Interface","Profiles","Halos","Wings"},function(n) ui:open(n) end,2)
  elseif tab=="Interface" then
   ui:title("INFINITE WORKSPACE")
-  ui:note("Middle mouse: pan. Wheel on background or Ctrl + wheel: zoom. Drag node titles to move individual panels. Home returns to the default camera.",62)
+  ui:note("Middle mouse: pan. Wheel on background or Ctrl + wheel: zoom. Drag node titles to move individual panels. Home resets camera; Shift + Home resets the current workspace.",62)
   ui:control("workspaceMode")
   ui:chips({"Reset camera","Reset current workspace"},function(n) ui:resetWorkspace(n=="Reset current workspace") end,2)
   ui:title("LAYOUT & WIDGETS")
