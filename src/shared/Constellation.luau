@@ -136,9 +136,9 @@ function FX:step(dt,s)
  end
  self.w=w;self.h=h
  local mobile=Input.TouchEnabled and not Input.KeyboardEnabled
- local count=math.clamp(math.floor(s.menuDensity),0,if mobile then 16 else MAX_NODES)
- local cap=math.clamp(math.floor(s.constellationLinks),0,MAX_LINKS)
- local radius=s.constellationDistance
+ local count=math.clamp(math.floor(s.menuDensity),0,if mobile then 12 else 24)
+ local cap=math.clamp(math.floor(s.constellationLinks),0,if mobile then 16 else 35)
+ local radius=s.constellationDistance*math.clamp(math.sqrt(w*h/500000),1,2.4)
  local opacity=s.menuOpacity/100
  local speed=if s.reduce then 0 else s.menuMotion/100
  local na,nb=U.hex(s.constellationNodeA),U.hex(s.constellationNodeB)
