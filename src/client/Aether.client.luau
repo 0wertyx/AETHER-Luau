@@ -2175,11 +2175,13 @@ do
     local vb=app.volleyball
     local arc={enabled=false,mode="Auto",status="Off"}
     vb.shotArc=arc
-    local controller,handlers,config,connection
+    local controller,handlers,config,connection,styleController,specialController
     local learned,pending={},nil
     local folder,marker,caption
     local segments={}
-    local nextAt,retryAt,filterAt=0,0,0
+    local nextAt,retryAt,filterAt,errorUntil=0,0,0,0
+    local lastDraw,visibleCount=nil,0
+    local SEGMENTS,STEP,INTERVAL=32,.125,1/30
     local map
     local params=RaycastParams.new()
     params.FilterType=Enum.RaycastFilterType.Include
@@ -2203,7 +2205,58 @@ do
     end
     local function tilt(root)
         local t=handlers.Values.TiltDirection
-        return if typeof(t)=="Vector3" then math.clamp(flat(t):Dot(root.CFrame.RightVector),-1,1) else 0
+        if typeof(t)~="Vector3" then t=player:GetAttribute("Gameplay_TiltDirection") end
+        if typeof(t)~="Vector3" or t~=t or t.Magnitude>100 then return 0,0 end
+        local f=facing(root);local right=Vector3.new(-f.Z,0,f.X)
+        -- Roblox right vector: use the character basis to avoid inverted tilt.
+        local r=flat(root.CFrame.RightVector)
+        if r.Magnitude>.01 then right=r.Unit end
+        return math.clamp(flat(t):Dot(right),-1,1),math.clamp(flat(t):Dot(f),-1,1)
+    end
+    local aliases={Jester="Jinko",Jinko="Jinko",Sanu="Sanju",Sanju="Sanju",Kijo="Kijo",Twin1="Twins",Twin2="Twins",TheTwins="Twins",Twins="Twins"}
+    local function identifier(value)
+        if type(value)=="string" and #value>0 then return value end
+        if type(value)=="table" then
+            local id=value.Id or value.Name
+            if type(id)=="string" and #id>0 then return id end
+        end
+        return nil
+    end
+    local function styleIdentity()
+        local id=identifier(player:GetAttribute("Gameplay_Style"))
+        local sp=identifier(player:GetAttribute("Gameplay_Special"))
+        if styleController then
+            local ok,value=pcall(function() return styleController.Style() end)
+            if ok then id=identifier(value) or id end
+        end
+        if specialController then
+            local ok,value=pcall(function() return specialController.Special() end)
+            if ok then sp=identifier(value) or sp end
+        end
+        id=id or sp or "Unknown"
+        sp=sp or "-"
+        -- Keep internal variants separate even when their public display names match.
+        return id.."|"..sp,aliases[id] or aliases[sp] or id
+    end
+    local function bin(x)
+        if x<-.08 then return -1 elseif x>.08 then return 1 else return 0 end
+    end
+    local function keyFor(style,k,t,back)
+        return style.."|"..k.."|"..bin(t).."|"..bin(back)
+    end
+    local function validVec(v,limit)
+        return typeof(v)=="Vector3" and v==v and v.Magnitude<limit
+    end
+    local function localVec(v,f,r)
+        return Vector3.new(v:Dot(r),v.Y,v:Dot(f))
+    end
+    local function worldVec(v,f,r)
+        return r*v.X+Vector3.yAxis*v.Y+f*v.Z
+    end
+    local function gravity()
+        local g=rs:GetAttribute("Modifier_BallGravity")
+        if type(g)~="number" or g~=g or g<=0 or g>1000 then g=config.Physics.Gravity end
+        return if type(g)=="number" and g==g and g>0 and g<1000 then g else 17
     end
     local function stateFor(id)
         if not controller then return nil end
@@ -2220,12 +2273,12 @@ do
     end
     local function hide()
         if folder then folder:Destroy();folder=nil end
-        table.clear(segments);marker=nil;caption=nil
+        table.clear(segments);marker=nil;caption=nil;lastDraw=nil;visibleCount=0
     end
     local function stop()
         hide();pending=nil
         if connection then connection:Disconnect();connection=nil end
-        controller=nil;handlers=nil;config=nil;arc.enabled=false;arc.status="Off"
+        controller=nil;handlers=nil;config=nil;styleController=nil;specialController=nil;arc.enabled=false;arc.status="Off"
     end
     local function connect()
         if connection and controller and handlers and config then return true end
@@ -2238,6 +2291,10 @@ do
         if not gc or not controller or type(controller.ActiveBalls)~="table" then return false end
         handlers=require(gc.Handlers)
         config=require(rs.Configuration.Game)
+        local ok,c=pcall(function() return knit.GetController("StyleController") end)
+        styleController=if ok then c else nil
+        local ok2,c2=pcall(function() return knit.GetController("SpecialController") end)
+        specialController=if ok2 then c2 else nil
         local svc=knit.GetService("BallService")
         connection=svc.BallTouched:Connect(function(who,id)
             if who~=player or not arc.enabled then return end
@@ -2246,7 +2303,11 @@ do
             local st=stateFor(id)
             if not st then return end
             local k=kind()
-            pending={id=id,k=k,at=os.clock(),before=st.Velocity,forward=facing(root),right=root.CFrame.RightVector,power=power(k),tilt=tilt(root),tiltPower=stat("TiltPower")}
+            local style=styleIdentity()
+            local side,back=tilt(root)
+            local right=flat(root.CFrame.RightVector)
+            if right.Magnitude<.01 then return end
+            pending={id=id,k=k,at=os.clock(),before=st.Velocity,forward=facing(root),right=right.Unit,power=power(k),tilt=side,back=back,tiltPower=stat("TiltPower"),key=keyFor(style,k,side,back)}
         end)
         return true
     end
@@ -2254,28 +2315,46 @@ do
         if not pending then return end
         local p=pending
         local st=stateFor(p.id)
-        if now-p.at>.3 or not st then pending=nil;return end
+        local elapsed=now-p.at
+        if elapsed>.4 or not st then pending=nil;return end
         local v=st.Velocity
-        if now-p.at<.035 or typeof(v)~="Vector3" or v.Magnitude<2 or v.Magnitude>250 then return end
-        if typeof(p.before)=="Vector3" and (v-p.before).Magnitude<2 and now-p.at<.13 then return end
-        local forward=flat(v):Dot(p.forward)
-        if forward<1 then pending=nil;return end
-        local g=rs:GetAttribute("Modifier_BallGravity")
-        if type(g)~="number" or g~=g then g=config.Physics.Gravity end
-        local y=v.Y+g*(now-p.at)
-        local lateral=flat(v):Dot(p.right)
-        local previous=learned[p.k]
-        local record={forward=forward/p.power,vertical=y/p.power,side=lateral/p.power,tilt=p.tilt*p.tiltPower,count=1}
+        if elapsed<.035 or not validVec(v,1800) or v.Magnitude<2 then return end
+        if validVec(p.before,1800) and (v-p.before).Magnitude<2 and elapsed<.16 then return end
+        local scale=rs:GetAttribute("GlobalTimeScale")
+        if type(scale)~="number" or scale~=scale or scale<=0 or scale>20 then scale=1 end
+        local gm=st.GravityMultiplier
+        if type(gm)~="number" or gm~=gm or math.abs(gm)>100 then gm=1 end
+        local g=gravity()
+        local extra=if validVec(st.Acceleration,1000) then st.Acceleration else nil
+        local jerk=if validVec(st.Jerk,600) then st.Jerk else Vector3.zero
+        if not p.firstV then
+            p.firstV=v;p.firstAt=now
+        end
+        -- Allow time for the post-action curve physics to appear.
+        if elapsed<.11 then return end
+        local dt=(now-p.firstAt)*scale
+        local measured=dt>=.035 and (v-p.firstV)/dt or nil
+        if not extra then
+            extra=if validVec(measured,1000) then measured+Vector3.yAxis*(g*gm) else Vector3.zero
+        end
+        local simTime=elapsed*scale
+        local acceleration=extra-Vector3.yAxis*(g*gm)
+        local launch=v-acceleration*simTime+jerk*(.5*simTime*simTime)
+        if not validVec(launch,1800) or flat(launch):Dot(p.forward)<1 then pending=nil;return end
+        local previous=learned[p.key]
+        local record={velocity=localVec(launch,p.forward,p.right)/p.power,
+            acceleration=localVec(extra,p.forward,p.right),jerk=localVec(jerk,p.forward,p.right),
+            gm=gm,tilt=p.tilt*p.tiltPower,back=p.back*p.tiltPower,count=1}
         if previous then
             record.count=previous.count+1
-            record.forward=previous.forward*.4+record.forward*.6
-            record.vertical=previous.vertical*.4+record.vertical*.6
-            if math.abs(record.tilt)>.08 and math.abs(previous.tilt)>.08 then
-                record.side=previous.side*.4+record.side*.6
-                record.tilt=previous.tilt*.4+record.tilt*.6
-            end
+            record.velocity=previous.velocity:Lerp(record.velocity,.6)
+            record.acceleration=previous.acceleration:Lerp(record.acceleration,.6)
+            record.jerk=previous.jerk:Lerp(record.jerk,.6)
+            record.gm=previous.gm*.4+record.gm*.6
+            record.tilt=previous.tilt*.4+record.tilt*.6
+            record.back=previous.back*.4+record.back*.6
         end
-        learned[p.k]=record;pending=nil
+        learned[p.key]=record;pending=nil;lastDraw=nil
     end
     local function makePart(name)
         local p=Instance.new("Part");p.Name=name;p.Anchored=true;p.CanCollide=false;p.CanTouch=false;p.CanQuery=false;p.CastShadow=false
@@ -2285,27 +2364,29 @@ do
     local function visual()
         if folder and folder.Parent then return end
         hide();folder=Instance.new("Folder");folder.Name="AETHER_ShotArc";folder.Parent=workspace
-        for i=1,80 do segments[i]=makePart("Arc") end
+        for i=1,SEGMENTS do segments[i]=makePart("Arc") end
         marker=makePart("Landing");marker.Shape=Enum.PartType.Ball;marker.Size=Vector3.new(.9,.9,.9)
         local bb=Instance.new("BillboardGui");bb.Size=UDim2.fromOffset(126,28);bb.StudsOffsetWorldSpace=Vector3.new(0,1.2,0);bb.AlwaysOnTop=false;bb.Parent=marker
         caption=Instance.new("TextLabel");caption.BackgroundTransparency=1;caption.Size=UDim2.fromScale(1,1);caption.TextSize=13;caption.Font=Enum.Font.GothamBold;caption.TextColor3=marker.Color;caption.TextStrokeTransparency=.25;caption.Parent=bb
     end
     local function invisible()
         if not folder then return end
-        for _,p in segments do p.Transparency=1 end
+        for i=1,visibleCount do segments[i].Transparency=1 end
+        visibleCount=0;lastDraw=nil
         marker.Transparency=1;caption.Text=""
     end
     function vb:toggleShotArc()
         if arc.enabled then stop();return end
-        arc.enabled=true;arc.status="Waiting for your first hit";retryAt=0;nextAt=0
+        arc.enabled=true;arc.status="Waiting for your first hit";retryAt=0;nextAt=0;errorUntil=0
     end
     local function tick()
         if not arc.enabled then return end
         local now=os.clock()
         if app.stopping or not gui.Parent or app.mode~="Game" then stop();return end
+        if now<errorUntil then return end
         if not connect() then arc.status="Waiting for game data";return end
         sample(now)
-        if now<nextAt then return end;nextAt=now+.067
+        if now<nextAt then return end;nextAt=now+INTERVAL
         if player:GetAttribute("Gameplay_InGame")~=true then invisible();pending=nil;arc.status="Waiting for match";return end
         local root=rootPart()
         local st=stateFor(nil)
@@ -2313,28 +2394,41 @@ do
         local k=if arc.mode=="Auto" then kind() else arc.mode
         local origin=st.Ball.PrimaryPart.Position
         if (origin-root.Position).Magnitude>18 then invisible();arc.status="Waiting for nearby ball";return end
-        local m=learned[k]
-        local f=facing(root);local right=flat(root.CFrame.RightVector).Unit
-        local t=tilt(root)*stat("TiltPower")
+        local style,styleName=styleIdentity()
+        local f=facing(root);local rv=flat(root.CFrame.RightVector)
+        if rv.Magnitude<.01 then invisible();return end
+        local right=rv.Unit
+        local t,back=tilt(root)
+        local tp=stat("TiltPower")
+        local m=learned[keyFor(style,k,t,back)]
         local strength=power(k)
         local v,source
+        local extra,jerk,gm=Vector3.zero,Vector3.zero,1
         if m then
-            local side=if math.abs(m.tilt)>.08 then m.side*math.clamp(t/m.tilt,-3,3) else m.side
-            v=(f*m.forward+right*side+Vector3.yAxis*m.vertical)*strength
+            local factor=1
+            if math.abs(m.tilt)>.08 and math.abs(t*tp)>.08 then factor=math.clamp((t*tp)/m.tilt,.25,2.5)
+            elseif math.abs(m.back)>.08 and math.abs(back*tp)>.08 then factor=math.clamp((back*tp)/m.back,.25,2.5) end
+            local vv=m.velocity
+            v=worldVec(Vector3.new(vv.X*factor,vv.Y,vv.Z),f,right)*strength
+            local av=m.acceleration;local jv=m.jerk
+            extra=worldVec(Vector3.new(av.X*factor,av.Y,av.Z),f,right)
+            jerk=worldVec(Vector3.new(jv.X*factor,jv.Y,jv.Z),f,right)
+            gm=m.gm
             source="Learned "..tostring(m.count).." hits"
-        elseif k=="Set" then
+        elseif k=="Set" and bin(t)==0 and bin(back)==0 then
             local c=config.Ball.Set
             local range=c.VerticalVelocity
             local move=player.Character:FindFirstChildOfClass("Humanoid")
             v=(f*c.LookVectorHorizontalVelocity+(move and flat(move.MoveDirection) or Vector3.zero)*c.MoveHorizontalVelocity+Vector3.yAxis*((range.Min+range.Max)*.5))*strength
             source="Config estimate"
         else
-            invisible();arc.status="Make one "..k.." hit to calibrate";return
+            invisible();arc.status=styleName.." | Make one "..k.." hit with this tilt to calibrate";return
         end
+        if not validVec(v,1800) then invisible();arc.status="Invalid launch sample";return end
         local currentMap=workspace:FindFirstChild("Map")
         if not currentMap then invisible();arc.status="Waiting for map";return end
         if currentMap~=map or now>=filterAt then
-            map=currentMap;filterAt=now+1
+            map=currentMap;filterAt=now+4;lastDraw=nil
             local parts={}
             for _,p in map:GetDescendants() do
                 if p:IsA("BasePart") and p.CanQuery then
@@ -2345,35 +2439,44 @@ do
             end
             params.FilterDescendantsInstances=parts
         end
-        local g=rs:GetAttribute("Modifier_BallGravity")
-        if type(g)~="number" or g~=g or g<=0 then g=config.Physics.Gravity end
+        local g=gravity()
+        local acceleration=extra-Vector3.yAxis*(g*gm)
         local radius=config.Physics.Radius
         if type(radius)~="number" then radius=1.2835 end
         radius*=math.clamp(tonumber(rs:GetAttribute("Modifier_BallSizeMultiplier")) or 1,.05,10)
         visual()
+        local ld=lastDraw
+        if ld and now-ld.at<.15 and (ld.origin-origin).Magnitude<.025 and (ld.v-v).Magnitude<.06 and (ld.a-acceleration).Magnitude<.1 and (ld.j-jerk).Magnitude<.1 and ld.radius==radius then return end
+        lastDraw={at=now,origin=origin,v=v,a=acceleration,j=jerk,radius=radius}
         local prev=origin;local hit
-        for i,p in segments do
-            if hit then p.Transparency=1;continue end
-            local time=i*.05
-            local target=origin+v*time-Vector3.yAxis*(.5*g*time*time)
+        local count=0
+        for i=1,SEGMENTS do
+            local time=i*STEP
+            local target=origin+v*time+acceleration*(.5*time*time)+jerk*(time*time*time/6)
             local delta=target-prev
-            if delta.Magnitude<.001 then p.Transparency=1;continue end
+            if delta.Magnitude<.001 then break end
             hit=workspace:Spherecast(prev,radius,delta,params)
             if hit then target=prev+delta.Unit*hit.Distance end
             if (target-prev).Magnitude>.001 then
-                p.Size=Vector3.new(.15,.15,(target-prev).Magnitude);p.CFrame=CFrame.lookAt((prev+target)*.5,target);p.Transparency=.15
-            else p.Transparency=1 end
+                local part=segments[i]
+                part.Size=Vector3.new(.15,.15,(target-prev).Magnitude);part.CFrame=CFrame.lookAt((prev+target)*.5,target)
+                if i>visibleCount then part.Transparency=.15 end
+                count=i
+            end
             prev=target
+            if hit then break end
         end
+        for i=count+1,visibleCount do segments[i].Transparency=1 end
+        visibleCount=count
         marker.Transparency=if hit then .15 else 1
         if hit then marker.Position=hit.Position+hit.Normal*.15 end
         caption.Text=if hit then (if hit.Normal.Y>.5 then "EST. LANDING" else "EST. CONTACT") else ""
-        arc.status=k.." | "..source.." | Power "..string.format("%.2fx",strength).." | Tilt "..string.format("%.2fx",stat("TiltPower"))
+        arc.status=styleName.." | "..k.." | "..source.." | Tilt "..string.format("%.2f / %.2f",t,back).." | 30 Hz target"
     end
     scope:on(RunService.Heartbeat,function()
         if not arc.enabled then return end
         local ok,err=pcall(tick)
-        if not ok then hide();arc.status="Retrying | "..tostring(err);nextAt=os.clock()+1 end
+        if not ok then hide();arc.status="Retrying | "..tostring(err);errorUntil=os.clock()+1;nextAt=errorUntil end
     end)
     scope:add(stop)
 end
