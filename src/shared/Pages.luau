@@ -579,7 +579,7 @@ local function configs(ui,a)
  local status=ui:note("",38)
  ui:watch(function() status.Text=a.store.status end)
  ui:title("CONFIG MANAGER")
- ui:note("Save your entire setup: HUD, wings, halos, animations, colors and all settings. No JSON editing required.",46)
+ ui:note("Save HUD, cosmetics, and Volleyball module switches and modes together in each profile.",46)
  local list=names(current)
  if #list==0 then ui:note("No configurations yet. Enter a name and save.",28)
  else ui:chips(list,function(n) a.configSelection=n;a.configName=n;a.confirmDelete=nil;ui:open("Profiles") end,2,function() return selected or "" end) end
@@ -620,7 +620,7 @@ local function configs(ui,a)
   end
  end,3)
  ui:title("STORAGE")
- ui:note(if a.store.device then "Device storage: two alternating, validated JSON slots. Auto-save and restore on restart. Cosmetic profiles only." elseif a.store.remote then "Server storage available. Durable saving depends on the game's DataStore configuration." else "No device file API. Session only; use JSON backup to keep configs after exit.",62)
+ ui:note(if a.store.device then "Device storage: two alternating, validated JSON slots. Auto-save and restore on restart. Module preferences included." elseif a.store.remote then "Server storage available. Durable saving depends on the game's DataStore configuration." else "No device file API. Session only; use JSON backup to keep configs after exit.",62)
  ui:chips({"Save now","Reload bank"},function(op) if op=="Save now" then a.store:save() else a.store:read(true) end;ui:message(a.store.status);if not ui.page.dead then ui:sync() end end,2)
  ui:chips({if a.showConfigJSON then "Hide JSON tools" else "Advanced / JSON backup"},function() a.showConfigJSON=not a.showConfigJSON;ui:open("Profiles") end,1)
  if a.showConfigJSON then
