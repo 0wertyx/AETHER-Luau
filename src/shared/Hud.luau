@@ -48,14 +48,6 @@ function H.new(scope,parent,preview,go,drag,close,showPanels)
  self.profileTitle=U.label(profile,"PERFORMANCE",9,UDim2.fromOffset(25,9),UDim2.new(1,-43,0,18))
  self.name=U.label(profile,"",15,UDim2.fromOffset(14,28),UDim2.new(1,-27,0,22))
  local dock=self.widgets.dock.p
- if close then
-  for _,key in {"clock","profile"} do
-   local button=U.button(self.widgets[key].p,"×")
-   button.Size=UDim2.fromOffset(16,16);button.Position=UDim2.new(1,-19,0,3)
-   button.TextSize=12;button.BackgroundTransparency=.6;button.ZIndex=5
-   scope:on(button.Activated,function() close(key) end)
-  end
- end
  local b=U.button(dock,"A E T H E R")
  b.Name="OpenAetherMenu";b.Size=UDim2.new(1,-10,1,-10);b.Position=UDim2.fromOffset(5,5)
  b.TextSize=13;b.ZIndex=4;b.BackgroundTransparency=.18
@@ -187,9 +179,10 @@ function H:setStyle(s)
   w.scale.Scale=if k=="cross" then 1 else factor*s[k.."Scale"]/100
   if w.p:IsA("CanvasGroup") then w.p.GroupTransparency=1-s[k.."Alpha"]/100 end
   w.p.Visible=s[k]
-  w.rim.Color=accent
+  w.rim.Color=U.hex(s.uiStrokeColor)
   w.rim.Transparency=1-s.rim/100
-  w.g.Color=ColorSequence.new(a,b)
+  local tint=if k=="clock" then U.hex(s.clockGlass) elseif k=="profile" then U.hex(s.fpsGlass) else a
+  w.g.Color=ColorSequence.new(tint:Lerp(U.hex(s.uiSpecularColor),.12*s.uiReflection/100),tint:Lerp(b,.5))
   w.p.BackgroundTransparency=1
   if w.p:IsA("CanvasGroup") then w.p.GroupColor3=Color3.new(1,1,1) end
   local legacyGradient=w.p:FindFirstChildOfClass("UIGradient")
@@ -203,7 +196,7 @@ function H:setStyle(s)
   local n=item[1]
   n.FontFace=face
   n.TextSize=item[2]*s.fontSize/100
-  n.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA)
+  n.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(if n==self.clock or n==self.clockSub then s.clockText else s.fpsText)
   n.TextStrokeColor3=Color3.fromRGB(20,16,32)
   n.TextStrokeTransparency=1-s.fontOutline/100
   local grad=n:FindFirstChildOfClass("UIGradient") or U.gradient(n,accent,b,0)
@@ -314,7 +307,7 @@ function H:animateWidgets(s,f,dt,t)
   w.scale.Scale=self.factor*s[key.."Scale"]/100*(1-entry*.08+pulse)
   local glow=if idle and s.hudMotion~="Off" then (.5+.5*math.sin(phase))*.18*strength else 0
   w.rim.Transparency=1-math.clamp(s.rim/100+glow,0,1)
-  w.rim.Color=U.hex(s.accent):Lerp(U.hex(s.secondary),glow*2)
+  w.rim.Color=U.hex(s.uiStrokeColor):Lerp(U.hex(s.secondary),glow*2)
   w.g.Rotation=if idle and s.hudMotion=="Glass" then 90+math.sin(phase*.5)*18*strength else 90
  end
  self.profileDot.BackgroundTransparency=if enabled then .12+.16*(1-math.sin(time*1.7)) else 0
