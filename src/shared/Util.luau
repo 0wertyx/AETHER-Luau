@@ -28,6 +28,14 @@ function U.topPanel(parent)
  return panel,rim,{label}
 end
 function U.hex(s) return Color3.fromHex(s) end
+function U.appearanceColor(s,id,slot,fallback)
+ local key="appearance"..id..slot
+ if s[key.."Custom"] and s[key] then return U.hex(s[key]) end
+ return fallback
+end
+function U.appearanceText(s,id,muted,fallback)
+ return U.appearanceColor(s,id,if muted then "Muted" else "Text",fallback)
+end
 function U.blockStyle(s,id,c,t,e,et,w)
  local p="appearance"..id
  if s[p.."Custom"] then

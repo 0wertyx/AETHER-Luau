@@ -187,7 +187,7 @@ function H:setStyle(s)
   local base=if k=="clock" then U.hex(s.clockGlass) elseif k=="profile" then U.hex(s.fpsGlass) else a
   local tint,fill,edge,edgeAlpha,width=U.blockStyle(s,role,base,1-s.glass/100,U.hex(s.uiStrokeColor),1-s.rim/100,1.15)
   w.rim.Color=edge;w.rim.Transparency=edgeAlpha;w.rim.Thickness=width;w.rim.Enabled=k~="cross" and width>0 and edgeAlpha<1
-  w.g.Color=ColorSequence.new(tint:Lerp(U.hex(s.uiSpecularColor),.12*s.uiReflection/100),tint:Lerp(b,.5))
+  w.g.Color=ColorSequence.new(tint:Lerp(U.hex(s.uiSpecularColor),.12*s.uiReflection/100),U.appearanceColor(s,role,"GradientEnd",tint:Lerp(b,.5)))
   w.p.BackgroundTransparency=1
   if w.p:IsA("CanvasGroup") then w.p.GroupColor3=Color3.new(1,1,1) end
   local legacyGradient=w.p:FindFirstChildOfClass("UIGradient")
@@ -196,17 +196,21 @@ function H:setStyle(s)
  end
  self.reticleKey=nil
  self.profileDot.BackgroundColor3=U.hex(s.secondary)
- self.menuButton.FontFace=face;self.menuButton.TextColor3=U.hex(s.uiFontColor or "F1E6FF")
+ self.menuButton.FontFace=face;self.menuButton.TextColor3=U.appearanceText(s,"Dock",false,U.hex(s.uiFontColor or "F1E6FF"));self.menuButton.BackgroundTransparency=1
  for _,item in {{self.clock,21},{self.clockSub,9},{self.name,15},{self.profileTitle,9}} do
   local n=item[1]
   n.FontFace=face
   n.TextSize=item[2]*s.fontSize/100
-  n.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(if n==self.clock or n==self.clockSub then s.clockText else s.fpsText)
+  local role=if n==self.clock or n==self.clockSub then "Clock" else "FPS"
+  local muted=n==self.clockSub or n==self.profileTitle
+  local flag="appearance"..role..(if muted then "Muted" else "Text").."Custom"
+  local useGradient=s.fontGradient and not s[flag]
+  n.TextColor3=if useGradient then Color3.new(1,1,1) else U.appearanceText(s,role,muted,U.hex(if role=="Clock" then s.clockText else s.fpsText))
   n.TextStrokeColor3=Color3.fromRGB(20,16,32)
   n.TextStrokeTransparency=1-s.fontOutline/100
   local grad=n:FindFirstChildOfClass("UIGradient") or U.gradient(n,accent,b,0)
   grad.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB))
-  grad.Enabled=s.fontGradient
+  grad.Enabled=useGradient
  end
  self.settings=s
  self.viewport=vp
@@ -366,7 +370,7 @@ function H:step(s,f,dt)
    end
    local fill,alpha,edge,edgeAlpha,width=U.blockStyle(s,"Input",Color3.fromRGB(33,27,49),.18,tint,.55,1)
    key.p.BackgroundColor3=if down then tint else fill;key.p.BackgroundTransparency=alpha
-   key.label.TextColor3=if down then Color3.fromRGB(25,18,39) else Color3.fromRGB(240,233,255)
+   key.label.TextColor3=U.appearanceText(s,"Input",false,if down then Color3.fromRGB(25,18,39) else Color3.fromRGB(240,233,255))
    key.rim.Color=edge;key.rim.Transparency=if down and not s.appearanceInputCustom then .1 else edgeAlpha;key.rim.Thickness=width;key.rim.Enabled=width>0 and key.rim.Transparency<1
   end
  end
@@ -374,6 +378,7 @@ function H:step(s,f,dt)
  wh.Visible=s.wallhopHelper
  if wh.Visible then
   U.applyBlock(wh,s,"Wallhop",Color3.fromRGB(28,22,44),.15,Color3.fromRGB(177,146,255),.35,1)
+  self.wallhopTitle.TextColor3=U.appearanceText(s,"Wallhop",false,U.hex(s.uiFontColor));self.wallhopText.TextColor3=U.appearanceText(s,"Wallhop",false,U.hex(s.accent));self.wallhopDetail.TextColor3=U.appearanceText(s,"Wallhop",true,U.hex(s.uiMutedColor))
   local vp=self:logicalViewport()
   local scale=s.wallhopScale/100*(if self.preview then self.factor else 1)
   self.wallhopScale.Scale=scale;wh.GroupTransparency=1-s.wallhopOpacity/100
@@ -390,7 +395,7 @@ function H:step(s,f,dt)
    self.whAngle=math.max(self.whAngle or 0,math.abs(delta))
    setText(self.wallhopText,if down then "JUMP INPUT" else "CAMERA ROTATION")
    setText(self.wallhopDetail,string.format("%d° turn   ·   %d ms",math.floor(self.whAngle+.5),math.floor((t-self.whStart)*1000)))
-   self.wallhopText.TextColor3=U.hex(s.accent)
+   self.wallhopText.TextColor3=U.appearanceText(s,"Wallhop",false,U.hex(s.accent))
   elseif self.whStart then
    setText(self.wallhopText,"LAST ATTEMPT")
    setText(self.wallhopDetail,string.format("Peak rotation: %d°",math.floor((self.whAngle or 0)+.5)))

@@ -21,8 +21,9 @@ local function glassSurface(frame,s,role)
   ColorSequenceKeypoint.new(0,tint:Lerp(highlight,.19*reflection)),
   ColorSequenceKeypoint.new(.15,tint:Lerp(highlight,.06*reflection)),
   ColorSequenceKeypoint.new(.66,tint:Lerp(Color3.fromRGB(5,6,16),.30)),
-  ColorSequenceKeypoint.new(1,tint:Lerp(highlight,.10*reflection))
+  ColorSequenceKeypoint.new(1,U.appearanceColor(s,role or "Page","GradientEnd",tint:Lerp(highlight,.10*reflection)))
  })
+ frame:SetAttribute("AETHERAppearanceRole",role or "Page")
  local rim=frame:FindFirstChildOfClass("UIStroke") or U.stroke(frame,U.hex(s.uiStrokeColor),.4,1)
  rim.Color=edgeColor;rim.Thickness=edgeWidth;rim.Transparency=edgeAlpha;rim.Enabled=edgeWidth>0 and edgeAlpha<1
  local edge=rim:FindFirstChild("LiquidEdge") or U.new("UIGradient",{Name="LiquidEdge",Rotation=90},rim)
@@ -280,15 +281,16 @@ function UI.new(app,gui,scope)
   local s=self.app.s
   local parts={s.afkBackground,s.afkBgA,s.afkBgB,s.afkPatternColor,s.afkBrandColor,s.afkTitleColor,s.afkDetailColor,s.afkButtonColor,s.afkButtonText,s.afkButtonEdge,s.afkImageTint,s.afkGradientAngle,s.afkPatternOpacity,s.afkImageOpacity,s.afkImageAsset}
   for _,role in {"AFK","AFKButton"} do for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do parts[#parts+1]=tostring(s["appearance"..role..suffix]) end end
+  for _,role in {"AFK","AFKButton"} do for _,extra in S.appearanceExtras[role] do parts[#parts+1]=tostring(s[extra.key]);parts[#parts+1]=tostring(s[extra.flag]) end end
   local key=table.concat(parts,":")
   if self.afkThemeKey==key then return end
   self.afkThemeKey=key
-  local a,b=U.hex(if s.appearanceAFKCustom then s.appearanceAFKColor else s.afkBgA),U.hex(s.afkBgB)
+  local a,b=U.hex(if s.appearanceAFKCustom then s.appearanceAFKColor else s.afkBgA),U.appearanceColor(s,"AFK","GradientEnd",U.hex(s.afkBgB))
   self.afkGradient.Color=ColorSequence.new(a,if s.afkBackground=="Solid" then a else b)
   self.afkGradient.Rotation=s.afkGradientAngle
   self.afkBrand.TextColor3=U.hex(s.afkBrandColor);self.afkTitle.TextColor3=U.hex(s.afkTitleColor);self.afkDetail.TextColor3=U.hex(s.afkDetailColor)
   local button,_,edge,_,width=U.blockStyle(s,"AFKButton",U.hex(s.afkButtonColor),.12,U.hex(s.afkButtonEdge),.45,1)
-  self.afkBack.BackgroundColor3=button;self.afkBack.TextColor3=U.hex(s.afkButtonText);self.afkBackRim.Color=edge;self.afkBackRim.Thickness=width
+  self.afkBack.BackgroundColor3=button;self.afkBack.TextColor3=U.appearanceText(s,"AFKButton",false,U.hex(s.afkButtonText));self.afkBackRim.Color=edge;self.afkBackRim.Thickness=width
   local _,_,screenEdge,screenAlpha,screenWidth=U.blockStyle(s,"AFK",U.hex(s.afkBgA),0,U.hex(s.afkButtonEdge),1,1)
   local rim=self.afkScreen:FindFirstChildOfClass("UIStroke") or U.stroke(self.afkScreen,screenEdge,1,screenWidth)
   rim.Color=screenEdge;rim.Thickness=screenWidth;rim.Enabled=screenWidth>0 and screenAlpha<1
@@ -615,6 +617,7 @@ function UI.new(app,gui,scope)
   for _,role in S.appearance do
    local p="appearance"..role[1]
    for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do parts[#parts+1]=tostring(s[p..suffix]) end
+   for _,extra in S.appearanceExtras[role[1]] do parts[#parts+1]=tostring(s[extra.key]);parts[#parts+1]=tostring(s[extra.flag]) end
   end
   local key=table.concat(parts,":")
   if key==self.stylePreviewKey then return end
@@ -625,13 +628,14 @@ function UI.new(app,gui,scope)
    local function block(parent,role,name,x,y,width,height,radius)
     local f=U.frame(parent,name,UDim2.fromOffset(x,y),UDim2.fromOffset(width,height),nil,1)
     f.ZIndex=parent.ZIndex+1;f.Interactable=false;U.corner(f,radius or 10)
+    f:SetAttribute("AETHERAppearanceRole",role)
     table.insert(self.stylePreviewPaint,{frame=f,role=role})
     return f
    end
    local function label(parent,text,x,y,width,height,size,colorKey)
     local l=U.label(parent,text,size,UDim2.fromOffset(x,y),UDim2.fromOffset(width,height))
     l.ZIndex=parent.ZIndex+1;l.Interactable=false;l.TextXAlignment=Enum.TextXAlignment.Center;l:SetAttribute("AETHERKeepFontColor",true)
-    table.insert(self.stylePreviewPaint,{label=l,colorKey=colorKey or "uiFontColor"})
+    table.insert(self.stylePreviewPaint,{label=l,colorKey=colorKey or "uiFontColor",role=parent:GetAttribute("AETHERAppearanceRole") or id,muted=colorKey=="uiMutedColor" or colorKey=="moduleMutedColor" or y>=40 and (id=="Clock" or id=="FPS")})
     return l
    end
    local function centerBox(role,width,height)
@@ -698,7 +702,7 @@ function UI.new(app,gui,scope)
   local glassRoles={Root=true,Appearance=true,Preview=true,Main=true,Visuals=true,Utility=true,Interface=true,Page=true,Header=true,Modes=true,Catalog=true,Top=true,Keybind=true}
   for _,p in self.stylePreviewPaint do
    if p.label then
-    p.label.TextColor3=U.hex(s[p.colorKey]);p.label.FontFace=U.font(s)
+    p.label.TextColor3=U.appearanceText(s,p.role,p.muted,U.hex(s[p.colorKey]));p.label.FontFace=U.font(s)
    else
     local role=p.role;local spec=S.appearanceById[role]
     local fill,alpha,edge,edgeAlpha,width=U.appearanceSample(s,spec)
@@ -710,11 +714,11 @@ function UI.new(app,gui,scope)
      if role=="AFK" then
       p.frame.BackgroundColor3=Color3.new(1,1,1)
       local grad=p.frame:FindFirstChildOfClass("UIGradient") or U.gradient(p.frame,fill,fill)
-      grad.Color=ColorSequence.new(fill,if s.afkBackground=="Solid" then fill else U.hex(s.afkBgB));grad.Rotation=s.afkGradientAngle
+      grad.Color=ColorSequence.new(fill,if s.afkBackground=="Solid" then fill else U.appearanceColor(s,"AFK","GradientEnd",U.hex(s.afkBgB)));grad.Rotation=s.afkGradientAngle
      elseif role=="Clock" or role=="FPS" or role=="Dock" or role=="Quick" then
       p.frame.BackgroundColor3=Color3.new(1,1,1)
       local grad=p.frame:FindFirstChildOfClass("UIGradient") or U.gradient(p.frame,fill,fill)
-      grad.Color=ColorSequence.new(fill,fill:Lerp(Color3.fromRGB(17,16,30),.5));grad.Rotation=90
+      grad.Color=ColorSequence.new(fill,U.appearanceColor(s,role,"GradientEnd",fill:Lerp(Color3.fromRGB(17,16,30),.5)));grad.Rotation=90
      end
     end
    end
@@ -844,7 +848,7 @@ function UI.new(app,gui,scope)
   self.quickRim.Thickness=width;self.quickRim.Enabled=width>0
   local on,off=U.hex(s.moduleToggleOnColor),U.hex(s.moduleToggleOffColor)
   self.quick.BackgroundColor3=Color3.new(1,1,1)
-  self.quickGradient.Color=ColorSequence.new(panel:Lerp(edge,.06),panel:Lerp(Color3.new(),.16))
+  self.quickGradient.Color=ColorSequence.new(panel:Lerp(edge,.06),U.appearanceColor(s,"Quick","GradientEnd",panel:Lerp(Color3.new(),.16)))
   self.quickRim.Color=edge;self.quickArrow.BackgroundColor3=row
   self.quickScroll.ScrollBarImageColor3=edge
   for _,line in self.quickGlyph:GetChildren() do if line:IsA("Frame") then line.BackgroundColor3=primary end end
@@ -855,7 +859,9 @@ function UI.new(app,gui,scope)
      local holder=obj.Parent
      local isColorValue=holder and S.defs[holder.Name] and S.defs[holder.Name].kind=="color" and obj:IsA("TextLabel")
      if not isColorValue then
-      obj.TextColor3=if obj:GetAttribute("AETHERMuted") or obj==self.quickStatus then muted else primary
+      local isMuted=obj:GetAttribute("AETHERMuted") or obj==self.quickStatus
+      local textRole=if role=="Switch" or obj.Text=="ON" or obj.Text=="OFF" then (if obj.Text=="ON" then "QuickOn" else "QuickOff") elseif obj.Name=="ExpandModule" or (holder and holder:GetAttribute("AETHERQuickRole")=="Row") then "QuickRow" else "Quick"
+      obj.TextColor3=U.appearanceText(s,textRole,isMuted,U.appearanceText(s,"Quick",isMuted,if isMuted then muted else primary))
      end
     end
     if obj:IsA("TextButton") and obj.BackgroundTransparency<1 then
@@ -875,7 +881,11 @@ function UI.new(app,gui,scope)
     elseif obj.Name=="Fill" then obj.BackgroundColor3=accent
     elseif obj.Name=="Thumb" or (obj.Parent and obj.Parent.Name=="Chevron") then obj.BackgroundColor3=primary end
    elseif obj:IsA("UIStroke") and obj~=self.quickRim then
-    if obj.Parent and obj.Parent:IsA("TextButton") then obj.Color=edge end
+    if obj.Parent and obj.Parent:IsA("TextButton") then
+     local button=obj.Parent
+     local r=if button.Text=="ON" then "QuickOn" elseif button.Text=="OFF" then "QuickOff" elseif button.Name=="ExpandModule" then "QuickRow" else nil
+     if not r or not s["appearance"..r.."Custom"] then obj.Color=edge end
+    end
    end
   end
  end
@@ -1486,7 +1496,7 @@ function UI:animateBackground(t)
  local below=6
  self.quickArrow.Position=UDim2.new(.5,0,1,below)
  self:layoutAuxWidgets(below)
- self.topButtons[1].TextColor3=U.hex(s.uiFontColor or "F1E6FF")
+ self.topButtons[1].TextColor3=U.appearanceText(s,"Top",false,U.hex(s.uiFontColor or "F1E6FF"))
  local visible=s.screenParticles and q>.001
  local decorDt=(self.decorElapsed or 0)+dt
  self.decorElapsed=decorDt
@@ -1675,6 +1685,7 @@ function UI:refreshBindPanel()
    row={f=f,k=k,l=l};self.bindRows[i]=row
   end
   row.f.Visible=true;row.k.Text="["..item.key.."]";row.l.Text=item.label..item.state
+  row.k.TextColor3=U.appearanceText(self.app.s,"Keybind",true,Color3.fromRGB(200,170,255));row.l.TextColor3=U.appearanceText(self.app.s,"Keybind",false,U.hex(self.app.s.uiFontColor))
  end
  for i=#entries+1,#self.bindRows do self.bindRows[i].f.Visible=false end
 end
@@ -1963,6 +1974,7 @@ function UI:sync()
  for _,d in S.appearance do
   local p="appearance"..d[1]
   for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do themeParts[#themeParts+1]=tostring(st[p..suffix]) end
+  for _,extra in S.appearanceExtras[d[1]] do themeParts[#themeParts+1]=tostring(st[extra.key]);themeParts[#themeParts+1]=tostring(st[extra.flag]) end
  end
  if self.stylePreview.Visible then self:refreshStylePreview() end
  local themeKey=table.concat(themeParts,":")
@@ -1974,11 +1986,13 @@ function UI:sync()
  self.stylePreview.HeaderDivider.BackgroundColor3=U.hex(st.uiStrokeColor)
  self.appearancePanel.HeaderDivider.BackgroundColor3=U.hex(st.uiStrokeColor)
  local edge=U.hex(st.uiStrokeColor)
+ self.search:SetAttribute("AETHERAppearanceRole","Search");self.search.PlaceholderColor3=U.appearanceText(st,"Search",false,muted)
  U.applyBlock(self.search,st,"Search",U.hex(st.uiRowColor),.53,edge,1,1.15)
  for id,r in self.branchButtons do
+  r.button:SetAttribute("AETHERAppearanceRole","NavButton")
   U.applyBlock(r.button,st,"NavButton",U.hex(if st["branch"..id] then st.uiHoverColor else st.uiButtonColor),0,edge,1,1.15)
  end
- for id,b in self.buttons do U.applyBlock(b,st,"TabButton",U.hex(if id==self.tab then st.uiHoverColor else st.uiButtonColor),0,edge,1,1.15) end
+ for id,b in self.buttons do b:SetAttribute("AETHERAppearanceRole","TabButton");U.applyBlock(b,st,"TabButton",U.hex(if id==self.tab then st.uiHoverColor else st.uiButtonColor),0,edge,1,1.15) end
  for _,header in {self.rootDrag,self.pageDrag} do
   header.BackgroundTransparency=1;header.HeaderDivider.BackgroundColor3=U.hex(st.uiStrokeColor)
  end
@@ -1988,15 +2002,18 @@ function UI:sync()
  for _,obj in self.panel:GetDescendants() do
   if obj:IsA("Frame") and obj:GetAttribute("AETHERControlRow") and (obj.BackgroundTransparency<1 or obj:GetAttribute("AETHERStyledRow")) then
    if not obj:GetAttribute("AETHERStyledRow") then obj:SetAttribute("AETHERStyledRow",true);obj:SetAttribute("AETHERBaseAlpha",obj.BackgroundTransparency) end
+   obj:SetAttribute("AETHERAppearanceRole","Row")
    U.applyBlock(obj,st,"Row",U.hex(st.uiRowColor),obj:GetAttribute("AETHERBaseAlpha"),edge,1,1.15)
   end
-  if obj:IsA("TextButton") and obj:GetAttribute("AETHERThemeButton") then U.applyBlock(obj,st,"Button",U.hex(st.uiButtonColor),0,edge,1,1.15) end
+  if obj:IsA("TextButton") and obj:GetAttribute("AETHERThemeButton") then obj:SetAttribute("AETHERAppearanceRole","Button");U.applyBlock(obj,st,"Button",U.hex(st.uiButtonColor),0,edge,1,1.15) end
   if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
    if obj==self.brand or obj==self.tag or obj==self.status then continue end
    if obj:GetAttribute("AETHERKeepFontColor") then continue end
    local holder=obj.Parent
+   local textRole=obj:GetAttribute("AETHERAppearanceRole")
    local skip=false
    while holder and holder~=self.panel do
+    textRole=textRole or holder:GetAttribute("AETHERAppearanceRole")
     if holder.Name=="EffectThumbnail" or holder.Name=="LivePreview" or holder.Name=="RigPreview"
       or holder.Name=="CursorPreview" or holder.Name=="ShapeGallery" then
      skip=true;break
@@ -2010,9 +2027,9 @@ function UI:sync()
    if obj:IsA("TextLabel") and obj.Parent and obj.Parent.Name=="Heading" then
     obj.TextColor3=U.hex(st.accent)
    elseif obj:GetAttribute("AETHERMuted") then
-    obj.TextColor3=muted
+    obj.TextColor3=U.appearanceText(st,textRole or "Page",true,muted)
    else
-    obj.TextColor3=primary
+    obj.TextColor3=U.appearanceText(st,textRole or "Page",false,primary)
    end
   end
  end
@@ -2034,7 +2051,7 @@ end
 local function writeEditorValue(app,k,value)
  local role=S.appearanceBySetting[k]
  if role then
-  local flag="appearance"..role.."Custom"
+  local flag=S.appearanceExtraFlags[k] or ("appearance"..role.."Custom")
   if k~=flag then
    local normalized=S.value(k,value)
    if not app.s[flag] or app.s[k]~=normalized then

@@ -164,6 +164,11 @@ S.appearance={
 }
 S.appearanceBySetting={}
 S.appearanceById={}
+S.appearanceExtraFlags={}
+S.appearanceExtras={}
+local gradientRoles={Root=true,Appearance=true,Preview=true,Main=true,Visuals=true,Utility=true,Interface=true,Page=true,Header=true,Modes=true,Catalog=true,Top=true,Clock=true,FPS=true,Dock=true,Keybind=true,Quick=true,AFK=true}
+local secondaryRoles={Root=true,Appearance=true,Preview=true,Main=true,Visuals=true,Utility=true,Interface=true,Page=true,Header=true,Catalog=true,Clock=true,FPS=true,Keybind=true,Quick=true,Wallhop=true}
+
 for _,d in S.appearance do
  local id,label,tint,opacity,edge,edgeOpacity=table.unpack(d)
  local p="appearance"..id
@@ -175,6 +180,22 @@ for _,d in S.appearance do
  range("Interface",p.."EdgeTransparency",label.." · Outline transparency %",100-(if type(edgeOpacity)=="number" then edgeOpacity else S.defs[edgeOpacity].default),0,100)
  range("Interface",p.."EdgeWidth",label.." · Outline width (tenths px)",12,0,50)
  for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do S.appearanceBySetting[p..suffix]=id end
+ local extras={}
+ local function extra(slot,title,default)
+  local key=p..slot
+  color("Interface",key,label.." · "..title,default)
+  toggle("Interface",key.."Custom",label.." · Custom "..title,false)
+  S.appearanceBySetting[key]=id
+  S.appearanceExtraFlags[key]=key.."Custom"
+  table.insert(extras,{key=key,flag=key.."Custom",slot=slot})
+ end
+ if id~="AFK" then
+  local textKey=if id=="Clock" then "clockText" elseif id=="FPS" then "fpsText" elseif id:sub(1,5)=="Quick" then "moduleTextColor" elseif id=="AFKButton" then "afkButtonText" else "uiFontColor"
+  extra("Text","Text color",S.defs[textKey].default)
+ end
+ if secondaryRoles[id] then extra("Muted","Secondary text color",S.defs.uiMutedColor.default) end
+ if gradientRoles[id] then extra("GradientEnd","Gradient end","17101F") end
+ S.appearanceExtras[id]=extras
 end
 for _,mode in {"GUI","Nodes"} do
  local prefix="ws"..mode

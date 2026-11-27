@@ -926,12 +926,27 @@ function E.render(a,tab,ui)
     if name=="All settings" then ui:open("Interface") else
      local defaults=S.defaults();local patch={}
      for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do patch[p..suffix]=defaults[p..suffix] end
+     for _,extra in S.appearanceExtras[selected] do patch[extra.key]=defaults[extra.key];patch[extra.flag]=false end
      a:patch(patch)
     end
    end,2)
    ui:control(p.."Custom")
    ui:title("FILL");ui:colorPicker(p.."Color",p.."Transparency")
    ui:title("OUTLINE");ui:colorPicker(p.."Edge",p.."EdgeTransparency");ui:control(p.."EdgeWidth")
+   ui:title("TEXT & GRADIENT")
+   for _,extra in S.appearanceExtras[selected] do
+    ui:colorPicker(extra.key);ui:control(extra.flag)
+   end
+   if selected=="AFK" or selected=="AFKButton" then
+    ui:title("AFK PALETTE")
+    for _,k in {"afkBrandColor","afkTitleColor","afkDetailColor","afkPatternColor","afkImageTint","afkButtonColor","afkButtonText","afkButtonEdge","afkBgB"} do ui:colorPicker(k) end
+    for _,k in {"afkBackground","afkGradientAngle","afkPatternOpacity","afkImageAsset","afkImageOpacity"} do ui:control(k) end
+   elseif selected:sub(1,5)=="Quick" then
+    ui:title("QUICK MENU PALETTE")
+    for _,k in {"modulePanelColor","moduleRowColor","moduleTextColor","moduleMutedColor","moduleAccentColor","moduleToggleOnColor","moduleToggleOffColor","moduleStrokeColor"} do ui:colorPicker(k) end
+   elseif selected=="Input" then ui:title("PRESSED KEY");ui:colorPicker("inputColor")
+   elseif selected=="FPS" then ui:title("STATUS DOT");ui:colorPicker("secondary")
+   end
    return
   end
   ui:title("INFINITE WORKSPACE")
