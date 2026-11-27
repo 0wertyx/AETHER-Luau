@@ -1051,30 +1051,75 @@ end
 function UI.new(app,gui,scope)
  local self=setmetatable({app=app,gui=gui,scope=scope,syncs={},icons={},tab="Dashboard",opened=true,seq=0,menuProgress=0,pageProgress=0,navHover={},navAmount={}},UI)
  self.stage=U.frame(gui,"StudioArea",nil,nil,nil,1)
- -- Session-only AFK toggle. Never enabled automatically on startup.
- self.afkEnabled=false;self.afkCommand=""
- self.afkChip=U.label(self.stage,"AFK",11,UDim2.new(1,-12,0,12),UDim2.fromOffset(104,26))
- self.afkChip.AnchorPoint=Vector2.new(1,0);self.afkChip.TextXAlignment=Enum.TextXAlignment.Center
- self.afkChip.BackgroundColor3=Color3.fromRGB(25,20,45);self.afkChip.BackgroundTransparency=.35
- self.afkChip.TextColor3=Color3.fromRGB(210,195,255);self.afkChip.ZIndex=30
- self.afkChip.Active=false;self.afkChip.Interactable=false;self.afkChip.Visible=false;U.corner(self.afkChip,13)
+ -- Workspace owns keyboard actions while open. Do not interfere with text entry or Roblox menus.
+ local actions=game:GetService("ContextActionService")
+ local guiService=game:GetService("GuiService")
+ local keyboardAction="AETHER_WorkspaceKeyboard_"..game:GetService("HttpService"):GenerateGUID(false)
  local afkPlayer=game:GetService("Players").LocalPlayer
- local function afkNotice(message)
-  self:message(message)
-  pcall(function() StarterGui:SetCore("SendNotification",{Title="AETHER",Text=message,Duration=3}) end)
+ function self:setWorkspaceKeyboard(on)
+  if on==self.workspaceKeyboardLocked then return end
+  if on then
+   local ok,err=pcall(function()
+    actions:BindActionAtPriority(keyboardAction,function()
+     if self.app.stopping or not self.opened or guiService.MenuIsOpen or Input:GetFocusedTextBox() then return Enum.ContextActionResult.Pass end
+     return Enum.ContextActionResult.Sink
+    end,false,Enum.ContextActionPriority.High.Value+1000,Enum.UserInputType.Keyboard)
+   end)
+   if not ok then self.app:log("Workspace input",tostring(err));return end
+   self.workspaceKeyboardLocked=true
+   -- Disabling the standard controller also clears movement held before the menu opened.
+   -- Restore only a controller observed to be enabled before we disabled it.
+   pcall(function()
+    local scripts=afkPlayer and afkPlayer:FindFirstChild("PlayerScripts")
+    local module=scripts and scripts:FindFirstChild("PlayerModule")
+    if not module or not module:IsA("ModuleScript") then return end
+    local controls=require(module):GetControls()
+    if controls and controls.controlsEnabled==true and self.workspaceKeyboardLocked and self.opened then
+     controls:Disable();self.workspaceDisabledControls=controls
+    end
+   end)
+  else
+   actions:UnbindAction(keyboardAction);self.workspaceKeyboardLocked=false
+   local controls=self.workspaceDisabledControls;self.workspaceDisabledControls=nil
+   if controls then pcall(function() controls:Enable() end) end
+  end
+ end
+ scope:add(function() self:setWorkspaceKeyboard(false) end)
+ -- Session-only full-screen AFK view, independent of the node canvas.
+ self.afkEnabled=false;self.afkCommand=""
+ self.afkScreen=U.new("TextButton",{Name="AFKScreen",Text="",AutoButtonColor=false,Active=true,Modal=true,Visible=false,Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.fromRGB(8,7,16),BackgroundTransparency=0,BorderSizePixel=0,ZIndex=100},self.stage)
+ U.gradient(self.afkScreen,Color3.fromRGB(9,8,17),Color3.fromRGB(27,20,43),90)
+ local afkBrand=U.label(self.afkScreen,"A E T H E R",14,UDim2.new(.5,0,.5,-100),UDim2.new(1,-24,0,24))
+ afkBrand.AnchorPoint=Vector2.new(.5,.5);afkBrand.TextXAlignment=Enum.TextXAlignment.Center;afkBrand.TextColor3=Color3.fromRGB(173,158,211)
+ local afkTitle=U.label(self.afkScreen,"AFK",46,UDim2.fromScale(.5,.5),UDim2.new(1,-24,0,68))
+ afkTitle.AnchorPoint=Vector2.new(.5,.5);afkTitle.TextXAlignment=Enum.TextXAlignment.Center;afkTitle.TextColor3=Color3.fromRGB(242,234,255)
+ self.afkDetail=U.label(self.afkScreen,"",14,UDim2.new(.5,0,.5,54),UDim2.new(1,-32,0,42))
+ self.afkDetail.AnchorPoint=Vector2.new(.5,.5);self.afkDetail.TextXAlignment=Enum.TextXAlignment.Center;self.afkDetail.TextWrapped=true
+ self.afkDetail.TextColor3=Color3.fromRGB(178,166,201)
+ self.afkBack=U.button(self.afkScreen,"RETURN TO WORKSPACE")
+ self.afkBack.AnchorPoint=Vector2.new(.5,.5);self.afkBack.Position=UDim2.new(.5,0,.5,122);self.afkBack.Size=UDim2.fromOffset(210,38)
+ self.afkBack.TextSize=12;self.afkBack.BackgroundColor3=Color3.fromRGB(51,41,75)
+ U.stroke(self.afkBack,Color3.fromRGB(183,151,240),.55)
+ local function afkFailure(message,err)
+  self.afkEnabled=false;self.afkVirtualUser=nil
+  self.afkDetail.Text=message
+  self.app:log("AFK",tostring(err or message))
  end
  function self:setAFK(on)
-  self.afkEnabled=false;self.afkCommand="";self.afkChip.Visible=false
-  if not on then afkNotice("AFK mode OFF");return end
-  if not afkPlayer or self.app.mode~="Game" then afkNotice("AFK unavailable outside game mode");return end
+  self.afkEnabled=false;self.afkVirtualUser=nil;self.afkCommand=""
+  self.afkScreen.Visible=on==true
+  if self.panel then self.panel.Interactable=self.opened and not on end
+  if not on then return end
+  self.drag=nil;self.workspacePan=nil;self:finishWorkspaceNode();self:clearWorkspaceSparks();self:commitWorkspaceCamera()
+  if not afkPlayer or self.app.mode~="Game" then afkFailure("AFK unavailable outside game mode");return end
   local ok,err=pcall(function()
    self.afkVirtualUser=game:GetService("VirtualUser")
    self.afkVirtualUser:CaptureController()
   end)
-  if not ok then self.afkVirtualUser=nil;afkNotice("AFK unavailable: input access denied");self.app:log("AFK",tostring(err));return end
-  self.afkEnabled=true;self.afkChip.Text="AFK / ON";self.afkChip.Visible=true
-  afkNotice("AFK mode ON")
+  if not ok then afkFailure("Anti-AFK unavailable: input access denied",err);return end
+  self.afkEnabled=true;self.afkDetail.Text="Anti-AFK enabled"
  end
+ scope:on(self.afkBack.Activated,function() self:setAFK(false) end)
  if afkPlayer then
   scope:on(afkPlayer.Idled,function()
    if not self.afkEnabled or self.app.stopping then return end
@@ -1082,10 +1127,7 @@ function UI.new(app,gui,scope)
     self.afkVirtualUser:CaptureController()
     self.afkVirtualUser:ClickButton2(Vector2.zero)
    end)
-   if not ok then
-    self.afkEnabled=false;self.afkChip.Visible=false;self.afkVirtualUser=nil
-    afkNotice("AFK stopped: input access denied");self.app:log("AFK",tostring(err))
-   end
+   if not ok then afkFailure("Anti-AFK stopped: input access denied",err) end
   end)
  end
  scope:add(function() self.afkEnabled=false;self.afkVirtualUser=nil end)
@@ -1309,7 +1351,7 @@ function UI.new(app,gui,scope)
   if kind~=self.backgroundTap.kind or not isBackground(Vector2.new(input.Position.X,input.Position.Y)) then self.backgroundTap=nil end
  end)
  scope:on(self.backdropHit.Activated,function(input)
-  if not self.opened or self.drag or self.workspacePan or self.layoutEditing or os.clock()<(self.tabInputAfter or 0) then self.backgroundTap=nil;return end
+  if not self.opened or self.afkScreen.Visible or self.drag or self.workspacePan or self.layoutEditing or os.clock()<(self.tabInputAfter or 0) then self.backgroundTap=nil;return end
   if not input or (input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch) then return end
   local pos=Vector2.new(input.Position.X,input.Position.Y)
   if not isBackground(pos) then self.backgroundTap=nil;return end
@@ -1732,7 +1774,7 @@ function UI.new(app,gui,scope)
  scope:on(self.layoutMove.InputBegan,function(i) beginLayout(i,false) end)
  scope:on(self.layoutResize.InputBegan,function(i) beginLayout(i,true) end)
  local function beginWorkspaceNode(input,node)
-  if not self.opened or self.drag or self.workspacePan then return end
+  if not self.opened or self.afkScreen.Visible or self.drag or self.workspacePan then return end
   if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
   self:finishWorkspaceNode()
   local origin=Vector2.new(input.Position.X,input.Position.Y);local old=workspaceOffset(self,node);local zoom=self.workspaceScale.Scale
@@ -1771,9 +1813,9 @@ function UI.new(app,gui,scope)
   scope:on(r.title.InputBegan,function(i) beginWorkspaceNode(i,name) end)
  end
  scope:on(Input.InputBegan,function(i,processed)
-  if not self.opened or Input:GetFocusedTextBox() then self.afkCommand="";return end
+  if not self.opened or Input:GetFocusedTextBox() or guiService.MenuIsOpen then self.afkCommand="";return end
   if i.UserInputType==Enum.UserInputType.Keyboard then
-   if processed or self.layoutEditing or self.app.editingHUD or self.app.stopping or Input:IsKeyDown(Enum.KeyCode.LeftControl) or Input:IsKeyDown(Enum.KeyCode.RightControl) or Input:IsKeyDown(Enum.KeyCode.LeftAlt) or Input:IsKeyDown(Enum.KeyCode.RightAlt) then
+   if self.layoutEditing or self.app.editingHUD or self.app.stopping or self.app.bindingLockKey or self.captureBind or Input:IsKeyDown(Enum.KeyCode.LeftControl) or Input:IsKeyDown(Enum.KeyCode.RightControl) or Input:IsKeyDown(Enum.KeyCode.LeftAlt) or Input:IsKeyDown(Enum.KeyCode.RightAlt) then
     self.afkCommand=""
    else
     local now=os.clock()
@@ -1790,10 +1832,11 @@ function UI.new(app,gui,scope)
     else
      self.afkCommand=(self.afkCommand..letter):sub(-3)
      self.afkKeyAt=now
-     if self.afkCommand=="AFK" then self:setAFK(not self.afkEnabled);return end
+     if self.afkCommand=="AFK" then self:setAFK(not self.afkScreen.Visible);return end
     end
    end
   end
+  if self.afkScreen.Visible then return end
   if i.KeyCode==Enum.KeyCode.Home then self:resetWorkspace(Input:IsKeyDown(Enum.KeyCode.LeftShift) or Input:IsKeyDown(Enum.KeyCode.RightShift));return end
   if i.UserInputType~=Enum.UserInputType.MouseButton3 or self.drag then return end
   local state=self:workspaceCamera()
@@ -1801,7 +1844,7 @@ function UI.new(app,gui,scope)
   self.workspacePan={origin=Vector2.new(i.Position.X,i.Position.Y),pan=state.pan,zoom=state.zoom}
  end)
  scope:on(Input.InputChanged,function(i)
-  if not self.opened then return end
+  if not self.opened or self.afkScreen.Visible then return end
   local pan=self.workspacePan
   if pan and i.UserInputType==Enum.UserInputType.MouseMovement then
    local delta=Vector2.new(i.Position.X,i.Position.Y)-pan.origin
@@ -1891,7 +1934,7 @@ function UI:animateBackground(t)
  if decorDue then self.decorElapsed=0;self.decorSettings=s;self.lastDecorVisible=visible end
  self.screenFX.Visible=false
  self.starField.Visible=visible
- if not self.panel.Visible then return end
+ if not self.panel.Visible or self.afkScreen.Visible then return end
  local tm=if s.reduce then 0 else t*s.speed/100
  self.pageProgress=if immediate or not s.tabTransition then 1 else math.min(1,self.pageProgress+dt/math.max(.06,duration*.72))
  local pageQ=U.ease(self.pageProgress,s.ease)
@@ -1932,8 +1975,10 @@ function UI:show(on)
   end
  end
  self.opened=on
+ if not on and self.afkScreen.Visible then self:setAFK(false) end
+ self:setWorkspaceKeyboard(on)
  if not on then self.layoutEditing=false;self.layoutDraft=nil;self.layoutMove.Visible=false;self.layoutResize.Visible=false;self.layoutDone.Visible=false end
- self.panel.Interactable=on
+ self.panel.Interactable=on and not self.afkScreen.Visible
  if on then self.panel.Visible=true end
  self.drag=nil
  if self.menuDraft then self.menuDraft=nil;self:layout() end
@@ -11774,8 +11819,11 @@ scope:on(UserInputService.InputBegan, function(input, processed)
     -- Observe an explicitly selected Shift even when a separate gameplay action also uses it.
     -- This listener never sinks or synthesizes input.
     local chosenShift=(input.KeyCode==Enum.KeyCode.LeftShift or input.KeyCode==Enum.KeyCode.RightShift) and input.KeyCode.Name==app.s.lockKey
-    if processed and not chosenShift then return end
     local menuKey=S.menuKey(app.s)
+    -- Our own workspace keyboard sink can mark the menu shortcut as processed.
+    -- Keep the close shortcut usable without forwarding it to gameplay.
+    local workspaceMenuKey=ui.opened and input.KeyCode.Name==menuKey and not game:GetService("GuiService").MenuIsOpen
+    if processed and not chosenShift and not workspaceMenuKey then return end
     if app.editingHUD then if input.KeyCode.Name==menuKey then app:editHUD(false) end;return end
     if input.KeyCode.Name == menuKey then
         ui:show(not ui.opened)

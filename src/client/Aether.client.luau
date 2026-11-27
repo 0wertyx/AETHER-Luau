@@ -2941,8 +2941,11 @@ scope:on(UserInputService.InputBegan, function(input, processed)
     -- Observe an explicitly selected Shift even when a separate gameplay action also uses it.
     -- This listener never sinks or synthesizes input.
     local chosenShift=(input.KeyCode==Enum.KeyCode.LeftShift or input.KeyCode==Enum.KeyCode.RightShift) and input.KeyCode.Name==app.s.lockKey
-    if processed and not chosenShift then return end
     local menuKey=S.menuKey(app.s)
+    -- Our own workspace keyboard sink can mark the menu shortcut as processed.
+    -- Keep the close shortcut usable without forwarding it to gameplay.
+    local workspaceMenuKey=ui.opened and input.KeyCode.Name==menuKey and not game:GetService("GuiService").MenuIsOpen
+    if processed and not chosenShift and not workspaceMenuKey then return end
     if app.editingHUD then if input.KeyCode.Name==menuKey then app:editHUD(false) end;return end
     if input.KeyCode.Name == menuKey then
         ui:show(not ui.opened)
