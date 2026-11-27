@@ -56,6 +56,7 @@ local searchSections={
  {"Volleyball","CONSECUTIVE TOUCH / BETA"},
  {"Volleyball","SPIKE CAMERA"},
  {"Volleyball","AUTO TILT / BETA"},
+ {"Volleyball","AIR REDIRECTION"},
  {"Volleyball","Restore original values"},
  {"Volleyball","Toggle Ball Expander"},
  {"Volleyball","Show Hitbox"},
@@ -760,6 +761,18 @@ function UI:buildQuick()
   local result=UI.box(self,label,initial,h,commit)
   self.fieldTitle=false
   return result
+ end
+ function q:begin(input,fn,origin)
+  return owner:begin(input,fn,origin)
+ end
+ function q:control(k)
+  if self.controlKeys[k] then return end
+  UI.control(self,k)
+  local d=S.defs[k]
+  if d and d.kind=="bool" and current then
+   local label=d.label or k
+   self:addBind(current.name.."|"..label,label,function() self.app:set(k,not self.app.s[k]);self:sync() end,function() return self.app.s[k]==true end)
+  end
  end
  function q:chips(items,fn,cols,selected)
   if current and current.spec and #items==1 and items[1]==current.spec[3] then return end
