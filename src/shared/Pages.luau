@@ -818,6 +818,20 @@ function E.render(a,tab,ui)
     curveElapsed+=dt
     if curveElapsed>=.25 then curveElapsed=0;if ui.opened then refreshCurve() end end
    end)
+   ui:title("AUTO PLAY / BETA")
+   ui:note("Set on the ground, Spike in the air. Spike uses the open-court Auto Tilt estimate. Normal hitbox and cooldown checks remain active.",72)
+   ui:chips({"Auto Set"},function() vb:togglePlay("Set");ui:sync() end,1,function() return if vb.play.set then "Auto Set" else "" end)
+   ui:chips({"Auto Spike"},function() vb:togglePlay("Spike");ui:sync() end,1,function() return if vb.play.spike then "Auto Spike" else "" end)
+   local playStatus=ui:note("",64)
+   local function refreshPlay()
+    playStatus.Text=string.format("SET %s | SPIKE %s\n%s",if vb.play.set then "ON" else "OFF",if vb.play.spike then "ON" else "OFF",vb.play.status)
+   end
+   ui:watch(refreshPlay)
+   local playRefresh=0
+   ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
+    playRefresh+=dt
+    if playRefresh>=.25 then playRefresh=0;if ui.opened then refreshPlay() end end
+   end)
    ui:title("AUTO TILT / BETA")
    ui:note("All-style beta: adjusts local jump tilt used by the hit handler. Correct edges preserves manual tilt when the straight heading is in bounds; Aim center estimates a lateral correction. Ball response depends on style and server logic.",96)
    ui:chips({"Auto detect court"},function() vb:detectCourt();ui:sync() end,1)
@@ -832,7 +846,7 @@ function E.render(a,tab,ui)
     if label=="Clear court" then vb:clearCourt() else vb:toggleAuto() end
     ui:sync()
    end,2,function() return if vb.auto then "Toggle Auto Tilt" else "" end)
-   ui:chips({"Correct edges","Aim center","Aim left","Aim right"},function(label)
+   ui:chips({"Correct edges","Aim center","Aim left","Aim right","Free zone"},function(label)
     vb.tiltAim=label;vb.requestedTilt=nil;ui:sync()
    end,2,function() return vb.tiltAim end)
    local strength=ui:box("Curve input strength (0–1)",tostring(vb.tiltScale),32,function(raw)

@@ -4655,6 +4655,20 @@ function E.render(a,tab,ui)
     curveElapsed+=dt
     if curveElapsed>=.25 then curveElapsed=0;if ui.opened then refreshCurve() end end
    end)
+   ui:title("AUTO PLAY / BETA")
+   ui:note("Set on the ground, Spike in the air. Spike uses the open-court Auto Tilt estimate. Normal hitbox and cooldown checks remain active.",72)
+   ui:chips({"Auto Set"},function() vb:togglePlay("Set");ui:sync() end,1,function() return if vb.play.set then "Auto Set" else "" end)
+   ui:chips({"Auto Spike"},function() vb:togglePlay("Spike");ui:sync() end,1,function() return if vb.play.spike then "Auto Spike" else "" end)
+   local playStatus=ui:note("",64)
+   local function refreshPlay()
+    playStatus.Text=string.format("SET %s | SPIKE %s\n%s",if vb.play.set then "ON" else "OFF",if vb.play.spike then "ON" else "OFF",vb.play.status)
+   end
+   ui:watch(refreshPlay)
+   local playRefresh=0
+   ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
+    playRefresh+=dt
+    if playRefresh>=.25 then playRefresh=0;if ui.opened then refreshPlay() end end
+   end)
    ui:title("AUTO TILT / BETA")
    ui:note("All-style beta: adjusts local jump tilt used by the hit handler. Correct edges preserves manual tilt when the straight heading is in bounds; Aim center estimates a lateral correction. Ball response depends on style and server logic.",96)
    ui:chips({"Auto detect court"},function() vb:detectCourt();ui:sync() end,1)
@@ -4669,7 +4683,7 @@ function E.render(a,tab,ui)
     if label=="Clear court" then vb:clearCourt() else vb:toggleAuto() end
     ui:sync()
    end,2,function() return if vb.auto then "Toggle Auto Tilt" else "" end)
-   ui:chips({"Correct edges","Aim center","Aim left","Aim right"},function(label)
+   ui:chips({"Correct edges","Aim center","Aim left","Aim right","Free zone"},function(label)
     vb.tiltAim=label;vb.requestedTilt=nil;ui:sync()
    end,2,function() return vb.tiltAim end)
    local strength=ui:box("Curve input strength (0–1)",tostring(vb.tiltScale),32,function(raw)
@@ -7757,6 +7771,7 @@ do
     end
     function vb:reset()
         self.auto=false;detachTilt()
+        if self.play then self.play.set=false;self.play.spike=false;self.play.ownsTilt=false;self.play.generation+=1;self.play.status="Off | reset" end
         stopCurve()
         stopStyle()
         table.clear(self.multiplierRequests)
@@ -7795,6 +7810,42 @@ do
         local length=cross.Magnitude
         if length<8 or math.abs(along)>width*.2 then return nil end
         return a,u,cross.Unit,width,length
+    end
+    local function freeZone(a,u,v,width,length,side,root)
+        local half=length*.5
+        local rel=flatten(root.Position)-a
+        local px,pz=rel:Dot(u),rel:Dot(v)
+        local look=flatten(root.CFrame.LookVector)
+        local dv=look:Dot(v)
+        if math.abs(dv)<.15 then return nil end
+        local opponents={}
+        for _,other in game:GetService("Players"):GetPlayers() do
+            if other==player or (player.Team and other.Team==player.Team) then continue end
+            local c=other.Character
+            local r=c and c:FindFirstChild("HumanoidRootPart")
+            local h=c and c:FindFirstChildOfClass("Humanoid")
+            if not r or not h or h.Health<=0 then continue end
+            local d=flatten(r.Position)-a
+            local x,z=d:Dot(u),d:Dot(v)
+            if x>=-2 and x<=width+2 and ((side==-1 and z>=half and z<=length+2) or (side==1 and z<=half and z>=-2)) then
+                table.insert(opponents,Vector2.new(x,z))
+            end
+        end
+        local best,score=nil,-math.huge
+        for ix=1,7 do for iz=1,5 do
+            local x=width*(.12+.76*(ix-1)/6)
+            local f=.18+.64*(iz-1)/4
+            local z=if side==-1 then half+half*f else half-half*f
+            if (z-pz)*dv<=0 then continue end
+            local point=Vector2.new(x,z)
+            local nearest=math.min(width,half)
+            for _,o in opponents do nearest=math.min(nearest,(point-o).Magnitude) end
+            local straight=px+look:Dot(u)*(z-pz)/dv
+            local edge=math.min(x,width-x,math.abs(z-half),if side==-1 then length-z else z)
+            local q=nearest+.22*edge-.45*math.abs(x-straight)
+            if q>score then best,score=point,q end
+        end end
+        return best
     end
     -- Identify a full, horizontal rectangular court from explicitly named
     -- map geometry. Do not guess from an arbitrary baseplate or half-court.
@@ -7919,6 +7970,145 @@ do
         self.tiltWrites=0;self.tiltHooks=0;self.requestedTilt=nil
         self.auto=true;self.status="Local tilt correction enabled; ball response depends on style"
     end
+    -- Auto Play uses the ordinary action binding, not direct server calls.
+    local play={set=false,spike=false,busy=false,ownsTilt=false,status="Off",lastBall=nil,lastStamp=nil,lastMove=nil,lastAt=0,lastSeen=0,generation=0}
+    vb.play=play
+    local api
+    local tags=game:GetService("CollectionService")
+    local overlap=OverlapParams.new()
+    overlap.FilterType=Enum.RaycastFilterType.Include
+    overlap.MaxParts=1
+    local function resolvePlay()
+        local controllers=rf:FindFirstChild("Controllers")
+        local g=controllers and controllers:FindFirstChild("GameController")
+        local actions=g and g:FindFirstChild("Actions")
+        local binding=actions and actions:FindFirstChild("Binding")
+        local registry=binding and binding:FindFirstChild("Registry")
+        local move=actions and actions:FindFirstChild("Move")
+        local dm=move and move:FindFirstChild("DoMove")
+        assert(g and registry and dm,"Game action modules unavailable")
+        local knit=require(ReplicatedStorage.Packages.Knit)
+        local controller=knit.GetController("GameController")
+        assert(controller and controller.Loaded,"Game controller not ready")
+        local handlers=require(g.Handlers)
+        return {states=handlers.States,values=handlers.Values,input=knit.GetController("InputController"),
+            binding=require(registry.DoMove),orch=require(dm.Orchestrator),rules=require(dm.Game),
+            special=require(dm.StyleSpecial),hitbox=require(ReplicatedStorage.Tools.Hitbox),
+            joint=require(ReplicatedStorage.Tools.TiltJoint),physics=require(ReplicatedStorage.Common.Physics)}
+    end
+    local function activeBall()
+        local active=ReplicatedStorage:GetAttribute("ActiveBall")
+        local only,count=nil,0
+        for _,b in tags:GetTagged("Ball") do
+            if not b:IsA("Model") or not b.PrimaryPart or not b:IsDescendantOf(workspace) then continue end
+            if active~=nil and tostring(b:GetAttribute("ServerId"))==tostring(active) then return b end
+            only=b;count+=1
+        end
+        return if count==1 then only else nil
+    end
+    local function allowed(m)
+        local s=m.states
+        return s.IsPlaying() and not s.IsBusy() and not s.IsStunned() and not s.IsServing()
+            and not m.orch.isOnCooldown() and not m.input.GameplaySuppressed()
+            and game:GetService("UserInputService"):GetFocusedTextBox()==nil
+    end
+    local function inReach(m,char,ball,action)
+        local h=m.hitbox.get({Special=m.special.getSpecial(),MoveId=action})
+        if not h then return false end
+        local offset,size=h.Offset,h.Size
+        if h.Custom and h.Custom.AdjustBoundsLocal then offset,size=h.Custom.AdjustBoundsLocal(offset,size) end
+        local rotation=m.joint.get(char):GetC0().Rotation
+        overlap.FilterDescendantsInstances={ball}
+        return #workspace:GetPartBoundsInBox(char.PrimaryPart.CFrame*rotation*offset,size,overlap)>0
+    end
+    function vb:togglePlay(which)
+        local key=if which=="Set" then "set" else "spike"
+        if play[key] then
+            play[key]=false;play.generation+=1
+            if key=="spike" and play.ownsTilt and self.auto then self:toggleAuto() end
+            if key=="spike" then play.ownsTilt=false end
+            play.status="Auto "..which.." off";return
+        end
+        if not available() then play.status=self:availabilityStatus();return end
+        local ok,m=pcall(resolvePlay)
+        if not ok then play.status=tostring(m);return end
+        api=m
+        if key=="spike" and not self.auto then
+            self:toggleAuto()
+            if not self.auto then play.status="Auto Spike: "..self.status;return end
+            play.ownsTilt=true
+        end
+        play[key]=true;play.lastBall=nil
+        play.status="Auto "..which.." enabled"
+    end
+    local function playTick()
+        if not (play.set or play.spike) then return end
+        if app.stopping or not gui.Parent or app.mode~="Game" then
+            play.set=false;play.spike=false;play.ownsTilt=false;play.generation+=1;play.status="Off | left Game mode";return
+        end
+        if play.busy then return end
+        local m=api
+        if not m or not allowed(m) then return end
+        local char=m.states.Character
+        if not char or char~=player.Character or not char.PrimaryPart then return end
+        local jumping=m.states.IsJumping()==true
+        local action=if jumping then "Spike" else "Set"
+        if (jumping and not play.spike) or (not jumping and not play.set) then return end
+        if jumping and (not vb.auto or not vb.target or not vb.tiltFresh or os.clock()-vb.tiltFresh>.25) then play.status="Waiting for aim / court";return end
+        local ball=activeBall()
+        if not ball then play.status="Waiting for active ball";return end
+        local now=os.clock()
+        local stamp=ReplicatedStorage:GetAttribute("LastHitTimestamp")
+        if not inReach(m,char,ball,action) then
+            if now-play.lastSeen>.18 then play.lastBall=nil end
+            play.status="Waiting for ball in "..action.." range";return
+        end
+        play.lastSeen=now
+        if (play.lastBall==ball and play.lastStamp==stamp and play.lastMove==action) or now-play.lastAt<.35 then return end
+        if m.rules.isHitboxSkipped(action) or not m.rules.isMoveInvalidOnServe(action) or not m.rules.isBallInNetBoundary(ball)
+            or not m.physics.canInteract(player,action,ball:GetPivot().Position) then return end
+        if m.states.Charge()~=nil then return end
+        local request={ActionName=action,IsAerial=jumping,InputState=Enum.UserInputState.Begin,Metadata={}}
+        if not m.binding.canDoMove(request) then return end
+        play.lastBall=ball;play.lastStamp=stamp;play.lastMove=action;play.lastAt=now;play.busy=true
+        play.status="Executing "..action
+        local gen=play.generation
+        task.spawn(function()
+            local charged=false
+            local ok,err=pcall(function()
+                if gen~=play.generation or not allowed(m) then return end
+                if jumping and typeof(vb.requestedTilt)=="Vector3" then
+                    lastManual=m.values.TiltDirection;lastApplied=vb.requestedTilt;m.values.TiltDirection=vb.requestedTilt
+                end
+                local advanced=m.binding.isAdvanced(action)
+                m.binding.onMoveRequest(request)
+                charged=advanced and m.binding.AdvancedChargeAction==action and m.states.Charge()~=nil
+                if charged then
+                    task.wait(.12)
+                    request.InputState=Enum.UserInputState.End
+                    if gen==play.generation and allowed(m) and m.binding.canDoMove(request) and player.Character==char then
+                        m.binding.onMoveRequest(request)
+                    end
+                end
+            end)
+            if charged and m.binding.AdvancedChargeAction==action then pcall(m.binding.releaseHeldInput) end
+            play.busy=false
+            if gen==play.generation then play.status=if ok then action.." action returned" else action.." error: "..tostring(err) end
+        end)
+    end
+    local playElapsed=0
+    scope:on(RunService.Heartbeat,function(dt)
+        playElapsed+=dt
+        if playElapsed<.035 then return end
+        playElapsed=0
+        local ok,err=pcall(playTick)
+        if not ok then
+            play.set=false;play.spike=false;play.generation+=1
+            if play.ownsTilt and vb.auto then pcall(function() vb:toggleAuto() end) end
+            play.ownsTilt=false;play.status="Auto Play error: "..tostring(err)
+        end
+    end)
+    scope:add(function() play.set=false;play.spike=false;play.generation+=1 end)
     local elapsed=0
     scope:on(RunService.Heartbeat,function(dt)
         elapsed+=dt
@@ -7991,6 +8181,8 @@ do
             if math.abs(pz-half)>1 then vb.side=if pz<half then -1 else 1 end
             local side=vb.side or (if pz<half then -1 else 1)
             local depth=if side==-1 then length*.75 else length*.25
+            local open=if vb.tiltAim=="Free zone" or (vb.play and vb.play.spike) then freeZone(a,u,v,width,length,side,root) else nil
+            if open then depth=open.Y end
             local look=flatten(root.CFrame.LookVector)
             local dv=look:Dot(v)
             if math.abs(dv)<.15 or (depth-pz)*dv<=0 then
@@ -7998,12 +8190,12 @@ do
             end
             local straightLateral=px+look:Dot(u)*(depth-pz)/dv
             local margin=math.min(2,width*.2)
-            local lateral=if vb.tiltAim=="Aim center" then width*.5
+            local lateral=if open then open.X elseif vb.tiltAim=="Aim center" then width*.5
                 elseif vb.tiltAim=="Aim left" then width*.2
                 elseif vb.tiltAim=="Aim right" then width*.8
                 else math.clamp(straightLateral,margin,width-margin)
             -- Court left/right are relative to the player's attacking half.
-            if (vb.tiltAim=="Aim left" or vb.tiltAim=="Aim right") and u:Dot(flatten(root.CFrame.RightVector))<0 then
+            if not open and (vb.tiltAim=="Aim left" or vb.tiltAim=="Aim right") and u:Dot(flatten(root.CFrame.RightVector))<0 then
                 lateral=width-lateral
             end
             local target=a+u*lateral+v*depth
@@ -8027,7 +8219,7 @@ do
             local lateralError=(target-straight):Dot(right)
             local curve=math.clamp(lateralError/math.max(4,width*.15)*vb.tiltScale,-1,1)
             if math.abs(curve)<.04 then
-                releaseLocalTilt();vb.target=target;vb.status="Straight heading inside target; manual tilt retained";return
+                releaseLocalTilt();vb.target=target;vb.tiltFresh=os.clock();vb.status="Straight heading inside target; manual tilt retained";return
             end
             vb.requestedTilt=right*curve+Vector3.yAxis
             vb.tiltFresh=os.clock()
