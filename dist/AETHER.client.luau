@@ -5265,8 +5265,8 @@ function E.render(a,tab,ui)
    ui:title("VOLLEYBALL MODIFIERS / BETA")
    local availability=ui:note("",64)
    ui:watch(function() availability.Text=vb:availabilityStatus() end)
-   ui:note("Session only. Values are written locally; server acceptance is not guaranteed. Controls remain visible while waiting for game attributes.",64)
-   for _,name in {"BlockPower","BumpPower","DashPower","DiveSpeed","DrawPower","JumpPower","ServePower","SetPower","Speed"} do
+   ui:note("Numeric preferences are included in configs. Local values depend on available game attributes; server acceptance is not guaranteed.",64)
+   for _,name in S.vbMultiplierNames do
     local key="Multiplier_"..name
     local field=ui:box(name,tostring(lp:GetAttribute(key) or ""),32,function(value)
      vb:setMultiplier(name,assert(tonumber(value),"Enter a number"))
@@ -5275,7 +5275,8 @@ function E.render(a,tab,ui)
     local function refresh()
      if not field:IsFocused() then
       local requested=vb.multiplierRequests[name]
-      local value=if requested~=nil then requested else lp:GetAttribute(key)
+      local saved=a.s["vbMultiplier_"..name]
+      local value=if type(saved)=="number" then saved elseif requested~=nil then requested else lp:GetAttribute(key)
       local shown=tostring(value or "")
       if field.Text~=shown then field.Text=shown end
      end
@@ -5288,7 +5289,7 @@ function E.render(a,tab,ui)
      if elapsed>=.25 then elapsed=0;if ui.opened then refresh() end end
     end)
    end
-   ui:chips({"Restore original values"},function() vb:reset();ui:sync() end,1)
+   ui:chips({"Restore original values"},function() vb:reset();a:clearSavedMultipliers();ui:sync() end,1)
    ui:title("BALL HITBOX EXPANDER / BETA")
    ui:note("Purple box shows the actual oriented bounds of the queryable mesh; the faint sphere is an approximation. Mesh bounds do not guarantee hit acceptance.",72)
    local radiusField=ui:box("Ball size factor (>=1)",tostring(vb.ballRadius.factor),32,function(raw)
@@ -5944,6 +5945,13 @@ toggle("VolleyballState","vbEdgeGuard","Edge guard",true)
 choice("VolleyballState","vbShotMode","Shot mode","Auto",{"Auto","Spike","Set","Serve"})
 choice("VolleyballState","vbCameraAim","Camera aim","Free zone",{"Free zone","Court center","Off"})
 choice("VolleyballState","vbTiltAim","Tilt aim","Correct edges",{"Correct edges","Aim center","Aim left","Aim right","Free zone"})
+-- Decimal module options use the same JSON/profile pipeline as toggles.
+def("VolleyballState","vbBallFactor","Ball size factor","real",2,1,math.huge)
+def("VolleyballState","vbTiltScale","Curve input strength","real",1,0,1)
+S.vbMultiplierNames={"BlockPower","BumpPower","DashPower","DiveSpeed","DrawPower","JumpPower","ServePower","SetPower","Speed"}
+for _,name in S.vbMultiplierNames do
+ def("VolleyballState","vbMultiplier_"..name,name,"optionalReal",false,0,math.huge)
+end
 function S.copy(v) if type(v)~="table" then return v end;local r={};for k,x in v do r[k]=S.copy(x) end;return r end
 local function str(s,n) return type(s)=="string" and #s<=n and utf8.len(s)~=nil end
 local function name(s) return str(s,48) and s:match("%S") and not s:find("%c") end
@@ -5954,6 +5962,8 @@ function S.value(k,v)
  if a=="bool" and type(v)=="boolean" then return v end
  if a=="angle" and type(v)=="number" and v==v and math.abs(v)<math.huge then return v end
  if a=="number" and type(v)=="number" and v==math.floor(v) and v>=d.min and v<=d.max then return v end
+ if a=="optionalReal" and v==false then return false end
+ if (a=="real" or a=="optionalReal") and type(v)=="number" and v==v and math.abs(v)<math.huge and v>=d.min and v<=d.max then return v end
  if a=="choice" and table.find(d.min,v) then return v end
  if a=="color" and hex(v) then return string.upper(v) end
  if a=="text" and str(v,d.max) then return v end
@@ -8612,6 +8622,11 @@ do
         self.multiplierRequests[name]=value
         self.status=name.." set locally"
     end
+    function vb:clearMultiplier(name)
+        assert(attrs[name],"Unknown multiplier")
+        restore("Multiplier_"..name)
+        self.multiplierRequests[name]=nil
+    end
     function vb:multiplierStatus(name)
         local actual=player:GetAttribute("Multiplier_"..name)
         local requested=self.multiplierRequests[name]
@@ -10775,6 +10790,8 @@ local moduleSwitches={
     {"vbAutoTilt",function(v) return v.auto end,function(v) v:toggleAuto() end},
 }
 local moduleOptions={
+    {"vbBallFactor",function(v) return v.ballRadius.factor end,function(v,x) v:setBallRadiusFactor(x) end},
+    {"vbTiltScale",function(v) return v.tiltScale end,function(v,x) v.tiltScale=x;v.requestedTilt=nil end},
     {"vbBallGuide",function(v) return v.ballRadius.show end,function(v,x) v.ballRadius.show=x end},
     {"vbGroundPredict",function(v) return v.play.groundPredict end,function(v,x) v.play.groundPredict=x;v.play.cameraTargetAt=0 end},
     {"vbAutoJump",function(v) return v.play.autoJump end,function(v,x) v.play.autoJump=x;v.play.jumpPendingUntil=0 end},
@@ -10788,6 +10805,9 @@ function app:moduleSnapshot()
     if not vb then return result end
     for _,spec in moduleSwitches do result[spec[1]]=spec[2](vb)==true end
     for _,spec in moduleOptions do result[spec[1]]=spec[2](vb) end
+    for _,name in S.vbMultiplierNames do
+        result["vbMultiplier_"..name]=vb.multiplierRequests[name] or false
+    end
     return result
 end
 function app:recordModuleChanges(before,generation)
@@ -10803,6 +10823,15 @@ function app:recordModuleChanges(before,generation)
     end
     if changed then self.s=settings;self.bank.settings=settings;self:dirty() end
 end
+function app:clearSavedMultipliers()
+    local settings=table.clone(self.s)
+    for _,name in S.vbMultiplierNames do
+        local key="vbMultiplier_"..name
+        settings[key]=false
+        if self.modulePending then self.modulePending[key]=nil end
+    end
+    self.s=settings;self.bank.settings=settings;self:dirty()
+end
 local function syncModuleUI()
     if not app.ui then return end
     if app.ui.quickAdapter then app.ui.quickAdapter:sync() else app.ui:sync() end
@@ -10814,6 +10843,7 @@ local function restoreModuleTick()
         app.moduleRestoreRequested=false
         app.modulePending={}
         for _,spec in moduleSwitches do app.modulePending[spec[1]]={attempts=0} end
+        for _,name in S.vbMultiplierNames do app.modulePending["vbMultiplier_"..name]={attempts=0} end
         for _,spec in moduleOptions do spec[3](vb,app.s[spec[1]]) end
         syncModuleUI()
     end
@@ -10823,6 +10853,26 @@ local function restoreModuleTick()
     app.moduleApplying=true
     local changed=false
     local ok,err=pcall(function()
+        -- Restore explicit numeric preferences once, not on every replication update.
+        for _,name in S.vbMultiplierNames do
+            local key="vbMultiplier_"..name
+            local item=pending[key]
+            if not item then continue end
+            local want=app.s[key]
+            local current=vb.multiplierRequests[name]
+            if want==false then
+                if current~=nil then vb:clearMultiplier(name);changed=true end
+                pending[key]=nil
+            elseif current==want then
+                pending[key]=nil
+            elseif vb:available() and player:GetAttribute("Gameplay_InGame")==true and type(player:GetAttribute("Multiplier_"..name))=="number" then
+                item.attempts+=1
+                local good,why=pcall(vb.setMultiplier,vb,name,want)
+                if app.moduleGeneration~=generation then return end
+                if good then pending[key]=nil;changed=true
+                elseif item.attempts>=8 then pending[key]=nil;app:log("Config",key.." could not be restored: "..tostring(why)) end
+            end
+        end
         -- Turn saved-OFF modules off first, then restore ON modules.
         for _,want in {false,true} do
             for _,spec in moduleSwitches do
