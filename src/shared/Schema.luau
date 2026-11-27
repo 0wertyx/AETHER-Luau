@@ -130,6 +130,50 @@ color("Interface","moduleToggleOnColor","Quick menu ON color","624496")
 color("Interface","moduleToggleOffColor","Quick menu OFF color","131022")
 range("Interface","moduleBackgroundOpacity","Quick menu opacity %",48,5,100)
 range("Interface","moduleFadeMs","Quick menu fade duration (ms)",220,80,800)
+-- Appearance roles are persisted separately from the inherited global theme.
+S.appearance={
+ {"Root","Root node","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Main","Main branch","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Visuals","Visuals branch","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Utility","Utility branch","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Interface","Interface branch","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Page","Settings panel","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Header","Title bar","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Modes","View switch","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Search","Search","uiRowColor",47,"uiStrokeColor",0},
+ {"NavButton","Branch button","uiButtonColor",100,"uiStrokeColor",0},
+ {"TabButton","Tab button","uiButtonColor",100,"uiStrokeColor",0},
+ {"Row","Control row","uiRowColor",38,"uiStrokeColor",0},
+ {"Button","Action button","uiButtonColor",100,"uiStrokeColor",0},
+ {"Catalog","Visual catalog","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Top","Top capsule","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Clock","12:00 · Clock","clockGlass","glass","uiStrokeColor","rim"},
+ {"FPS","120 FPS","fpsGlass","glass","uiStrokeColor","rim"},
+ {"Dock","Dock","glassColor","glass","uiStrokeColor","rim"},
+ {"Input","W A S D","uiRowColor",82,"inputColor",45},
+ {"Keybind","Keybinds","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Quick","Quick menu","modulePanelColor","moduleBackgroundOpacity","moduleStrokeColor",70},
+ {"QuickRow","Module row","moduleRowColor",100,"moduleStrokeColor",0},
+ {"QuickOn","ON","moduleToggleOnColor",100,"moduleStrokeColor",0},
+ {"QuickOff","OFF","moduleToggleOffColor",100,"moduleStrokeColor",0},
+ {"AFK","AFK screen","afkBgA",100,"afkButtonEdge",0},
+ {"AFKButton","AFK return","afkButtonColor",88,"afkButtonEdge",55},
+ {"Wallhop","Practice widget","uiPanelColor",85,"uiStrokeColor",65},
+}
+S.appearanceBySetting={}
+S.appearanceById={}
+for _,d in S.appearance do
+ local id,label,tint,opacity,edge,edgeOpacity=table.unpack(d)
+ local p="appearance"..id
+ S.appearanceById[id]=d
+ toggle("Interface",p.."Custom",label.." · Individual style",false)
+ color("Interface",p.."Color",label.." · Fill color",S.defs[tint].default)
+ range("Interface",p.."Transparency",label.." · Fill transparency %",100-(if type(opacity)=="number" then opacity else S.defs[opacity].default),0,100)
+ color("Interface",p.."Edge",label.." · Outline color",S.defs[edge].default)
+ range("Interface",p.."EdgeTransparency",label.." · Outline transparency %",100-(if type(edgeOpacity)=="number" then edgeOpacity else S.defs[edgeOpacity].default),0,100)
+ range("Interface",p.."EdgeWidth",label.." · Outline width (tenths px)",12,0,50)
+ for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do S.appearanceBySetting[p..suffix]=id end
+end
 for _,mode in {"GUI","Nodes"} do
  local prefix="ws"..mode
  range("Interface",prefix.."Zoom","Workspace zoom %",100,35,180)

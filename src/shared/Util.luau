@@ -28,6 +28,28 @@ function U.topPanel(parent)
  return panel,rim,{label}
 end
 function U.hex(s) return Color3.fromHex(s) end
+function U.blockStyle(s,id,c,t,e,et,w)
+ local p="appearance"..id
+ if s[p.."Custom"] then
+  return U.hex(s[p.."Color"]),s[p.."Transparency"]/100,U.hex(s[p.."Edge"]),s[p.."EdgeTransparency"]/100,s[p.."EdgeWidth"]/10
+ end
+ return c,t,e,et,w
+end
+function U.applyBlock(obj,s,id,c,t,e,et,w)
+ local color,alpha,edge,edgeAlpha,width=U.blockStyle(s,id,c,t,e,et,w)
+ obj.BackgroundColor3=color;obj.BackgroundTransparency=alpha
+ local rim=obj:FindFirstChildOfClass("UIStroke")
+ if not rim and s["appearance"..id.."Custom"] then rim=U.stroke(obj,edge,edgeAlpha,width) end
+ if rim then
+  rim.Color=edge;rim.Transparency=edgeAlpha;rim.Thickness=width
+  rim.Enabled=width>0 and edgeAlpha<1
+ end
+end
+function U.appearanceSample(s,d)
+ local opacity=if type(d[4])=="number" then d[4] else s[d[4]]
+ local edgeOpacity=if type(d[6])=="number" then d[6] else s[d[6]]
+ return U.blockStyle(s,d[1],U.hex(s[d[3]]),1-opacity/100,U.hex(s[d[5]]),1-edgeOpacity/100,1.15)
+end
 function U.font(s) local w=Enum.FontWeight[s.weight];if s.fontAsset~="" then return Font.new("rbxassetid://"..s.fontAsset,w) end;local base=Font.fromEnum(Enum.Font[s.font]);return Font.new(base.Family,w,base.Style) end
 function U.ease(t,name)
  t=math.clamp(t,0,1)

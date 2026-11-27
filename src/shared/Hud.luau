@@ -179,15 +179,16 @@ function H:setStyle(s)
   w.scale.Scale=if k=="cross" then 1 else factor*s[k.."Scale"]/100
   if w.p:IsA("CanvasGroup") then w.p.GroupTransparency=1-s[k.."Alpha"]/100 end
   w.p.Visible=s[k]
-  w.rim.Color=U.hex(s.uiStrokeColor)
-  w.rim.Transparency=1-s.rim/100
-  local tint=if k=="clock" then U.hex(s.clockGlass) elseif k=="profile" then U.hex(s.fpsGlass) else a
+  local role=if k=="clock" then "Clock" elseif k=="profile" then "FPS" else "Dock"
+  local base=if k=="clock" then U.hex(s.clockGlass) elseif k=="profile" then U.hex(s.fpsGlass) else a
+  local tint,fill,edge,edgeAlpha,width=U.blockStyle(s,role,base,1-s.glass/100,U.hex(s.uiStrokeColor),1-s.rim/100,1.15)
+  w.rim.Color=edge;w.rim.Transparency=edgeAlpha;w.rim.Thickness=width;w.rim.Enabled=k~="cross" and width>0 and edgeAlpha<1
   w.g.Color=ColorSequence.new(tint:Lerp(U.hex(s.uiSpecularColor),.12*s.uiReflection/100),tint:Lerp(b,.5))
   w.p.BackgroundTransparency=1
   if w.p:IsA("CanvasGroup") then w.p.GroupColor3=Color3.new(1,1,1) end
   local legacyGradient=w.p:FindFirstChildOfClass("UIGradient")
   if legacyGradient then legacyGradient:Destroy() end
-  w.background.BackgroundTransparency=1-s.glass/100
+  w.background.BackgroundTransparency=fill
  end
  self.reticleKey=nil
  self.profileDot.BackgroundColor3=U.hex(s.secondary)
@@ -306,8 +307,11 @@ function H:animateWidgets(s,f,dt,t)
   w.p.Position=UDim2.new(x,ox,y,oy+bob+(if y>.5 then 1 else -1)*entry*14)
   w.scale.Scale=self.factor*s[key.."Scale"]/100*(1-entry*.08+pulse)
   local glow=if idle and s.hudMotion~="Off" then (.5+.5*math.sin(phase))*.18*strength else 0
-  w.rim.Transparency=1-math.clamp(s.rim/100+glow,0,1)
-  w.rim.Color=U.hex(s.uiStrokeColor):Lerp(U.hex(s.secondary),glow*2)
+  local role=if key=="clock" then "Clock" elseif key=="profile" then "FPS" else "Dock"
+  local _,_,edge,edgeAlpha,width=U.blockStyle(s,role,Color3.new(),0,U.hex(s.uiStrokeColor),1-s.rim/100,1.15)
+  w.rim.Enabled=width>0 and edgeAlpha<1;w.rim.Thickness=width
+  w.rim.Transparency=if s["appearance"..role.."Custom"] then edgeAlpha else 1-math.clamp(1-edgeAlpha+glow,0,1)
+  w.rim.Color=if s["appearance"..role.."Custom"] then edge else edge:Lerp(U.hex(s.secondary),glow*2)
   w.g.Rotation=if idle and s.hudMotion=="Glass" then 90+math.sin(phase*.5)*18*strength else 90
  end
  self.profileDot.BackgroundTransparency=if enabled then .12+.16*(1-math.sin(time*1.7)) else 0
@@ -351,14 +355,16 @@ function H:step(s,f,dt)
     if key.mouse then down=UIS:IsMouseButtonPressed(key.code)
     else down=UIS:IsKeyDown(key.code) or (key.code==Enum.KeyCode.LeftShift and UIS:IsKeyDown(Enum.KeyCode.RightShift)) end
    end
-   key.p.BackgroundColor3=if down then tint else Color3.fromRGB(33,27,49)
+   local fill,alpha,edge,edgeAlpha,width=U.blockStyle(s,"Input",Color3.fromRGB(33,27,49),.18,tint,.55,1)
+   key.p.BackgroundColor3=if down then tint else fill;key.p.BackgroundTransparency=alpha
    key.label.TextColor3=if down then Color3.fromRGB(25,18,39) else Color3.fromRGB(240,233,255)
-   key.rim.Color=tint;key.rim.Transparency=if down then .1 else .55
+   key.rim.Color=edge;key.rim.Transparency=if down and not s.appearanceInputCustom then .1 else edgeAlpha;key.rim.Thickness=width;key.rim.Enabled=width>0 and key.rim.Transparency<1
   end
  end
  local wh=self.wallhop
  wh.Visible=s.wallhopHelper
  if wh.Visible then
+  U.applyBlock(wh,s,"Wallhop",Color3.fromRGB(28,22,44),.15,Color3.fromRGB(177,146,255),.35,1)
   local vp=self.view.AbsoluteSize
   local scale=s.wallhopScale/100*(if self.preview then self.factor else 1)
   self.wallhopScale.Scale=scale;wh.GroupTransparency=1-s.wallhopOpacity/100

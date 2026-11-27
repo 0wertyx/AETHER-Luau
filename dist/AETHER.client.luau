@@ -873,12 +873,12 @@ local branches={
 }
 local tabBranch={}
 for _,branch in branches do for _,tab in branch.tabs do tabBranch[tab]=branch.name end end
-local function glassSurface(frame,s)
- local tint=U.hex(s.uiPanelColor)
+local function glassSurface(frame,s,role)
+ local tint,opacity,edgeColor,edgeAlpha,edgeWidth=U.blockStyle(s,role or "Page",U.hex(s.uiPanelColor),1-s.uiGlassOpacity/100,U.hex(s.uiStrokeColor),1-s.rim/100,1.15)
  local highlight=U.hex(s.uiSpecularColor)
  local reflection=s.uiReflection/100
  frame.BackgroundColor3=Color3.new(1,1,1)
- frame.BackgroundTransparency=1-s.uiGlassOpacity/100
+ frame.BackgroundTransparency=opacity
  local grad=frame:FindFirstChild("LiquidTint") or U.new("UIGradient",{Name="LiquidTint",Rotation=90},frame)
  grad.Color=ColorSequence.new({
   ColorSequenceKeypoint.new(0,tint:Lerp(highlight,.19*reflection)),
@@ -887,9 +887,9 @@ local function glassSurface(frame,s)
   ColorSequenceKeypoint.new(1,tint:Lerp(highlight,.10*reflection))
  })
  local rim=frame:FindFirstChildOfClass("UIStroke") or U.stroke(frame,U.hex(s.uiStrokeColor),.4,1)
- rim.Color=U.hex(s.uiStrokeColor);rim.Thickness=1.15;rim.Transparency=1-s.rim/100
+ rim.Color=edgeColor;rim.Thickness=edgeWidth;rim.Transparency=edgeAlpha;rim.Enabled=edgeWidth>0 and edgeAlpha<1
  local edge=rim:FindFirstChild("LiquidEdge") or U.new("UIGradient",{Name="LiquidEdge",Rotation=90},rim)
- edge.Color=ColorSequence.new(highlight,U.hex(s.uiStrokeColor))
+ edge.Color=ColorSequence.new(highlight,edgeColor);edge.Enabled=not s["appearance"..(role or "Page").."Custom"]
  edge.Transparency=NumberSequence.new({
   NumberSequenceKeypoint.new(0,.03),NumberSequenceKeypoint.new(.23,.62),
   NumberSequenceKeypoint.new(.74,.78),NumberSequenceKeypoint.new(1,.15)
@@ -1128,14 +1128,20 @@ function UI.new(app,gui,scope)
  self.afkBackRim=U.stroke(self.afkBack,Color3.fromRGB(183,151,240),1)
  function self:applyAFKTheme()
   local s=self.app.s
-  local key=table.concat({s.afkBackground,s.afkBgA,s.afkBgB,s.afkPatternColor,s.afkBrandColor,s.afkTitleColor,s.afkDetailColor,s.afkButtonColor,s.afkButtonText,s.afkButtonEdge,s.afkImageTint,s.afkGradientAngle,s.afkPatternOpacity,s.afkImageOpacity,s.afkImageAsset},":")
+  local parts={s.afkBackground,s.afkBgA,s.afkBgB,s.afkPatternColor,s.afkBrandColor,s.afkTitleColor,s.afkDetailColor,s.afkButtonColor,s.afkButtonText,s.afkButtonEdge,s.afkImageTint,s.afkGradientAngle,s.afkPatternOpacity,s.afkImageOpacity,s.afkImageAsset}
+  for _,role in {"AFK","AFKButton"} do for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do parts[#parts+1]=tostring(s["appearance"..role..suffix]) end end
+  local key=table.concat(parts,":")
   if self.afkThemeKey==key then return end
   self.afkThemeKey=key
-  local a,b=U.hex(s.afkBgA),U.hex(s.afkBgB)
+  local a,b=U.hex(if s.appearanceAFKCustom then s.appearanceAFKColor else s.afkBgA),U.hex(s.afkBgB)
   self.afkGradient.Color=ColorSequence.new(a,if s.afkBackground=="Solid" then a else b)
   self.afkGradient.Rotation=s.afkGradientAngle
   self.afkBrand.TextColor3=U.hex(s.afkBrandColor);self.afkTitle.TextColor3=U.hex(s.afkTitleColor);self.afkDetail.TextColor3=U.hex(s.afkDetailColor)
-  self.afkBack.BackgroundColor3=U.hex(s.afkButtonColor);self.afkBack.TextColor3=U.hex(s.afkButtonText);self.afkBackRim.Color=U.hex(s.afkButtonEdge)
+  local button,_,edge,_,width=U.blockStyle(s,"AFKButton",U.hex(s.afkButtonColor),.12,U.hex(s.afkButtonEdge),.45,1)
+  self.afkBack.BackgroundColor3=button;self.afkBack.TextColor3=U.hex(s.afkButtonText);self.afkBackRim.Color=edge;self.afkBackRim.Thickness=width
+  local _,_,screenEdge,screenAlpha,screenWidth=U.blockStyle(s,"AFK",U.hex(s.afkBgA),0,U.hex(s.afkButtonEdge),1,1)
+  local rim=self.afkScreen:FindFirstChildOfClass("UIStroke") or U.stroke(self.afkScreen,screenEdge,1,screenWidth)
+  rim.Color=screenEdge;rim.Thickness=screenWidth;rim.Enabled=screenWidth>0 and screenAlpha<1
   self.afkImage.ImageColor3=U.hex(s.afkImageTint)
   self.afkImage.Image=if s.afkBackground=="Image" and s.afkImageAsset~="" then "rbxassetid://"..s.afkImageAsset else ""
   self.afkImage.Visible=s.afkBackground=="Image" and s.afkImageAsset~=""
@@ -1150,10 +1156,13 @@ function UI.new(app,gui,scope)
   if self.afkLastAlpha==alpha then return end
   self.afkLastAlpha=alpha
   local s=self.app.s
-  self.afkScreen.BackgroundTransparency=1-alpha
+  local _,screenAlpha,_,screenEdgeAlpha=U.blockStyle(s,"AFK",U.hex(s.afkBgA),0,U.hex(s.afkButtonEdge),1,1)
+  local _,buttonAlpha,_,edgeAlpha,edgeWidth=U.blockStyle(s,"AFKButton",U.hex(s.afkButtonColor),.12,U.hex(s.afkButtonEdge),.45,1)
+  self.afkScreen.BackgroundTransparency=1-alpha*(1-screenAlpha)
+  local rim=self.afkScreen:FindFirstChildOfClass("UIStroke");if rim then rim.Transparency=1-alpha*(1-screenEdgeAlpha) end
   for _,label in {self.afkBrand,self.afkTitle,self.afkDetail,self.afkBack} do label.TextTransparency=1-alpha end
-  self.afkBack.BackgroundTransparency=1-.88*alpha
-  self.afkBackRim.Transparency=1-.55*alpha
+  self.afkBack.BackgroundTransparency=1-alpha*(1-buttonAlpha)
+  self.afkBackRim.Transparency=1-alpha*(1-edgeAlpha);self.afkBackRim.Enabled=edgeWidth>0 and edgeAlpha<1
   self.afkImage.ImageTransparency=1-alpha*s.afkImageOpacity/100
   for _,p in self.afkDecor do
    if p.frame.Visible then
@@ -1319,7 +1328,7 @@ function UI.new(app,gui,scope)
     tab.Size=UDim2.new(1,-12,0,math.max(1,self.branchRowH-3))
     tab.TextSize=math.clamp(self.branchRowH-9,10,14)
    end
-   b.button.BackgroundColor3=U.hex(if open then st.uiHoverColor else st.uiButtonColor)
+   b.button.BackgroundColor3=if st.appearanceNavButtonCustom then U.hex(st.appearanceNavButtonColor):Lerp(U.hex(st.uiHoverColor),if open then .32 else 0) else U.hex(if open then st.uiHoverColor else st.uiButtonColor)
    if immediate or open~=r.expanded or r.height~=height or r.targetPosition~=position then
     r.expanded=open;r.height=height;r.targetPosition=position;r.revision+=1
     local revision=r.revision
@@ -1337,6 +1346,7 @@ function UI.new(app,gui,scope)
     end
    end
   end
+  if self.layoutAppearance then self:layoutAppearance() end
  end
  self.search=U.new("TextBox",{Name="FunctionSearch",Text="",PlaceholderText="Search functions...",ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left,Font=Enum.Font.GothamMedium,TextSize=13,TextColor3=Color3.fromRGB(241,234,255),PlaceholderColor3=dim,BackgroundColor3=soft,BorderSizePixel=0},self.panel)
  U.corner(self.search,8);U.new("UIPadding",{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,10)},self.search)
@@ -1404,6 +1414,41 @@ function UI.new(app,gui,scope)
  end
  self.rootDrag=integratedHeader("AETHER / MOVE")
  self.pageDrag=integratedHeader("MOVE PANEL")
+ -- Clickable style samples below the Interface branch, not part of its clipped card.
+ self.appearancePanel=U.frame(self.branchStack,"AppearanceSamples",nil,UDim2.new(1,0,0,0),nil,1)
+ self.appearancePanel.ZIndex=4;self.appearancePanel.Visible=false
+ local caption=U.label(self.appearancePanel,"APPEARANCE / SELECT",10,UDim2.fromOffset(4,0),UDim2.new(1,-8,0,22));caption.ZIndex=5
+ self.appearanceSamples={}
+ local all=U.button(self.appearancePanel,"ALL SETTINGS");all.Size=UDim2.new(1,-4,0,25);all.Position=UDim2.fromOffset(2,24);all.ZIndex=5;all.TextSize=10
+ scope:on(all.Activated,function() self:open("Interface") end)
+ for i,d in S.appearance do
+  local b=U.button(self.appearancePanel,d[2]);b.Name="Style_"..d[1];b.ZIndex=5;b.TextSize=10;b.AutoButtonColor=false
+  b.Position=UDim2.new(((i-1)%2)*.5,2,0,54+math.floor((i-1)/2)*29)
+  b.Size=UDim2.new(.5,-4,0,25);b.TextTruncate=Enum.TextTruncate.AtEnd
+  b:SetAttribute("AETHERKeepFontColor",true)
+  U.stroke(b,Color3.new(1,1,1),1)
+  self.appearanceSamples[d[1]]=b
+  scope:on(b.Activated,function() if self.opened then self:open("Interface",d[1]) end end)
+ end
+ self.appearancePanel.Size=UDim2.new(1,0,0,54+math.ceil(#S.appearance/2)*29)
+ function self:layoutAppearance()
+  local card=self.branchCards.Interface
+  self.appearancePanel.Visible=card.expanded
+  local p=card.targetPosition or card.frame.Position
+  self.appearancePanel.Position=UDim2.fromOffset(p.X.Offset,p.Y.Offset+(card.height or 0)+8)
+ end
+ function self:refreshAppearanceSamples()
+  local s=self.app.s
+  for _,d in S.appearance do
+   local b=self.appearanceSamples[d[1]]
+   local c,t,e,et,w=U.appearanceSample(s,d)
+   b.BackgroundColor3=c;b.BackgroundTransparency=t
+   local rim=b:FindFirstChildOfClass("UIStroke")
+   rim.Color=e;rim.Transparency=et;rim.Thickness=w;rim.Enabled=w>0 and et<1
+   b.TextColor3=U.hex(if d[1]=="Quick" or d[1]:sub(1,5)=="Quick" then s.moduleTextColor elseif d[1]=="Clock" then s.clockText elseif d[1]=="FPS" then s.fpsText elseif d[1]=="AFK" then s.afkTitleColor elseif d[1]=="AFKButton" then s.afkButtonText else s.uiFontColor)
+   b.Text=(if self.appearanceSelection==d[1] then "› " else "")..d[2]
+  end
+ end
  self.modeBar=U.frame(self.panel,"WorkspaceModes",nil,UDim2.fromOffset(320,30),nil,.5)
  self.modeBar.AnchorPoint=Vector2.new(.5,0);self.modeBar.ZIndex=12;U.corner(self.modeBar,14)
  self.modeButtons={}
@@ -1425,7 +1470,7 @@ function UI.new(app,gui,scope)
  end
  -- Only two consecutive, nearby background activations close the hub.
  local function isBackground(pos)
-  for _,obj in {self.header,self.modeBar,self.navGlass,self.nav,self.search,self.contentGlass,self.pageBox,self.searchResults,self.status,self.rootDrag,self.pageDrag,self.layoutMove,self.layoutResize,self.layoutDone} do
+  for _,obj in {self.header,self.modeBar,self.navGlass,self.nav,self.search,self.contentGlass,self.pageBox,self.searchResults,self.status,self.rootDrag,self.pageDrag,self.layoutMove,self.layoutResize,self.layoutDone,self.appearancePanel} do
    if inside(obj,pos) then return false end
   end
   for _,r in self.branchCards do if inside(r.frame,pos) then return false end end
@@ -1494,8 +1539,10 @@ function UI.new(app,gui,scope)
  self.quickExpanded={}
  function self:applyQuickTheme()
   local s=self.app.s
-  local panel,row,accent=U.hex(s.modulePanelColor),U.hex(s.moduleRowColor),U.hex(s.moduleAccentColor)
-  local edge,primary,muted=U.hex(s.moduleStrokeColor),U.hex(s.moduleTextColor),U.hex(s.moduleMutedColor)
+  local panel,_,edge,_,width=U.blockStyle(s,"Quick",U.hex(s.modulePanelColor),1-s.moduleBackgroundOpacity/100,U.hex(s.moduleStrokeColor),.3,1)
+  local row,accent=U.hex(s.moduleRowColor),U.hex(s.moduleAccentColor)
+  local primary,muted=U.hex(s.moduleTextColor),U.hex(s.moduleMutedColor)
+  self.quickRim.Thickness=width;self.quickRim.Enabled=width>0
   local on,off=U.hex(s.moduleToggleOnColor),U.hex(s.moduleToggleOffColor)
   self.quick.BackgroundColor3=Color3.new(1,1,1)
   self.quickGradient.Color=ColorSequence.new(panel:Lerp(edge,.06),panel:Lerp(Color3.new(),.16))
@@ -1513,14 +1560,17 @@ function UI.new(app,gui,scope)
      end
     end
     if obj:IsA("TextButton") and obj.BackgroundTransparency<1 then
-     if role=="Switch" or obj.Text=="ON" or obj.Text=="OFF" then obj.BackgroundColor3=if obj.Text=="ON" then on else off
+     if role=="Switch" or obj.Text=="ON" or obj.Text=="OFF" then
+     local enabled=obj.Text=="ON"
+     U.applyBlock(obj,s,if enabled then "QuickOn" else "QuickOff",if enabled then on else off,0,U.hex(s.moduleStrokeColor),1,1)
+    
      elseif role=="Bind" then obj.BackgroundColor3=if obj.Text=="PRESS KEY" then accent else off
-     elseif obj.Name=="ExpandModule" then obj.BackgroundColor3=row
+     elseif obj.Name=="ExpandModule" then U.applyBlock(obj,s,"QuickRow",row,0,U.hex(s.moduleStrokeColor),1,1)
      elseif obj.BackgroundColor3==U.hex(s.uiHoverColor) then obj.BackgroundColor3=accent
      else obj.BackgroundColor3=row end
     elseif obj:IsA("TextBox") and obj.BackgroundTransparency<1 then obj.BackgroundColor3=off end
    elseif obj:IsA("Frame") then
-    if role=="Row" and obj.BackgroundTransparency<1 then obj.BackgroundColor3=row
+    if role=="Row" and obj.BackgroundTransparency<1 then U.applyBlock(obj,s,"QuickRow",row,.47,U.hex(s.moduleStrokeColor),1,1)
     elseif role=="Card" then obj.BackgroundColor3=panel
     elseif obj.Name=="Track" then obj.BackgroundColor3=off
     elseif obj.Name=="Fill" then obj.BackgroundColor3=accent
@@ -1542,8 +1592,9 @@ function UI.new(app,gui,scope)
   local alpha=U.ease(self.quickProgress,"Sine")
   self.quick.Visible=want or self.quickProgress>0
   self.quick.Interactable=want and not editingAux
-  self.quick.BackgroundTransparency=1-alpha*s.moduleBackgroundOpacity/100
-  self.quickRim.Transparency=1-alpha*.7
+  local _,transparency,_,edgeTransparency,width=U.blockStyle(s,"Quick",U.hex(s.modulePanelColor),1-s.moduleBackgroundOpacity/100,U.hex(s.moduleStrokeColor),.3,1)
+  self.quick.BackgroundTransparency=1-alpha*(1-transparency)
+  self.quickRim.Transparency=1-alpha*(1-edgeTransparency);self.quickRim.Enabled=width>0 and edgeTransparency<1
   if self.quickProgress>0 and self.quickProgress<1 then
    transition(self.quick,alpha)
   elseif prev~=self.quickProgress or self.quick:FindFirstChild("AETHERTransitionSurface") then
@@ -1867,7 +1918,7 @@ function UI.new(app,gui,scope)
   local innerW=math.max(1,bodyW-2*inset)
   self.pageDrag.Position=UDim2.fromOffset(pageX+inset,pageY-25);self.pageDrag.Size=UDim2.fromOffset(innerW,25);self.pageDrag.Text=self.tab:upper().." / MOVE PANEL"
   self.search.Position=UDim2.fromOffset(pageX+inset,pageY+4);self.search.Size=UDim2.fromOffset(innerW,30)
-  self.search.BackgroundTransparency=.53
+  self.search.BackgroundTransparency=if s.appearanceSearchCustom then s.appearanceSearchTransparency/100 else .53
   self.contentGlass.Position=UDim2.fromOffset(pageX,pageY-30);self.contentGlass.Size=UDim2.fromOffset(bodyW,bodyH+72)
   self.contentGlass.Visible=true
   self.pageBox.Position=UDim2.fromOffset(pageX+inset,pageY+42);self.pageBox.Size=UDim2.fromOffset(innerW,math.max(1,bodyH-8))
@@ -2057,7 +2108,7 @@ function UI.new(app,gui,scope)
   local ctrl=Input:IsKeyDown(Enum.KeyCode.LeftControl) or Input:IsKeyDown(Enum.KeyCode.RightControl)
   local pos=Input:GetMouseLocation()
   if not ctrl then
-   for _,obj in {self.pageBox,self.searchResults,self.search,self.header,self.modeBar,self.navGlass,self.contentGlass,self.rootDrag,self.pageDrag} do if inside(obj,pos) then return end end
+   for _,obj in {self.pageBox,self.searchResults,self.search,self.header,self.modeBar,self.navGlass,self.contentGlass,self.rootDrag,self.pageDrag,self.appearancePanel} do if inside(obj,pos) then return end end
    for _,r in self.branchCards do if inside(r.frame,pos) then return end end
   end
   local state=self:workspaceCamera();local zoom=math.clamp(state.zoom*1.12^i.Position.Z,.35,1.8)
@@ -2120,7 +2171,6 @@ function UI:animateBackground(t)
  self.quickArrow.Visible=self.app.volleyball~=nil and not self.app.editingHUD
  self:stepQuick(dt,editingAux)
  self.bindPanel.Visible=editingAux or (not self.opened and not self.app.editingHUD and self.app.mode=="Game" and s.keybindWidget)
- self.bindRim.Color=U.hex(s.uiStrokeColor)
  if self.bindPanel.Visible and t>=(self.bindRefreshAt or 0) then self.bindRefreshAt=t+.3;self:refreshBindPanel() end
  if self.quick.Visible and self.quickAdapter and t>=(self.quickRefreshAt or 0) then
   self.quickRefreshAt=t+.25
@@ -2128,7 +2178,6 @@ function UI:animateBackground(t)
   self:applyQuickTheme()
  end
  self.updateChip.Visible=false
- self.topRim.Color=U.hex(s.uiStrokeColor)
  local below=6
  self.quickArrow.Position=UDim2.new(.5,0,1,below)
  self:layoutAuxWidgets(below)
@@ -2156,7 +2205,7 @@ function UI:animateBackground(t)
   local k=if s.reduce or not s.navGlow then 1 else 1-math.exp(-math.max(dt,decorDt)*15)
   amount+=(desired-amount)*k
   self.navAmount[name]=amount
-  b.BackgroundColor3=U.hex(s.uiButtonColor):Lerp(U.hex(s.uiHoverColor),amount)
+  b.BackgroundColor3=U.hex(if s.appearanceTabButtonCustom then s.appearanceTabButtonColor else s.uiButtonColor):Lerp(U.hex(s.uiHoverColor),amount*(if s.appearanceTabButtonCustom then .35 else 1))
  end
  end
  self.geoLayer.Visible=(s.menuGeometry or s.screenParticles) and self.panel.Visible
@@ -2507,7 +2556,7 @@ end
 function UI:jumpTo(item)
  self:setQuick(false)
  self.search:ReleaseFocus();self.search.Text=""
- self:open(item.tab)
+ self:open(item.tab,item.key and S.appearanceBySetting[item.key])
  local sc=self.sc
  if not sc then return end
  local label=item.label:lower()
@@ -2536,7 +2585,8 @@ function UI:jumpTo(item)
  end)
 end
 local visualTabs={Halos=true,Wings=true,Ambient=true}
-function UI:open(tab)
+function UI:open(tab,appearance)
+ self.appearanceSelection=if tab=="Interface" and S.appearanceById[appearance] then appearance else nil
  if tab=="Camera" then tab="Interaction" end
  if self.search then self.search.Text="" end
  self.app.bindingLockKey=false
@@ -2603,12 +2653,23 @@ function UI:sync()
  if self.iconKey~=iconKey then self.iconKey=iconKey;for _,asset in self.icons do asset:sync(st.iconAtlas,st.iconAtlasTile) end;self:layout() end
  for _,f in self.syncs do f() end
  if self.editorAdapter then for _,f in self.editorAdapter.syncs do f() end end
- local themeKey=table.concat({st.accent,st.uiFontColor,st.uiMutedColor,st.uiPanelColor,st.uiButtonColor,st.uiHoverColor,st.uiRowColor,st.uiStrokeColor,st.uiSpecularColor,st.uiGlassOpacity,st.uiReflection,st.rim},":")
+ local themeParts={st.accent,st.uiFontColor,st.uiMutedColor,st.uiPanelColor,st.uiButtonColor,st.uiHoverColor,st.uiRowColor,st.uiStrokeColor,st.uiSpecularColor,st.uiGlassOpacity,st.uiReflection,st.rim,st.clockGlass,st.fpsGlass,st.clockText,st.fpsText,st.glassColor,st.glass,st.inputColor,st.modulePanelColor,st.moduleRowColor,st.moduleStrokeColor,st.moduleTextColor,st.moduleToggleOnColor,st.moduleToggleOffColor,st.moduleBackgroundOpacity,st.afkBgA,st.afkTitleColor,st.afkButtonColor,st.afkButtonText,st.afkButtonEdge,self.appearanceSelection or ""}
+ for _,d in S.appearance do
+  local p="appearance"..d[1]
+  for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do themeParts[#themeParts+1]=tostring(st[p..suffix]) end
+ end
+ local themeKey=table.concat(themeParts,":")
  if not self.themeDirty and self.themeKey==themeKey then return end
  self.themeDirty=false;self.themeKey=themeKey
- for _,frame in {self.navGlass,self.contentGlass,self.header,self.top,self.bindPanel,self.modeBar,self.catalogHost,self.catalogHost and self.sc} do if frame then glassSurface(frame,st) end end
- for _,r in self.branchCards do glassSurface(r.frame,st) end
- self.search.BackgroundColor3=U.hex(st.uiRowColor)
+ for _,entry in {{self.navGlass,"Root"},{self.contentGlass,"Page"},{self.header,"Header"},{self.top,"Top"},{self.bindPanel,"Keybind"},{self.modeBar,"Modes"},{self.catalogHost,"Catalog"},{self.catalogHost and self.sc,"Catalog"}} do if entry[1] then glassSurface(entry[1],st,entry[2]) end end
+ for id,r in self.branchCards do glassSurface(r.frame,st,id) end
+ self:refreshAppearanceSamples()
+ local edge=U.hex(st.uiStrokeColor)
+ U.applyBlock(self.search,st,"Search",U.hex(st.uiRowColor),.53,edge,1,1.15)
+ for id,r in self.branchButtons do
+  U.applyBlock(r.button,st,"NavButton",U.hex(if st["branch"..id] then st.uiHoverColor else st.uiButtonColor),0,edge,1,1.15)
+ end
+ for id,b in self.buttons do U.applyBlock(b,st,"TabButton",U.hex(if id==self.tab then st.uiHoverColor else st.uiButtonColor),0,edge,1,1.15) end
  for _,header in {self.rootDrag,self.pageDrag} do
   header.BackgroundTransparency=1;header.HeaderDivider.BackgroundColor3=U.hex(st.uiStrokeColor)
  end
@@ -2616,8 +2677,11 @@ function UI:sync()
  for _,obj in {self.layoutMove,self.layoutResize,self.layoutDone} do obj.BackgroundColor3=U.hex(st.uiHoverColor) end
  -- Only recolor editor controls, not HUD/3D previews or their own palette.
  for _,obj in self.panel:GetDescendants() do
-  if obj:IsA("Frame") and obj:GetAttribute("AETHERControlRow") and obj.BackgroundTransparency<1 then obj.BackgroundColor3=U.hex(st.uiRowColor) end
-  if obj:IsA("TextButton") and obj:GetAttribute("AETHERThemeButton") then obj.BackgroundColor3=U.hex(st.uiButtonColor) end
+  if obj:IsA("Frame") and obj:GetAttribute("AETHERControlRow") and (obj.BackgroundTransparency<1 or obj:GetAttribute("AETHERStyledRow")) then
+   if not obj:GetAttribute("AETHERStyledRow") then obj:SetAttribute("AETHERStyledRow",true);obj:SetAttribute("AETHERBaseAlpha",obj.BackgroundTransparency) end
+   U.applyBlock(obj,st,"Row",U.hex(st.uiRowColor),obj:GetAttribute("AETHERBaseAlpha"),edge,1,1.15)
+  end
+  if obj:IsA("TextButton") and obj:GetAttribute("AETHERThemeButton") then U.applyBlock(obj,st,"Button",U.hex(st.uiButtonColor),0,edge,1,1.15) end
   if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
    if obj==self.brand or obj==self.tag or obj==self.status then continue end
    if obj:GetAttribute("AETHERKeepFontColor") then continue end
@@ -2671,7 +2735,7 @@ function UI:control(k)
  self.page:on(hit.InputBegan,function(i) self:begin(i,function(pos) local t=math.clamp((pos.X-hit.AbsolutePosition.X)/math.max(1,hit.AbsoluteSize.X),0,1);app:set(k,math.round(d.min+t*(d.max-d.min))) end) end)
  self:watch(function() if not box:IsFocused() then box.Text=tostring(app.s[k]) end;fill.Size=UDim2.fromScale(math.clamp((app.s[k]-d.min)/(d.max-d.min),0,1),1);fill.BackgroundColor3=U.hex(app.s.accent) end)
 end
-function UI:colorPicker(k)
+function UI:colorPicker(k,alphaKey)
  self.colorKeys=self.colorKeys or {}
  if self.colorKeys[k] then return end
  self.colorKeys[k]=true
@@ -2708,6 +2772,7 @@ function UI:colorPicker(k)
   if last~=app.s[k] then last=app.s[k];h,s,v=U.hex(last):ToHSV() end
   field.BackgroundColor3=Color3.fromHSV(h,1,1);marker.Position=UDim2.fromScale(s,1-v);hm.Position=UDim2.fromScale(.5,h)
  end)
+ if alphaKey and S.defs[alphaKey] then self:control(alphaKey) end
 end
 function UI:group(g,skip) for _,k in S.order do if S.defs[k].group==g and not(skip and skip[k]) then self:control(k) end end end
 return UI
@@ -3224,15 +3289,16 @@ function H:setStyle(s)
   w.scale.Scale=if k=="cross" then 1 else factor*s[k.."Scale"]/100
   if w.p:IsA("CanvasGroup") then w.p.GroupTransparency=1-s[k.."Alpha"]/100 end
   w.p.Visible=s[k]
-  w.rim.Color=U.hex(s.uiStrokeColor)
-  w.rim.Transparency=1-s.rim/100
-  local tint=if k=="clock" then U.hex(s.clockGlass) elseif k=="profile" then U.hex(s.fpsGlass) else a
+  local role=if k=="clock" then "Clock" elseif k=="profile" then "FPS" else "Dock"
+  local base=if k=="clock" then U.hex(s.clockGlass) elseif k=="profile" then U.hex(s.fpsGlass) else a
+  local tint,fill,edge,edgeAlpha,width=U.blockStyle(s,role,base,1-s.glass/100,U.hex(s.uiStrokeColor),1-s.rim/100,1.15)
+  w.rim.Color=edge;w.rim.Transparency=edgeAlpha;w.rim.Thickness=width;w.rim.Enabled=k~="cross" and width>0 and edgeAlpha<1
   w.g.Color=ColorSequence.new(tint:Lerp(U.hex(s.uiSpecularColor),.12*s.uiReflection/100),tint:Lerp(b,.5))
   w.p.BackgroundTransparency=1
   if w.p:IsA("CanvasGroup") then w.p.GroupColor3=Color3.new(1,1,1) end
   local legacyGradient=w.p:FindFirstChildOfClass("UIGradient")
   if legacyGradient then legacyGradient:Destroy() end
-  w.background.BackgroundTransparency=1-s.glass/100
+  w.background.BackgroundTransparency=fill
  end
  self.reticleKey=nil
  self.profileDot.BackgroundColor3=U.hex(s.secondary)
@@ -3351,8 +3417,11 @@ function H:animateWidgets(s,f,dt,t)
   w.p.Position=UDim2.new(x,ox,y,oy+bob+(if y>.5 then 1 else -1)*entry*14)
   w.scale.Scale=self.factor*s[key.."Scale"]/100*(1-entry*.08+pulse)
   local glow=if idle and s.hudMotion~="Off" then (.5+.5*math.sin(phase))*.18*strength else 0
-  w.rim.Transparency=1-math.clamp(s.rim/100+glow,0,1)
-  w.rim.Color=U.hex(s.uiStrokeColor):Lerp(U.hex(s.secondary),glow*2)
+  local role=if key=="clock" then "Clock" elseif key=="profile" then "FPS" else "Dock"
+  local _,_,edge,edgeAlpha,width=U.blockStyle(s,role,Color3.new(),0,U.hex(s.uiStrokeColor),1-s.rim/100,1.15)
+  w.rim.Enabled=width>0 and edgeAlpha<1;w.rim.Thickness=width
+  w.rim.Transparency=if s["appearance"..role.."Custom"] then edgeAlpha else 1-math.clamp(1-edgeAlpha+glow,0,1)
+  w.rim.Color=if s["appearance"..role.."Custom"] then edge else edge:Lerp(U.hex(s.secondary),glow*2)
   w.g.Rotation=if idle and s.hudMotion=="Glass" then 90+math.sin(phase*.5)*18*strength else 90
  end
  self.profileDot.BackgroundTransparency=if enabled then .12+.16*(1-math.sin(time*1.7)) else 0
@@ -3396,14 +3465,16 @@ function H:step(s,f,dt)
     if key.mouse then down=UIS:IsMouseButtonPressed(key.code)
     else down=UIS:IsKeyDown(key.code) or (key.code==Enum.KeyCode.LeftShift and UIS:IsKeyDown(Enum.KeyCode.RightShift)) end
    end
-   key.p.BackgroundColor3=if down then tint else Color3.fromRGB(33,27,49)
+   local fill,alpha,edge,edgeAlpha,width=U.blockStyle(s,"Input",Color3.fromRGB(33,27,49),.18,tint,.55,1)
+   key.p.BackgroundColor3=if down then tint else fill;key.p.BackgroundTransparency=alpha
    key.label.TextColor3=if down then Color3.fromRGB(25,18,39) else Color3.fromRGB(240,233,255)
-   key.rim.Color=tint;key.rim.Transparency=if down then .1 else .55
+   key.rim.Color=edge;key.rim.Transparency=if down and not s.appearanceInputCustom then .1 else edgeAlpha;key.rim.Thickness=width;key.rim.Enabled=width>0 and key.rim.Transparency<1
   end
  end
  local wh=self.wallhop
  wh.Visible=s.wallhopHelper
  if wh.Visible then
+  U.applyBlock(wh,s,"Wallhop",Color3.fromRGB(28,22,44),.15,Color3.fromRGB(177,146,255),.35,1)
   local vp=self.view.AbsoluteSize
   local scale=s.wallhopScale/100*(if self.preview then self.factor else 1)
   self.wallhopScale.Scale=scale;wh.GroupTransparency=1-s.wallhopOpacity/100
@@ -5983,6 +6054,24 @@ function E.render(a,tab,ui)
   ui:note("Choose a branch on the left. Visual collections, interface settings and profiles are organized separately.",50)
   ui:chips({"Interface","Profiles","Halos","Wings"},function(n) ui:open(n) end,2)
  elseif tab=="Interface" then
+  local selected=ui.appearanceSelection
+  local d=selected and S.appearanceById[selected]
+  if d then
+   local p="appearance"..selected
+   ui:title("APPEARANCE / "..d[2]:upper())
+   ui:note("Select a sample below the Interface branch. Individual style overrides the shared theme for this element only.",52)
+   ui:chips({"All settings","Reset this element"},function(name)
+    if name=="All settings" then ui:open("Interface") else
+     local defaults=S.defaults();local patch={}
+     for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do patch[p..suffix]=defaults[p..suffix] end
+     a:patch(patch)
+    end
+   end,2)
+   ui:control(p.."Custom")
+   ui:title("FILL");ui:colorPicker(p.."Color",p.."Transparency")
+   ui:title("OUTLINE");ui:colorPicker(p.."Edge",p.."EdgeTransparency");ui:control(p.."EdgeWidth")
+   return
+  end
   ui:title("INFINITE WORKSPACE")
   ui:note("Middle mouse: pan. Wheel on background or Ctrl + wheel: zoom. Drag node titles to move individual panels. Home resets camera; Shift + Home resets the current workspace. Double-click or double-tap the background to close.",80)
   ui:control("workspaceMode")
@@ -6796,6 +6885,50 @@ color("Interface","moduleToggleOnColor","Quick menu ON color","624496")
 color("Interface","moduleToggleOffColor","Quick menu OFF color","131022")
 range("Interface","moduleBackgroundOpacity","Quick menu opacity %",48,5,100)
 range("Interface","moduleFadeMs","Quick menu fade duration (ms)",220,80,800)
+-- Appearance roles are persisted separately from the inherited global theme.
+S.appearance={
+ {"Root","Root node","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Main","Main branch","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Visuals","Visuals branch","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Utility","Utility branch","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Interface","Interface branch","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Page","Settings panel","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Header","Title bar","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Modes","View switch","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Search","Search","uiRowColor",47,"uiStrokeColor",0},
+ {"NavButton","Branch button","uiButtonColor",100,"uiStrokeColor",0},
+ {"TabButton","Tab button","uiButtonColor",100,"uiStrokeColor",0},
+ {"Row","Control row","uiRowColor",38,"uiStrokeColor",0},
+ {"Button","Action button","uiButtonColor",100,"uiStrokeColor",0},
+ {"Catalog","Visual catalog","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Top","Top capsule","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Clock","12:00 · Clock","clockGlass","glass","uiStrokeColor","rim"},
+ {"FPS","120 FPS","fpsGlass","glass","uiStrokeColor","rim"},
+ {"Dock","Dock","glassColor","glass","uiStrokeColor","rim"},
+ {"Input","W A S D","uiRowColor",82,"inputColor",45},
+ {"Keybind","Keybinds","uiPanelColor","uiGlassOpacity","uiStrokeColor","rim"},
+ {"Quick","Quick menu","modulePanelColor","moduleBackgroundOpacity","moduleStrokeColor",70},
+ {"QuickRow","Module row","moduleRowColor",100,"moduleStrokeColor",0},
+ {"QuickOn","ON","moduleToggleOnColor",100,"moduleStrokeColor",0},
+ {"QuickOff","OFF","moduleToggleOffColor",100,"moduleStrokeColor",0},
+ {"AFK","AFK screen","afkBgA",100,"afkButtonEdge",0},
+ {"AFKButton","AFK return","afkButtonColor",88,"afkButtonEdge",55},
+ {"Wallhop","Practice widget","uiPanelColor",85,"uiStrokeColor",65},
+}
+S.appearanceBySetting={}
+S.appearanceById={}
+for _,d in S.appearance do
+ local id,label,tint,opacity,edge,edgeOpacity=table.unpack(d)
+ local p="appearance"..id
+ S.appearanceById[id]=d
+ toggle("Interface",p.."Custom",label.." · Individual style",false)
+ color("Interface",p.."Color",label.." · Fill color",S.defs[tint].default)
+ range("Interface",p.."Transparency",label.." · Fill transparency %",100-(if type(opacity)=="number" then opacity else S.defs[opacity].default),0,100)
+ color("Interface",p.."Edge",label.." · Outline color",S.defs[edge].default)
+ range("Interface",p.."EdgeTransparency",label.." · Outline transparency %",100-(if type(edgeOpacity)=="number" then edgeOpacity else S.defs[edgeOpacity].default),0,100)
+ range("Interface",p.."EdgeWidth",label.." · Outline width (tenths px)",12,0,50)
+ for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do S.appearanceBySetting[p..suffix]=id end
+end
 for _,mode in {"GUI","Nodes"} do
  local prefix="ws"..mode
  range("Interface",prefix.."Zoom","Workspace zoom %",100,35,180)
@@ -7683,6 +7816,28 @@ function U.topPanel(parent)
  return panel,rim,{label}
 end
 function U.hex(s) return Color3.fromHex(s) end
+function U.blockStyle(s,id,c,t,e,et,w)
+ local p="appearance"..id
+ if s[p.."Custom"] then
+  return U.hex(s[p.."Color"]),s[p.."Transparency"]/100,U.hex(s[p.."Edge"]),s[p.."EdgeTransparency"]/100,s[p.."EdgeWidth"]/10
+ end
+ return c,t,e,et,w
+end
+function U.applyBlock(obj,s,id,c,t,e,et,w)
+ local color,alpha,edge,edgeAlpha,width=U.blockStyle(s,id,c,t,e,et,w)
+ obj.BackgroundColor3=color;obj.BackgroundTransparency=alpha
+ local rim=obj:FindFirstChildOfClass("UIStroke")
+ if not rim and s["appearance"..id.."Custom"] then rim=U.stroke(obj,edge,edgeAlpha,width) end
+ if rim then
+  rim.Color=edge;rim.Transparency=edgeAlpha;rim.Thickness=width
+  rim.Enabled=width>0 and edgeAlpha<1
+ end
+end
+function U.appearanceSample(s,d)
+ local opacity=if type(d[4])=="number" then d[4] else s[d[4]]
+ local edgeOpacity=if type(d[6])=="number" then d[6] else s[d[6]]
+ return U.blockStyle(s,d[1],U.hex(s[d[3]]),1-opacity/100,U.hex(s[d[5]]),1-edgeOpacity/100,1.15)
+end
 function U.font(s) local w=Enum.FontWeight[s.weight];if s.fontAsset~="" then return Font.new("rbxassetid://"..s.fontAsset,w) end;local base=Font.fromEnum(Enum.Font[s.font]);return Font.new(base.Family,w,base.Style) end
 function U.ease(t,name)
  t=math.clamp(t,0,1)

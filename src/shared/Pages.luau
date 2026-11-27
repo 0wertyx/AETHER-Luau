@@ -914,6 +914,24 @@ function E.render(a,tab,ui)
   ui:note("Choose a branch on the left. Visual collections, interface settings and profiles are organized separately.",50)
   ui:chips({"Interface","Profiles","Halos","Wings"},function(n) ui:open(n) end,2)
  elseif tab=="Interface" then
+  local selected=ui.appearanceSelection
+  local d=selected and S.appearanceById[selected]
+  if d then
+   local p="appearance"..selected
+   ui:title("APPEARANCE / "..d[2]:upper())
+   ui:note("Select a sample below the Interface branch. Individual style overrides the shared theme for this element only.",52)
+   ui:chips({"All settings","Reset this element"},function(name)
+    if name=="All settings" then ui:open("Interface") else
+     local defaults=S.defaults();local patch={}
+     for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do patch[p..suffix]=defaults[p..suffix] end
+     a:patch(patch)
+    end
+   end,2)
+   ui:control(p.."Custom")
+   ui:title("FILL");ui:colorPicker(p.."Color",p.."Transparency")
+   ui:title("OUTLINE");ui:colorPicker(p.."Edge",p.."EdgeTransparency");ui:control(p.."EdgeWidth")
+   return
+  end
   ui:title("INFINITE WORKSPACE")
   ui:note("Middle mouse: pan. Wheel on background or Ctrl + wheel: zoom. Drag node titles to move individual panels. Home resets camera; Shift + Home resets the current workspace. Double-click or double-tap the background to close.",80)
   ui:control("workspaceMode")
