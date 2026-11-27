@@ -525,49 +525,137 @@ local function effectThumbnail(ui,card,a,item,kind)
  end
  fit();ui.page:on(vp:GetPropertyChangedSignal("AbsoluteSize"),fit)
 end
-local function catalog(ui,a,kind,items,selected,active,toggle,selectItem)
- a.catalogPages=a.catalogPages or {}
- local maxPage=math.max(1,math.ceil(#items/9))
+-- Twelve lightweight cards are reused across pages. Only the selected effect
+-- has a real 3D viewport, and selection never implicitly equips it.
+local function visualsHub(a,kind,ui)
+ local items={}
+ if kind=="Halos" then
+  for i,style in S.haloV2Styles do items[#items+1]={id="layer:"..i,name=style,key="haloV2"..i} end
+  for _,style in S.defs.haloStyle.min do items[#items+1]={id="classic:"..style,name=style,classic=true} end
+ elseif kind=="Wings" then
+  for _,style in S.defs.wingStyle.min do items[#items+1]={id=style,name=style} end
+ elseif kind=="Neon" then
+  for i,style in S.defs.neonMotion.min do items[#items+1]={id=style,name=style,icon=({"◇","◉","✧","♥","≈","✦"})[(i-1)%6+1]} end
+  items[#items+1]={id="aura",name="Aura",icon="✺"};items[#items+1]={id="trail",name="Trail",icon="≋"}
+ else
+  for _,row in S.skies do items[#items+1]={id=row[1],name=row[1],sky=row} end
+ end
+ if #items==0 then return end
+ a.catalogPages=a.catalogPages or {};a.catalogSelection=a.catalogSelection or {};a.catalogEditors=a.catalogEditors or {}
+ local maxPage=math.max(1,math.ceil(#items/12))
  local page=math.clamp(a.catalogPages[kind] or 1,1,maxPage)
- a.catalogPages[kind]=page
- local first=(page-1)*9+1
- for start=first,math.min(first+8,#items),3 do
-  local row=ui:row(126,"EffectGallery");row.BackgroundTransparency=1
-  for j=0,2 do
-   local item=items[start+j]
-   if not item or start+j>first+8 then break end
-   local card=U.frame(row,"EffectCard",UDim2.fromScale(j/3,0),UDim2.new(1/3,-4,1,0),Color3.fromRGB(38,31,57),.05)
-   U.corner(card,9);local rim=U.stroke(card,Color3.fromRGB(115,92,157),.5,1)
-   effectThumbnail(ui,card,a,item,kind)
-   local name=U.label(card,item.name,11,UDim2.fromOffset(4,71),UDim2.new(1,-8,0,24))
-   name.TextWrapped=true;name.TextTruncate=Enum.TextTruncate.None;name.TextXAlignment=Enum.TextXAlignment.Center
-   local state=U.button(card,"");state.Position=UDim2.new(0,4,1,-27);state.Size=UDim2.new(if selectItem then .55 else 1,-6,0,23);state.TextSize=9
-   ui.page:on(state.Activated,function() ui:action(function() toggle(item) end) end)
-   local edit
-   if selectItem then
-    edit=U.button(card,"EDIT");edit.Position=UDim2.new(.55,2,1,-27);edit.Size=UDim2.new(.45,-6,0,23);edit.TextSize=9
-    ui.page:on(edit.Activated,function() ui:action(function() selectItem(item) end) end)
-   end
-   ui:watch(function()
-    local on=active(item)
-    state.Text=if on then "ENABLED" else "DISABLED"
-    state.BackgroundColor3=if on then Color3.fromRGB(79,63,124) else Color3.fromRGB(48,40,65)
-    rim.Color=if on then U.hex(a.s.accent) else Color3.fromRGB(115,92,157)
-    rim.Transparency=if on then .12 else .6
-    if edit then edit.Text=if selected==item.id then "CLOSE" else "EDIT" end
-   end)
+ local selected=items[(page-1)*12+1]
+ for _,item in items do if item.id==a.catalogSelection[kind] then selected=item;break end end
+ local function active(item)
+  local s=a.s
+  if kind=="Halos" then return if item.classic then s.halo and s.haloStyle==item.name else s[item.key.."Enabled"] end
+  if kind=="Wings" then return s.wings and s.wingStyle==item.name end
+  if kind=="Neon" then return if item.id=="aura" or item.id=="trail" then s[item.id] else s.neon and s.neonMotion==item.name end
+  return s.ambient and s.skyA==item.sky[2] and s.skyB==item.sky[3] and s.skyC==item.sky[4]
+ end
+ local function equip(item,on)
+  if kind=="Halos" then
+   if item.classic then if on then a:patch({halo=true,haloStyle=item.name}) elseif active(item) then a:set("halo",false) end
+   else a:set(item.key.."Enabled",on) end
+  elseif kind=="Wings" then
+   if on then a:patch({wings=true,wingStyle=item.name}) elseif active(item) then a:set("wings",false) end
+  elseif kind=="Neon" then
+   if item.id=="aura" or item.id=="trail" then a:set(item.id,on)
+   elseif on then a:patch({neon=true,neonMotion=item.name}) elseif active(item) then a:set("neon",false) end
+  else
+   if on then a:patch(S.sky(item.sky)) elseif active(item) then a:set("ambient",false) end
   end
  end
- local info=ui:note(string.format("PAGE %d / %d · %d styles",page,maxPage,#items),24);info.TextXAlignment=Enum.TextXAlignment.Center
- if maxPage>1 then ui:chips({"Previous","Next"},function(n)
-  a.catalogPages[kind]=math.clamp(page+(if n=="Next" then 1 else -1),1,maxPage);ui:open(kind)
- end,2) end
-end
-local function reopenCatalog(ui,a,kind)
- local y=ui.sc.CanvasPosition.Y
- ui:open(kind)
- local page,sc=ui.page,ui.sc
- task.defer(function() if not page.dead and sc.Parent then sc.CanvasPosition=Vector2.new(0,math.max(0,y)) end end)
+ local host=ui.catalogHost
+ local title=U.label(host,kind:upper().."  /  COLLECTION",14,UDim2.fromOffset(12,5),UDim2.new(1,-24,0,30));title.Font=Enum.Font.Code
+ local grid=U.frame(host,"CardGrid",UDim2.fromOffset(9,40),UDim2.new(1,-18,1,-86),nil,1)
+ U.new("UIGridLayout",{CellSize=UDim2.new(.25,-5,1/3,-5),CellPadding=UDim2.fromOffset(6,6),FillDirectionMaxCells=4,SortOrder=Enum.SortOrder.LayoutOrder},grid)
+ local footer=U.frame(host,"CatalogPager",UDim2.new(0,9,1,-37),UDim2.new(1,-18,0,29),nil,1)
+ local prev=U.button(footer,"‹");prev.Size=UDim2.fromOffset(34,29)
+ local nextButton=U.button(footer,"›");nextButton.Position=UDim2.new(1,-34,0,0);nextButton.Size=UDim2.fromOffset(34,29)
+ local info=U.label(footer,"",11,UDim2.fromOffset(38,0),UDim2.new(1,-76,1,0));info.TextXAlignment=Enum.TextXAlignment.Center;info.Font=Enum.Font.Code
+ local cards={}
+ local function drawCards()
+  info.Text=string.format("%d / %d   ·   %d",page,maxPage,#items)
+  for i,card in cards do
+   local item=items[(page-1)*12+i]
+   card.item=item;card.button.Visible=item~=nil
+   if not item then continue end
+   card.name.Text=item.name
+   card.glyph.Text=if kind=="Halos" then ({"◯","◎","◇","△","✧","⬡"})[(i-1)%6+1] elseif kind=="Wings" then "❮  ❯" elseif kind=="Neon" then item.icon or "✦" else "✧"
+   card.glyph.TextColor3=if item.sky then U.hex(item.sky[4]) else U.hex(a.s.accent)
+   card.glyph.BackgroundColor3=if item.sky then U.hex(item.sky[2]) else Color3.fromRGB(32,25,56)
+   card.glyph.BackgroundTransparency=if item.sky then .06 else .45
+   local on=active(item)
+   card.badge.Text=if on then "EQUIPPED" else ""
+   card.rim.Color=if selected==item or on then U.hex(a.s.accent) else Color3.fromRGB(138,112,189)
+   card.rim.Transparency=if selected==item then .02 elseif on then .26 else .72
+   card.button.BackgroundColor3=if selected==item then Color3.fromRGB(74,53,113) else Color3.fromRGB(40,30,65)
+  end
+ end
+ local function buildEditor()
+  local item=selected
+  local ed=ui:makeCatalogEditor()
+  ed:title(item.name:upper())
+  local bar=ed:row(40,"EquipActions");bar.BackgroundTransparency=1
+  local equipButton=U.button(bar,"EQUIP");equipButton.Size=UDim2.new(.62,-4,1,0)
+  local cancel=U.button(bar,"CANCEL");cancel.Position=UDim2.new(.62,3,0,0);cancel.Size=UDim2.new(.38,-3,1,0)
+  equipButton.Font=Enum.Font.Code;cancel.Font=Enum.Font.Code
+  ed.page:on(equipButton.Activated,function() ui:action(function() equip(item,true);ui:sync() end) end)
+  ed.page:on(cancel.Activated,function() ui:action(function() equip(item,false);ui:sync() end) end)
+  ed:watch(function() equipButton.Text=if active(item) then "EQUIPPED" else "EQUIP" end)
+  local preview=ed:row(160,"SelectedPreview");preview.BackgroundTransparency=.3
+  effectThumbnail(ed,preview,a,item,kind)
+  local thumbnail=preview:FindFirstChild("EffectThumbnail")
+  if thumbnail then thumbnail.Size=UDim2.new(1,-8,1,-8) end
+  local editorButton=U.button(ed:row(36,"EditorPill"),if a.catalogEditors[kind] then "EDITOR   −" else "EDITOR   +")
+  editorButton.Font=Enum.Font.Code;editorButton.Size=UDim2.fromScale(1,1);U.corner(editorButton,18)
+  ed.page:on(editorButton.Activated,function() a.catalogEditors[kind]=not a.catalogEditors[kind];buildEditor();ui:sync() end)
+  if a.catalogEditors[kind] then
+   if kind=="Halos" then
+    if item.classic then
+     ed:colorPicker("haloColor")
+     for _,k in {"haloRadius","haloHeight","haloSpin","haloRainbow","haloDetail","haloWalk","haloGlow"} do ed:control(k) end
+    else
+     local k=item.key;ed:colorPicker(k.."Color");ed:colorPicker(k.."Secondary")
+     for _,suffix in {"Radius","Height","Spin","Opacity","Glow","Thickness","Count","Tilt"} do ed:control(k..suffix) end
+    end
+    ed:chips({"Disable all halos"},function()
+     local patch={halo=false};for i in S.haloV2Styles do patch["haloV2"..i.."Enabled"]=false end;a:patch(patch)
+    end,1)
+   elseif kind=="Wings" then ed:group("Wings",{wingStyle=true,wings=true})
+   elseif kind=="Neon" then
+    ed:group("Neon",{visualBloom=true,visualBloomStrength=true,visualBloomRadius=true,neonMotion=true})
+    for _,k in {"auraRate","trailLife","auraColor"} do ed:control(k) end
+   else
+    ed:group("Ambient",{starfallA=true,starfallB=true,bloom=true,worldBloomSize=true,worldExposure=true})
+    ed:colorPicker("starfallA");ed:colorPicker("starfallB")
+   end
+  end
+  ui.sc.CanvasPosition=Vector2.zero
+ end
+ for i=1,12 do
+  local b=U.button(grid,"");b.Name="VisualCard"..i;b.LayoutOrder=i;b.BackgroundTransparency=.27;U.corner(b,12)
+  local rim=U.stroke(b,Color3.fromRGB(138,112,189),.72)
+  local glyph=U.label(b,"",28,UDim2.fromScale(.07,.07),UDim2.fromScale(.86,.56));glyph.TextScaled=true;glyph.TextXAlignment=Enum.TextXAlignment.Center;glyph.Font=Enum.Font.Gotham;U.corner(glyph,9);glyph.Active=false;glyph.Interactable=false
+  U.new("UITextSizeConstraint",{MinTextSize=10,MaxTextSize=38},glyph)
+  local name=U.label(b,"",11,UDim2.fromScale(.04,.66),UDim2.fromScale(.92,.19));name.TextXAlignment=Enum.TextXAlignment.Center;name.TextScaled=true;name.Font=Enum.Font.Code;name.Active=false;name.Interactable=false
+  U.new("UITextSizeConstraint",{MinTextSize=7,MaxTextSize=14},name)
+  local badge=U.label(b,"",9,UDim2.fromScale(.04,.86),UDim2.fromScale(.92,.11));badge.TextScaled=true;badge.TextXAlignment=Enum.TextXAlignment.Center;badge.Active=false;badge.Interactable=false
+  U.new("UITextSizeConstraint",{MinTextSize=6,MaxTextSize=10},badge)
+  local card={button=b,rim=rim,glyph=glyph,name=name,badge=badge};cards[i]=card
+  ui.page:on(b.Activated,function()
+   if not card.item or selected==card.item then return end
+   selected=card.item;a.catalogSelection[kind]=selected.id;buildEditor();ui:sync()
+  end)
+ end
+ local function move(delta)
+  local new=math.clamp(page+delta,1,maxPage)
+  if new==page then return end
+  page=new;a.catalogPages[kind]=page;drawCards()
+ end
+ ui.page:on(prev.Activated,function() move(-1) end);ui.page:on(nextButton.Activated,function() move(1) end)
+ ui:watch(drawCards);buildEditor()
 end
 local function simMap(ui,a)
  local map=ui:row(132,"VirtualMap");map.ClipsDescendants=true;map.BackgroundColor3=U.hex("211E36");local center=U.label(map,"CAMERA ↑",11,UDim2.new(.5,-32,.5,-8),UDim2.fromOffset(70,18));center.TextColor3=U.hex(a.s.accent)
@@ -747,89 +835,15 @@ local function statePanel(ui,a)
  end,1,function() return if a.mode=="Simulator" and a.sim.stateOverride then "State Override" else "" end)
 end
 function E.render(a,tab,ui)
- if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. Custom lock keybind is in Interaction. Menu uses F8 (F7 when F8 is assigned to lock). Native Shift Lock is disabled where Roblox allows it.",43);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme",{topCapsule=true,robloxRail=true,constellationBgA=true,constellationBgB=true,constellationLineA=true,constellationLineB=true,constellationNodeA=true,constellationNodeB=true});ui:title("CONSTELLATION COLORS");for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end;ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
+ if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. Custom lock keybind is in Interaction. Menu uses F8 (F7 when F8 is assigned to lock). Native Shift Lock is disabled where Roblox allows it.",43);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme",{topCapsule=true,robloxRail=true,menuDock=true,menuWidth=true,menuHeight=true,menuFloatX=true,menuFloatY=true,menuResize=true,menuDrag=true,constellationBgA=true,constellationBgB=true,constellationLineA=true,constellationLineB=true,constellationNodeA=true,constellationNodeB=true});ui:title("CONSTELLATION COLORS");for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end;ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
  elseif tab=="HUD" then preview(ui,a,true);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:title("TOP PANEL");for _,v in {"topCapsule","movePanels"} do ui:control(v) end;ui:note("Enable moving panels to drag the AETHER capsule.",34);ui:chips({"Reset panel position"},function() a:patch({topCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness"} do ui:control(k) end;ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);local widgets={"clock","profile","dock","top"};if not table.find(widgets,a.hudTab) then a.hudTab="clock" end;ui:chips(widgets,function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
   if k=="top" then for _,v in {k.."Custom",k.."X",k.."Y"} do ui:control(v) end
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
- elseif tab=="Character" or tab=="Wings" or tab=="Halos" or tab=="Neon" then
-  if tab=="Character" then
-   ui:title("AETHER MOTION STUDIO V12.14")
-   MotionStudio.mount(ui,a)
-  else avatarPreview(ui,a) end
-  if tab=="Halos" then
-   ui:title("HALO COLLECTION")
-   ui:note("Layered halos can be combined. Classic styles share one slot; active layers are automatically spaced vertically.",40)
-   local collection={}
-   for i,style in S.haloV2Styles do collection[#collection+1]={id="layer:"..i,name=style,key="haloV2"..i} end
-   for _,style in S.defs.haloStyle.min do collection[#collection+1]={id="classic:"..style,name=style,classic=true} end
-   local selected=a.haloSelected
-   local function active(item)
-    if item.classic then return a.s.halo and a.s.haloStyle==item.name end
-    return a.s[item.key.."Enabled"]
-   end
-   catalog(ui,a,"Halos",collection,selected,active,function(item)
-    if item.classic then
-     if active(item) then a:set("halo",false) else a:patch({halo=true,haloStyle=item.name}) end
-    else a:set(item.key.."Enabled",not active(item)) end
-   end,function(item)
-    a.haloSelected=if selected==item.id then nil else item.id
-    reopenCatalog(ui,a,"Halos")
-   end)
-   ui:chips({"Disable all halos"},function()
-    local patch={halo=false};for i in S.haloV2Styles do patch["haloV2"..i.."Enabled"]=false end;a:patch(patch)
-   end,1)
-   for _,item in collection do
-    if selected~=item.id then continue end
-    ui:title("CUSTOMIZE / "..string.upper(item.name))
-    if item.classic then
-     ui:colorPicker("haloColor")
-     for _,k in {"haloRadius","haloHeight","haloSpin","haloRainbow","haloDetail","haloWalk","haloGlow"} do ui:control(k) end
-    else
-     local k=item.key
-     ui:colorPicker(k.."Color");ui:colorPicker(k.."Secondary")
-     for _,suffix in {"Radius","Height","Spin","Opacity","Glow","Thickness","Count","Tilt"} do ui:control(k..suffix) end
-    end
-    break
-   end
-  elseif tab=="Wings" then
-   ui:title("WING COLLECTION")
-   local items={}
-   for _,style in S.defs.wingStyle.min do items[#items+1]={id=style,name=style} end
-   catalog(ui,a,"Wings",items,a.wingSelected,function(item) return a.s.wings and a.s.wingStyle==item.name end,function(item)
-    if a.s.wings and a.s.wingStyle==item.name then a:set("wings",false) else a:patch({wings=true,wingStyle=item.name}) end
-   end,function(item)
-    a.wingSelected=if a.wingSelected==item.id then nil else item.id
-    if a.wingSelected then a:patch({wings=true,wingStyle=item.name}) end
-    reopenCatalog(ui,a,"Wings")
-   end)
-   if a.wingSelected then ui:title("CUSTOMIZE / "..string.upper(a.wingSelected));ui:group("Wings",{wingStyle=true,wings=true}) end
-  elseif tab=="Neon" then
-   ui:title("EFFECT COLLECTION")
-   local items={}
-   for i,style in S.defs.neonMotion.min do items[#items+1]={id=style,name=style,icon=({"◇","◉","✧","♥","≈","✦"})[i]} end
-   items[#items+1]={id="aura",name="Aura",icon="✺"};items[#items+1]={id="trail",name="Trail",icon="≋"}
-   catalog(ui,a,"Neon",items,nil,function(item)
-    if item.id=="aura" or item.id=="trail" then return a.s[item.id] end
-    return a.s.neon and a.s.neonMotion==item.name
-   end,function(item)
-    if item.id=="aura" or item.id=="trail" then a:set(item.id,not a.s[item.id])
-    elseif a.s.neon and a.s.neonMotion==item.name then a:set("neon",false)
-    else a:patch({neon=true,neonMotion=item.name}) end
-   end)
-   ui:title("EFFECT SETTINGS");ui:group("Neon",{visualBloom=true,visualBloomStrength=true,visualBloomRadius=true,neonMotion=true})
-   for _,k in {"auraRate","trailLife","auraColor"} do ui:control(k) end
-  end
- elseif tab=="Ambient" then
-  ui:title("AMBIENT COLLECTION")
-  local items={}
-  for _,row in S.skies do items[#items+1]={id=row[1],name=row[1],sky=row} end
-  local function active(item) return a.s.ambient and a.s.skyA==item.sky[2] and a.s.skyB==item.sky[3] and a.s.skyC==item.sky[4] end
-  catalog(ui,a,"Ambient",items,nil,active,function(item)
-   if active(item) then a:set("ambient",false) else a:patch(S.sky(item.sky)) end
-  end)
-  ui:title("AMBIENT SETTINGS")
-  ui:group("Ambient",{starfallA=true,starfallB=true,bloom=true,worldBloomSize=true,worldExposure=true})
-  ui:title("STARFALL COLORS");ui:colorPicker("starfallA");ui:colorPicker("starfallB")
+ elseif tab=="Character" then
+  ui:title("AETHER MOTION STUDIO V12.14")
+  MotionStudio.mount(ui,a)
+ elseif tab=="Wings" or tab=="Halos" or tab=="Neon" or tab=="Ambient" then
+  if ui.catalogHost then visualsHub(a,tab,ui) end
  elseif tab=="Indicators" then preview(ui,a);gallery(ui,a);ui:group(tab,{shape=true});ui:title("PER-PLAYER OVERRIDE");local id=ui:box("UserId or simulator ID","1");local label=ui:box("Label override","");local color=ui:box("Override hex",a.s.arrowA);ui:chips({"Assign current shape","Remove override"},function(k) local p=S.copy(a.s.players);if k=="Assign current shape" then p[id.Text]={label=label.Text,color=color.Text,shape=a.s.shape} else p[id.Text]=nil end;a:set("players",p);ui:message("Overrides updated") end,2)
  elseif tab=="Cursor" then local f=ui:row(94,"CursorPreview");local host=U.frame(f,"OriginalCursorPreview",UDim2.fromScale(.5,.5),UDim2.fromOffset(60,60),nil,1);host.AnchorPoint=Vector2.new(.5,.5);a.preview={cursorHost=host};preset(ui,a,tab);ui:group(tab,{cursorTrailA=true,cursorTrailB=true});ui:title("TRAIL COLORS");ui:colorPicker("cursorTrailA");ui:colorPicker("cursorTrailB");ui:note("Cursor animation never moves its click hotspot. Enable Show hotspot marker to compare the real mouse position with the skin; use Pointer offset X/Y only for calibration. EditableImage renders desktop SVG; imports need an authorized asset ID.",57)
  elseif tab=="Interaction" then
