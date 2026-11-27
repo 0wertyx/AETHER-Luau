@@ -1344,7 +1344,7 @@ function UI.new(app,gui,scope)
  self.nav.ZIndex=4
  self.contentGlass=U.frame(self.panel,"ContentGlass",nil,nil,Color3.fromRGB(25,20,45),.55);U.corner(self.contentGlass,18);U.stroke(self.contentGlass,Color3.fromRGB(184,151,243),.68);self.contentGlass.Active=false;self.contentGlass.Interactable=false
  self.pageBox.ZIndex=3;self.search.ZIndex=4
- self.searchResults=U.new("ScrollingFrame",{Name="FunctionSearchResults",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=4,Visible=false},self.panel)
+ self.searchResults=U.new("ScrollingFrame",{Name="FunctionSearchResults",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.None,ScrollingDirection=Enum.ScrollingDirection.Y,ElasticBehavior=Enum.ElasticBehavior.Never,ScrollBarThickness=4,Visible=false},self.panel)
  U.new("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder},self.searchResults)
  self.searchResults.ZIndex=3
  self.header.ZIndex=3;self.navGlass.ZIndex=3;self.contentGlass.ZIndex=3;self.status.ZIndex=3
@@ -1520,10 +1520,67 @@ function UI.new(app,gui,scope)
   local s=self.app.s;local prefix=workspacePrefix(s)
   return {zoom=s[prefix.."Zoom"]/100,pan=Vector2.new(s[prefix.."PanX"],s[prefix.."PanY"])}
  end
+ -- Keep scroll content in logical workspace units, not screen pixels.
+ -- AutomaticCanvasSize under an ancestor UIScale can double-scale the list.
+ function self:syncWorkspaceCanvas(sc)
+  if not sc or not sc.Parent then return end
+  local list=sc:FindFirstChildOfClass("UIListLayout")
+  if not list then return end
+  local z=math.max(.01,self.workspaceScale.Scale)
+  local h=list.AbsoluteContentSize.Y/z
+  local padding=sc:FindFirstChildOfClass("UIPadding")
+  if padding then
+   h+=padding.PaddingTop.Offset+padding.PaddingBottom.Offset+(padding.PaddingTop.Scale+padding.PaddingBottom.Scale)*sc.AbsoluteSize.Y/z
+  end
+  local size=UDim2.fromOffset(0,math.max(0,math.ceil(h)))
+  if sc.CanvasSize~=size then sc.CanvasSize=size end
+ end
+ function self:freezeWorkspaceScroll()
+  local oldZoom=math.max(.01,self.workspaceScale.Scale)
+  if not self.scrollFreeze then
+   self.scrollFreeze={}
+   for _,sc in {self.sc,self.searchResults} do
+    if sc and sc.Parent then
+     local range=math.max(0,sc.AbsoluteCanvasSize.Y-sc.AbsoluteWindowSize.Y)
+     self.scrollFreeze[sc]={logicalY=sc.CanvasPosition.Y/oldZoom,atBottom=range>0 and sc.CanvasPosition.Y>=range-1}
+     sc.ScrollingEnabled=false
+    end
+   end
+  end
+  self.scrollFreezeFrames=3
+ end
+ function self:stepWorkspaceScroll()
+  local frozen=self.scrollFreeze
+  local ctrl=Input:IsKeyDown(Enum.KeyCode.LeftControl) or Input:IsKeyDown(Enum.KeyCode.RightControl)
+  local touch=Input:GetLastInputType()==Enum.UserInputType.Touch
+  local pos=Input:GetMouseLocation()
+  for _,sc in {self.sc,self.searchResults} do
+   if sc and sc.Parent then
+    self:syncWorkspaceCanvas(sc)
+    local saved=frozen and frozen[sc]
+    local parentVisible=sc~=self.sc or self.pageBox.Visible
+    local enabled=self.opened and not self.afkScreen.Visible and parentVisible and sc.Visible and not frozen and not self.workspacePan and not self.drag and not ctrl and (touch or inside(sc,pos))
+    if sc.ScrollingEnabled~=enabled then sc.ScrollingEnabled=enabled end
+    if saved then
+     local maxY=math.max(0,sc.AbsoluteCanvasSize.Y-sc.AbsoluteWindowSize.Y)
+     local y=if saved.atBottom then maxY else math.clamp(saved.logicalY*self.workspaceScale.Scale,0,maxY)
+     local position=Vector2.new(0,y)
+     if sc.CanvasPosition~=position then sc.CanvasPosition=position end
+    end
+   end
+  end
+  if frozen then
+   self.scrollFreezeFrames-=1
+   if self.scrollFreezeFrames<=0 then self.scrollFreeze=nil end
+  end
+ end
  function self:applyWorkspaceCamera()
   local state=self:workspaceCamera()
   local position=UDim2.new(.5,state.pan.X*state.zoom,.5,state.pan.Y*state.zoom)
-  if self.workspaceScale.Scale~=state.zoom then self.workspaceScale.Scale=state.zoom end
+  if self.workspaceScale.Scale~=state.zoom then
+   self:freezeWorkspaceScroll()
+   self.workspaceScale.Scale=state.zoom
+  end
   if self.workspace.Position~=position then self.workspace.Position=position end
  end
  function self:commitWorkspaceCamera()
@@ -1940,7 +1997,7 @@ function UI.new(app,gui,scope)
   local ctrl=Input:IsKeyDown(Enum.KeyCode.LeftControl) or Input:IsKeyDown(Enum.KeyCode.RightControl)
   local pos=Input:GetMouseLocation()
   if not ctrl then
-   for _,obj in {self.pageBox,self.searchResults,self.search,self.header,self.modeBar,self.navGlass} do if inside(obj,pos) then return end end
+   for _,obj in {self.pageBox,self.searchResults,self.search,self.header,self.modeBar,self.navGlass,self.contentGlass,self.rootDrag,self.pageDrag} do if inside(obj,pos) then return end end
    for _,r in self.branchCards do if inside(r.frame,pos) then return end end
   end
   local state=self:workspaceCamera();local zoom=math.clamp(state.zoom*1.12^i.Position.Z,.35,1.8)
@@ -1967,6 +2024,7 @@ function UI:animateBackground(t)
  local s=self.app.s
  local dt=math.clamp(t-(self.motionAt or t-1/60),0,.1)
  self.motionAt=t
+ self:stepWorkspaceScroll()
  self:stepAFK(dt)
  self:stepWorkspaceSparks(dt)
  self:stepWorkspaceNode(dt)
@@ -2379,6 +2437,8 @@ function UI:refreshSearch()
  end
  self.searchEmpty.Visible=#matches==0
  for i=math.min(60,#matches)+1,#self.searchPool do self.searchPool[i].Visible=false end
+ if self.scrollFreeze then self.scrollFreeze[self.searchResults]=nil end
+ self:syncWorkspaceCanvas(self.searchResults)
  self.searchResults.CanvasPosition=Vector2.zero
 end
 function UI:jumpTo(item)
@@ -2405,6 +2465,8 @@ function UI:jumpTo(item)
   if self.sc~=sc or not sc.Parent then return end
   local row=findRow()
   if row then
+   self:syncWorkspaceCanvas(sc)
+   if self.scrollFreeze then self.scrollFreeze[sc]=nil end
    local y=row.AbsolutePosition.Y-sc.AbsolutePosition.Y+sc.CanvasPosition.Y
    sc.CanvasPosition=Vector2.new(0,math.clamp(y-6,0,math.max(0,sc.AbsoluteCanvasSize.Y-sc.AbsoluteWindowSize.Y)))
   end
@@ -2425,14 +2487,14 @@ function UI:open(tab)
  local owner=self;self.page:add(function() if owner.editorAdapter then owner.editorAdapter.page:clear();owner.editorAdapter=nil end end)
  self.pageProgress=1
  transition(self.pageBox,1)
- local sc=self.page:add(U.new("ScrollingFrame",{Name="Page_"..tab,Size=UDim2.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=4,ScrollBarImageColor3=dim,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y},self.pageBox))
+ local sc=self.page:add(U.new("ScrollingFrame",{Name="Page_"..tab,Size=UDim2.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=4,ScrollBarImageColor3=dim,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.None,ScrollingDirection=Enum.ScrollingDirection.Y,ElasticBehavior=Enum.ElasticBehavior.Never},self.pageBox))
  U.new("UIListLayout",{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder},sc);self.sc=sc
  if visualTabs[tab] then
   self.catalogHost=self.page:add(U.frame(self.pageBox,"VisualCatalog",nil,nil,Color3.fromRGB(24,19,43),.49));U.corner(self.catalogHost,17);U.stroke(self.catalogHost,Color3.fromRGB(181,145,244),.64)
   sc.BackgroundColor3=Color3.fromRGB(25,20,44);sc.BackgroundTransparency=.49;U.corner(sc,16)
   U.new("UIPadding",{PaddingTop=UDim.new(0,8),PaddingBottom=UDim.new(0,8),PaddingLeft=UDim.new(0,8),PaddingRight=UDim.new(0,4)},sc)
  else self:title(tab:upper().."   /   AETHER VISUALS HUB") end
- self:layout();self.app:page(tab,self);self:sync()
+ self:layout();self.app:page(tab,self);self:sync();self:syncWorkspaceCanvas(sc)
  if self.app.store and self.app.s.lastPage~=tab then self.app:set("lastPage",tab) end
 end
 -- A dedicated short-lived editor scope keeps grid cards and navigation intact.
