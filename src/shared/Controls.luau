@@ -223,31 +223,117 @@ function UI.new(app,gui,scope)
  end
  scope:add(function() self:setWorkspaceKeyboard(false) end)
  -- Session-only full-screen AFK view, independent of the node canvas.
- self.afkEnabled=false;self.afkCommand=""
- self.afkScreen=U.new("TextButton",{Name="AFKScreen",Text="",AutoButtonColor=false,Active=true,Modal=true,Visible=false,Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.fromRGB(8,7,16),BackgroundTransparency=0,BorderSizePixel=0,ZIndex=100},self.stage)
- U.gradient(self.afkScreen,Color3.fromRGB(9,8,17),Color3.fromRGB(27,20,43),90)
- local afkBrand=U.label(self.afkScreen,"A E T H E R",14,UDim2.new(.5,0,.5,-100),UDim2.new(1,-24,0,24))
- afkBrand.AnchorPoint=Vector2.new(.5,.5);afkBrand.TextXAlignment=Enum.TextXAlignment.Center;afkBrand.TextColor3=Color3.fromRGB(173,158,211)
- local afkTitle=U.label(self.afkScreen,"AFK",46,UDim2.fromScale(.5,.5),UDim2.new(1,-24,0,68))
- afkTitle.AnchorPoint=Vector2.new(.5,.5);afkTitle.TextXAlignment=Enum.TextXAlignment.Center;afkTitle.TextColor3=Color3.fromRGB(242,234,255)
+ self.afkEnabled=false;self.afkCommand="";self.afkTarget=false;self.afkProgress=0
+ self.afkScreen=U.new("TextButton",{Name="AFKScreen",Text="",AutoButtonColor=false,Active=true,Modal=false,Visible=false,Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.new(1,1,1),BackgroundTransparency=1,BorderSizePixel=0,ZIndex=100},self.stage)
+ self.afkGradient=U.gradient(self.afkScreen,Color3.fromRGB(9,8,17),Color3.fromRGB(27,20,43),90)
+ local pattern=U.frame(self.afkScreen,"BackgroundPattern",nil,nil,nil,1)
+ pattern.Active=false;pattern.Interactable=false;pattern.ClipsDescendants=true;pattern.ZIndex=1
+ self.afkImage=U.new("ImageLabel",{Name="CustomBackground",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,ImageTransparency=1,ScaleType=Enum.ScaleType.Crop,Visible=false,Active=false,Interactable=false},pattern)
+ self.afkDecor={}
+ local function addDecor(style,frame,stroke,alpha)
+  frame.Active=false;frame.Interactable=false;frame.Visible=false
+  self.afkDecor[#self.afkDecor+1]={style=style,frame=frame,stroke=stroke,alpha=alpha}
+ end
+ for i=1,36 do
+  local r=if i%7==0 then 3 else 2
+  local dot=U.frame(pattern,"AFKStar",UDim2.fromScale((i*.6180339)%1,(i*.4142135)%1),UDim2.fromOffset(r,r),Color3.new(1,1,1),1)
+  dot.AnchorPoint=Vector2.new(.5,.5);U.corner(dot,8)
+  addDecor("Stars",dot,nil,.35+(i%5)*.12)
+ end
+ for i=1,19 do
+  local v=U.frame(pattern,"GridVertical",UDim2.fromScale(i/20,0),UDim2.new(0,1,1,0),Color3.new(1,1,1),1)
+  addDecor("Grid",v,nil,.35)
+ end
+ for i=1,11 do
+  local h=U.frame(pattern,"GridHorizontal",UDim2.fromScale(0,i/12),UDim2.new(1,0,0,1),Color3.new(1,1,1),1)
+  addDecor("Grid",h,nil,.35)
+ end
+ for i=1,5 do
+  local ring=U.frame(pattern,"Orbit",UDim2.fromScale(.5,.5),UDim2.fromScale(.23+i*.17,.23+i*.17),nil,1)
+  ring.AnchorPoint=Vector2.new(.5,.5);U.new("UIAspectRatioConstraint",{AspectRatio=1,DominantAxis=Enum.DominantAxis.Height},ring);U.new("UICorner",{CornerRadius=UDim.new(.5,0)},ring)
+  addDecor("Orbits",ring,U.stroke(ring,Color3.new(1,1,1),1,1),.65-i*.06)
+ end
+ self.afkBrand=U.label(self.afkScreen,"A E T H E R",14,UDim2.new(.5,0,.5,-100),UDim2.new(1,-24,0,24))
+ self.afkBrand.AnchorPoint=Vector2.new(.5,.5);self.afkBrand.TextXAlignment=Enum.TextXAlignment.Center;self.afkBrand.ZIndex=2
+ self.afkTitle=U.label(self.afkScreen,"AFK",46,UDim2.fromScale(.5,.5),UDim2.new(1,-24,0,68))
+ self.afkTitle.AnchorPoint=Vector2.new(.5,.5);self.afkTitle.TextXAlignment=Enum.TextXAlignment.Center;self.afkTitle.ZIndex=2
  self.afkDetail=U.label(self.afkScreen,"",14,UDim2.new(.5,0,.5,54),UDim2.new(1,-32,0,42))
- self.afkDetail.AnchorPoint=Vector2.new(.5,.5);self.afkDetail.TextXAlignment=Enum.TextXAlignment.Center;self.afkDetail.TextWrapped=true
- self.afkDetail.TextColor3=Color3.fromRGB(178,166,201)
+ self.afkDetail.AnchorPoint=Vector2.new(.5,.5);self.afkDetail.TextXAlignment=Enum.TextXAlignment.Center;self.afkDetail.TextWrapped=true;self.afkDetail.ZIndex=2
  self.afkBack=U.button(self.afkScreen,"RETURN TO WORKSPACE")
  self.afkBack.AnchorPoint=Vector2.new(.5,.5);self.afkBack.Position=UDim2.new(.5,0,.5,122);self.afkBack.Size=UDim2.fromOffset(210,38)
- self.afkBack.TextSize=12;self.afkBack.BackgroundColor3=Color3.fromRGB(51,41,75)
- U.stroke(self.afkBack,Color3.fromRGB(183,151,240),.55)
+ self.afkBack.TextSize=12;self.afkBack.ZIndex=3;self.afkBack.AutoButtonColor=false
+ self.afkBackRim=U.stroke(self.afkBack,Color3.fromRGB(183,151,240),1)
+ function self:applyAFKTheme()
+  local s=self.app.s
+  local key=table.concat({s.afkBackground,s.afkBgA,s.afkBgB,s.afkPatternColor,s.afkBrandColor,s.afkTitleColor,s.afkDetailColor,s.afkButtonColor,s.afkButtonText,s.afkButtonEdge,s.afkImageTint,s.afkGradientAngle,s.afkPatternOpacity,s.afkImageOpacity,s.afkImageAsset},":")
+  if self.afkThemeKey==key then return end
+  self.afkThemeKey=key
+  local a,b=U.hex(s.afkBgA),U.hex(s.afkBgB)
+  self.afkGradient.Color=ColorSequence.new(a,if s.afkBackground=="Solid" then a else b)
+  self.afkGradient.Rotation=s.afkGradientAngle
+  self.afkBrand.TextColor3=U.hex(s.afkBrandColor);self.afkTitle.TextColor3=U.hex(s.afkTitleColor);self.afkDetail.TextColor3=U.hex(s.afkDetailColor)
+  self.afkBack.BackgroundColor3=U.hex(s.afkButtonColor);self.afkBack.TextColor3=U.hex(s.afkButtonText);self.afkBackRim.Color=U.hex(s.afkButtonEdge)
+  self.afkImage.ImageColor3=U.hex(s.afkImageTint)
+  self.afkImage.Image=if s.afkBackground=="Image" and s.afkImageAsset~="" then "rbxassetid://"..s.afkImageAsset else ""
+  self.afkImage.Visible=s.afkBackground=="Image" and s.afkImageAsset~=""
+  local color=U.hex(s.afkPatternColor)
+  for _,p in self.afkDecor do
+   p.frame.Visible=p.style==s.afkBackground
+   if p.stroke then p.stroke.Color=color else p.frame.BackgroundColor3=color end
+  end
+  self.afkLastAlpha=nil
+ end
+ function self:paintAFK(alpha)
+  if self.afkLastAlpha==alpha then return end
+  self.afkLastAlpha=alpha
+  local s=self.app.s
+  self.afkScreen.BackgroundTransparency=1-alpha
+  for _,label in {self.afkBrand,self.afkTitle,self.afkDetail,self.afkBack} do label.TextTransparency=1-alpha end
+  self.afkBack.BackgroundTransparency=1-.88*alpha
+  self.afkBackRim.Transparency=1-.55*alpha
+  self.afkImage.ImageTransparency=1-alpha*s.afkImageOpacity/100
+  for _,p in self.afkDecor do
+   if p.frame.Visible then
+    local transparency=1-alpha*s.afkPatternOpacity/100*p.alpha
+    if p.stroke then p.stroke.Transparency=transparency else p.frame.BackgroundTransparency=transparency end
+   end
+  end
+ end
+ function self:stepAFK(dt)
+  if not self.afkScreen.Visible then return end
+  local s=self.app.s
+  local target=if self.afkTarget then 1 else 0
+  local delta=dt/math.max(.1,s.afkFadeMs/1000)
+  if s.reduce then self.afkProgress=target
+  elseif self.afkProgress<target then self.afkProgress=math.min(target,self.afkProgress+delta)
+  elseif self.afkProgress>target then self.afkProgress=math.max(target,self.afkProgress-delta) end
+  self:paintAFK(U.ease(self.afkProgress,"Sine"))
+  if not self.afkTarget and self.afkProgress<=0 then
+   self.afkScreen.Visible=false;self.afkScreen.Modal=false;self.afkScreen.Interactable=false
+   if self.panel then self.panel.Interactable=self.opened end
+  end
+ end
  local function afkFailure(message,err)
   self.afkEnabled=false;self.afkVirtualUser=nil
   self.afkDetail.Text=message
   self.app:log("AFK",tostring(err or message))
  end
- function self:setAFK(on)
+ function self:setAFK(on,preview)
   self.afkEnabled=false;self.afkVirtualUser=nil;self.afkCommand=""
-  self.afkScreen.Visible=on==true
-  if self.panel then self.panel.Interactable=self.opened and not on end
-  if not on then return end
+  self.afkTarget=on==true
+  self.afkBack.Interactable=self.afkTarget
+  if not on then
+   self.afkScreen.Modal=self.opened and self.afkScreen.Visible
+   self.afkScreen.Interactable=self.opened and self.afkScreen.Visible
+   if self.app.s.reduce then self:stepAFK(0) end
+   return
+  end
+  self:applyAFKTheme();self:paintAFK(U.ease(self.afkProgress,"Sine"))
+  self.afkScreen.Visible=true;self.afkScreen.Interactable=true;self.afkScreen.Modal=true
+  if self.panel then self.panel.Interactable=false end
   self.drag=nil;self.workspacePan=nil;self:finishWorkspaceNode();self:clearWorkspaceSparks();self:commitWorkspaceCamera()
+  if self.app.s.reduce then self:stepAFK(0) end
+  if preview then self.afkDetail.Text="Appearance preview";return end
   if not afkPlayer or self.app.mode~="Game" then afkFailure("AFK unavailable outside game mode");return end
   local ok,err=pcall(function()
    self.afkVirtualUser=game:GetService("VirtualUser")
@@ -969,7 +1055,7 @@ function UI.new(app,gui,scope)
     else
      self.afkCommand=(self.afkCommand..letter):sub(-3)
      self.afkKeyAt=now
-     if self.afkCommand=="AFK" then self:setAFK(not self.afkScreen.Visible);return end
+     if self.afkCommand=="AFK" then self:setAFK(not self.afkTarget);return end
     end
    end
   end
@@ -1018,6 +1104,7 @@ function UI:animateBackground(t)
  local s=self.app.s
  local dt=math.clamp(t-(self.motionAt or t-1/60),0,.1)
  self.motionAt=t
+ self:stepAFK(dt)
  self:stepWorkspaceSparks(dt)
  self:stepWorkspaceNode(dt)
  local immediate=s.reduce or s.menuTransition=="Off"
@@ -1507,6 +1594,7 @@ function UI:note(str,h) local f=self:row(h or 36,"Note");f.BackgroundTransparenc
 function UI:watch(fn) table.insert(self.syncs,fn);fn() end
 function UI:sync()
  if not self.panel.Parent then return end
+ self:applyAFKTheme()
  local st=self.app.s
  local space=Color3.fromRGB(7,9,22)
  self.backgroundGradient.Color=ColorSequence.new(U.hex(st.constellationBgA):Lerp(space,.64),U.hex(st.constellationBgB):Lerp(space,.53))

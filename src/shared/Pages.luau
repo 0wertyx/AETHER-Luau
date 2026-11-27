@@ -918,6 +918,24 @@ function E.render(a,tab,ui)
   ui:note("Middle mouse: pan. Wheel on background or Ctrl + wheel: zoom. Drag node titles to move individual panels. Home resets camera; Shift + Home resets the current workspace. Double-click or double-tap the background to close.",80)
   ui:control("workspaceMode")
   ui:chips({"Reset camera","Reset current workspace"},function(n) ui:resetWorkspace(n=="Reset current workspace") end,2)
+  ui:title("AFK SCREEN")
+  ui:note("Type AFK in the workspace to open its full-screen view. Preview only changes appearance; it does not activate Anti-AFK.",48)
+  ui:chips({"Preview AFK screen","Reset AFK appearance"},function(name)
+   if name=="Preview AFK screen" then ui:setAFK(true,true)
+   else
+    local defaults=S.defaults();local patch={}
+    for key,value in defaults do if key:sub(1,3)=="afk" then patch[key]=value end end
+    a:patch(patch)
+   end
+  end,2)
+  ui:control("afkBackground")
+  ui:control("afkFadeMs")
+  ui:control("afkGradientAngle")
+  ui:control("afkPatternOpacity")
+  ui:control("afkImageAsset")
+  ui:control("afkImageOpacity")
+  ui:note("Image mode uses a Roblox image asset ID. Only images accessible in the current experience can load.",36)
+  for _,k in {"afkBgA","afkBgB","afkPatternColor","afkBrandColor","afkTitleColor","afkDetailColor","afkButtonColor","afkButtonText","afkButtonEdge","afkImageTint"} do ui:colorPicker(k) end
   ui:title("LAYOUT & WIDGETS")
   ui:chips({"Edit GUI size / position"},function() ui:editLayout(true) end,1)
   ui:chips({"Edit HUD size / position"},function() a:set("movePanels",true);a:editHUD(true) end,1)
