@@ -749,6 +749,62 @@ function E.render(a,tab,ui)
    ui.page:add(function() if a.peers.statusLabel==peerStatus then a.peers.statusLabel=nil end end)
   end
   ui:watch(function() peerStatus.Text=if a.peers then a.peers.status else "Peer relay unavailable" end)
+  ui:title("AIR REDIRECTION")
+  ui:control("airControl");ui:control("airControlStrength");ui:control("airControlSpeed");ui:control("airTiltAngle");ui:control("bunnyHop")
+  local hopStatus=ui:note("",40)
+  ui:watch(function() hopStatus.Text=string.format("Bunny Hop: %s | requests: %d",if not a.s.bunnyHop then "Off" else (a.bunnyHopStatus or "Hold Space"),a.bunnyHopCount or 0) end)
+  local airStatus=ui:note("",44)
+  ui:watch(function() airStatus.Text=if a.mode=="Simulator" then "Simulator: steer with movement controls. Horizontal momentum is preserved." else "Live: steer in midair. Jump height is unchanged; game physics may override local steering." end)
+  local airDebug=ui:note("",64)
+  ui:watch(function() airDebug.Text="Last airborne sample: "..(a.airDiagnostic or "No airborne state recorded") end)
+  local airLoop=ui:note("",52)
+  ui:watch(function() airLoop.Text=string.format("Physics ticks: %d | velocity writes: %d | strength: %d%%",a.airTicks or 0,a.airWrites or 0,a.s.airControlStrength) end)
+  local airInput=ui:note("",40)
+  ui:watch(function() airInput.Text=string.format("Input: %s | air speed: %d%%",a.airInputSource or "Waiting",a.s.airControlSpeed) end)
+  local airDetection=ui:note("",64)
+  ui:watch(function() airDetection.Text=string.format("Air frames: %d | peak vertical speed: %.1f | UI guard: off",a.airObserved or 0,a.airPeakVertical or 0) end)
+  local airObserved=ui:note("",64)
+  ui:watch(function() airObserved.Text="Last detection: "..(a.airLastDetection or "No jump detected") end)
+  local airReason=ui:note("",64)
+  ui:watch(function() airReason.Text="Last active check: "..(a.airLastActive or "No physics callback recorded") end)
+  local airTrack=ui:note("",60)
+  ui:watch(function() airTrack.Text=a.airTracking or "Waiting for live character" end)
+  local airPosition=ui:note("",64)
+  ui:watch(function()
+   local m=a.airMonitor
+   airPosition.Text=if m then string.format("Jump requests: %d | height range: %.2f | position travel: %.2f | peak Y velocity: %.2f",a.airJumpRequests or 0,m.maxY-m.minY,m.travel,m.peakY) else "No live position sample"
+  end)
+  ui:title("CAMERA")
+  preset(ui,a,"Camera");ui:group("Camera")
+  ui:title("CUSTOM LOCK / KEYBIND")
+  local keyButton=U.button(ui:row(38,"LockKeyCapture"),"")
+  keyButton.Size=UDim2.new(1,-8,1,-8);keyButton.Position=UDim2.fromOffset(4,4)
+  ui.page:on(keyButton.Activated,function() a.bindingLockKey=not a.bindingLockKey;ui:sync() end)
+  ui:watch(function() keyButton.Text=if a.bindingLockKey then "PRESS ANY KEY · click to cancel" else "CHANGE KEY · "..a.s.lockKey end)
+  ui:note("All keyboard codes can be selected. Block both Shift keys suppresses Shift actions such as sprint; AETHER can still observe its selected key. Click again to cancel.",50)
+  ui.page:add(function() a.bindingLockKey=false end)
+  local lockStatus=ui:note("",45)
+  ui:watch(function()
+   lockStatus.Text=if a.view:nativeLockAvailable() then "Native Shift Lock is controlled by the place. In Roblox Settings turn Shift Lock Switch off. Use Block both Shift keys to suppress their standard input actions."
+    elseif not a.s.lock then "CUSTOM LOCK OFF · "..a.s.lockKey.." toggles; "..S.menuKey(a.s).." opens Studio."
+    elseif a.s.cameraMode~="Follow" then "CUSTOM LOCK WAITING · Select Follow camera."
+    else "CUSTOM LOCK READY · "..a.s.lockKey.." toggles AETHER only. Shift input blocking follows the Block both Shift keys setting."
+  end)
+  ui:title("SHIFT-LOCK / RETICLE")
+  for _,k in {"cross","crossScale","crossAlpha"} do ui:control(k) end
+  local inputKeys={gameInputPassthrough=true,peerVisuals=true,peerQuality=true,lockKey=true,inputOverlay=true,inputMouse=true,inputX=true,inputY=true,inputScale=true,inputOpacity=true,inputColor=true,wallhopHelper=true,wallhopX=true,wallhopY=true,wallhopScale=true,wallhopOpacity=true}
+  ui:group(tab,inputKeys)
+  ui:title("LIVE INPUT DISPLAY")
+  local m2Status=ui:note("",76)
+  ui:watch(function()
+   m2Status.Text=string.format("%s | presses: %d\n%s | releases: %d",a.m2Last or "No M2 down",a.m2Presses or 0,a.m2LastRelease or "No M2 up",a.m2Releases or 0)
+  end)
+  ui:note("Shows your own WASD, Space, Shift and mouse presses. Read-only visualization: no synthetic inputs or game automation.",44)
+  for _,k in {"inputOverlay","inputMouse","inputX","inputY","inputScale","inputOpacity","inputColor"} do ui:control(k) end
+  ui:title("WALLHOP HELPER")
+  ui:note("Practice display: tracks your jump and horizontal camera rotation. No automatic jumps or camera movement.",42)
+  for _,k in {"wallhopHelper","wallhopX","wallhopY","wallhopScale","wallhopOpacity"} do ui:control(k) end
+ elseif tab=="Volleyball" then
   if a.volleyball then
    local vb=a.volleyball
    local lp=game:GetService("Players").LocalPlayer
@@ -947,61 +1003,6 @@ function E.render(a,tab,ui)
     if tiltRefresh>=.25 then tiltRefresh=0;if ui.opened then refreshTilt() end end
    end)
   end
-  ui:title("AIR REDIRECTION")
-  ui:control("airControl");ui:control("airControlStrength");ui:control("airControlSpeed");ui:control("airTiltAngle");ui:control("bunnyHop")
-  local hopStatus=ui:note("",40)
-  ui:watch(function() hopStatus.Text=string.format("Bunny Hop: %s | requests: %d",if not a.s.bunnyHop then "Off" else (a.bunnyHopStatus or "Hold Space"),a.bunnyHopCount or 0) end)
-  local airStatus=ui:note("",44)
-  ui:watch(function() airStatus.Text=if a.mode=="Simulator" then "Simulator: steer with movement controls. Horizontal momentum is preserved." else "Live: steer in midair. Jump height is unchanged; game physics may override local steering." end)
-  local airDebug=ui:note("",64)
-  ui:watch(function() airDebug.Text="Last airborne sample: "..(a.airDiagnostic or "No airborne state recorded") end)
-  local airLoop=ui:note("",52)
-  ui:watch(function() airLoop.Text=string.format("Physics ticks: %d | velocity writes: %d | strength: %d%%",a.airTicks or 0,a.airWrites or 0,a.s.airControlStrength) end)
-  local airInput=ui:note("",40)
-  ui:watch(function() airInput.Text=string.format("Input: %s | air speed: %d%%",a.airInputSource or "Waiting",a.s.airControlSpeed) end)
-  local airDetection=ui:note("",64)
-  ui:watch(function() airDetection.Text=string.format("Air frames: %d | peak vertical speed: %.1f | UI guard: off",a.airObserved or 0,a.airPeakVertical or 0) end)
-  local airObserved=ui:note("",64)
-  ui:watch(function() airObserved.Text="Last detection: "..(a.airLastDetection or "No jump detected") end)
-  local airReason=ui:note("",64)
-  ui:watch(function() airReason.Text="Last active check: "..(a.airLastActive or "No physics callback recorded") end)
-  local airTrack=ui:note("",60)
-  ui:watch(function() airTrack.Text=a.airTracking or "Waiting for live character" end)
-  local airPosition=ui:note("",64)
-  ui:watch(function()
-   local m=a.airMonitor
-   airPosition.Text=if m then string.format("Jump requests: %d | height range: %.2f | position travel: %.2f | peak Y velocity: %.2f",a.airJumpRequests or 0,m.maxY-m.minY,m.travel,m.peakY) else "No live position sample"
-  end)
-  ui:title("CAMERA")
-  preset(ui,a,"Camera");ui:group("Camera")
-  ui:title("CUSTOM LOCK / KEYBIND")
-  local keyButton=U.button(ui:row(38,"LockKeyCapture"),"")
-  keyButton.Size=UDim2.new(1,-8,1,-8);keyButton.Position=UDim2.fromOffset(4,4)
-  ui.page:on(keyButton.Activated,function() a.bindingLockKey=not a.bindingLockKey;ui:sync() end)
-  ui:watch(function() keyButton.Text=if a.bindingLockKey then "PRESS ANY KEY · click to cancel" else "CHANGE KEY · "..a.s.lockKey end)
-  ui:note("All keyboard codes can be selected. Block both Shift keys suppresses Shift actions such as sprint; AETHER can still observe its selected key. Click again to cancel.",50)
-  ui.page:add(function() a.bindingLockKey=false end)
-  local lockStatus=ui:note("",45)
-  ui:watch(function()
-   lockStatus.Text=if a.view:nativeLockAvailable() then "Native Shift Lock is controlled by the place. In Roblox Settings turn Shift Lock Switch off. Use Block both Shift keys to suppress their standard input actions."
-    elseif not a.s.lock then "CUSTOM LOCK OFF · "..a.s.lockKey.." toggles; "..S.menuKey(a.s).." opens Studio."
-    elseif a.s.cameraMode~="Follow" then "CUSTOM LOCK WAITING · Select Follow camera."
-    else "CUSTOM LOCK READY · "..a.s.lockKey.." toggles AETHER only. Shift input blocking follows the Block both Shift keys setting."
-  end)
-  ui:title("SHIFT-LOCK / RETICLE")
-  for _,k in {"cross","crossScale","crossAlpha"} do ui:control(k) end
-  local inputKeys={gameInputPassthrough=true,peerVisuals=true,peerQuality=true,lockKey=true,inputOverlay=true,inputMouse=true,inputX=true,inputY=true,inputScale=true,inputOpacity=true,inputColor=true,wallhopHelper=true,wallhopX=true,wallhopY=true,wallhopScale=true,wallhopOpacity=true}
-  ui:group(tab,inputKeys)
-  ui:title("LIVE INPUT DISPLAY")
-  local m2Status=ui:note("",76)
-  ui:watch(function()
-   m2Status.Text=string.format("%s | presses: %d\n%s | releases: %d",a.m2Last or "No M2 down",a.m2Presses or 0,a.m2LastRelease or "No M2 up",a.m2Releases or 0)
-  end)
-  ui:note("Shows your own WASD, Space, Shift and mouse presses. Read-only visualization: no synthetic inputs or game automation.",44)
-  for _,k in {"inputOverlay","inputMouse","inputX","inputY","inputScale","inputOpacity","inputColor"} do ui:control(k) end
-  ui:title("WALLHOP HELPER")
-  ui:note("Practice display: tracks your jump and horizontal camera rotation. No automatic jumps or camera movement.",42)
-  for _,k in {"wallhopHelper","wallhopX","wallhopY","wallhopScale","wallhopOpacity"} do ui:control(k) end
  elseif tab=="Fonts" then local text=ui:note(a.s.sample,62);text:SetAttribute("AETHERKeepFontColor",true);text.TextXAlignment=Enum.TextXAlignment.Center;local gradient=U.gradient(text,Color3.new(),Color3.new(),10);local glow=U.stroke(text,U.hex(a.s.fontB),.8);glow.ApplyStrokeMode=Enum.ApplyStrokeMode.Contextual;ui:watch(function() local s=a.s;text.Text=s.sample;text.FontFace=U.font(s);text.TextSize=s.fontSize*.23;text.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA);text.TextStrokeTransparency=1-s.fontOutline/100;gradient.Enabled=s.fontGradient;gradient.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB));glow.Color=U.hex(s.fontB);glow.Transparency=1-s.fontGlow*.008;glow.Thickness=1+s.fontGlow*.023 end);local query=ui:box("Search native typefaces",a.fontQuery or "",32,function(q) if q~=(a.fontQuery or "") then a.fontQuery=q;ui:open("Fonts") end end);local fonts={};for _,n in S.fonts do if n:lower():find((a.fontQuery or ""):lower(),1,true) then table.insert(fonts,n) end end;ui:chips(fonts,function(n) a:patch({font=n,fontAsset=""}) end,3,function() return a.s.font end);ui:group(tab,{font=true});preset(ui,a,tab)
  elseif tab=="Simulator" then preview(ui,a);ui:title("WORLD PREVIEW");ui:control("airControl");ui:control("airControlStrength");ui:control("airControlSpeed");ui:control("airTiltAngle");ui:control("bunnyHop");avatarPreview(ui,a,true);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
  elseif tab=="Scripts" then scripts(ui,a)

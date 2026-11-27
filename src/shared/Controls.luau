@@ -2,6 +2,142 @@ local StarterGui=game:GetService("StarterGui");local Input=game:GetService("User
 local Constellation=require(script.Parent.Constellation)
 local UI={};UI.__index=UI
 local bg=Color3.fromRGB(19,16,32);local dim=Color3.fromRGB(173,163,197);local soft=Color3.fromRGB(43,35,60)
+local searchSections={
+ {"Dashboard","THEMES"},
+ {"Dashboard","CONSTELLATION COLORS"},
+ {"Dashboard","MOTION"},
+ {"HUD","TOP PANEL"},
+ {"HUD","HUD MOTION"},
+ {"HUD","HEART GRADIENT"},
+ {"HUD","Edit HUD on screen"},
+ {"HUD","Reset panel position"},
+ {"Character","AETHER MOTION STUDIO V12.14"},
+ {"Character","HALO COLLECTION"},
+ {"Character","WING COLLECTION"},
+ {"Character","EFFECT COLLECTION"},
+ {"Character","EFFECT SETTINGS"},
+ {"Character","Disable all halos"},
+ {"Ambient","AMBIENT COLLECTION"},
+ {"Ambient","AMBIENT SETTINGS"},
+ {"Ambient","STARFALL COLORS"},
+ {"Indicators","PER-PLAYER OVERRIDE"},
+ {"Indicators","Assign current shape"},
+ {"Indicators","Remove override"},
+ {"Indicators","UserId or simulator ID"},
+ {"Indicators","Label override"},
+ {"Indicators","Override hex"},
+ {"Cursor","TRAIL COLORS"},
+ {"Interaction","AETHER PEER VISUALS"},
+ {"Interaction","AIR REDIRECTION"},
+ {"Interaction","CAMERA"},
+ {"Interaction","CUSTOM LOCK / KEYBIND"},
+ {"Interaction","SHIFT-LOCK / RETICLE"},
+ {"Interaction","LIVE INPUT DISPLAY"},
+ {"Interaction","WALLHOP HELPER"},
+ {"Volleyball","VOLLEYBALL MODIFIERS / BETA"},
+ {"Volleyball","BALL HITBOX EXPANDER / BETA"},
+ {"Volleyball","BALL TOUCH INFO"},
+ {"Volleyball","SHOT ARC / BETA"},
+ {"Volleyball","TRAJECTORY ESP / BETA"},
+ {"Volleyball","DIRECTION ESP / BETA"},
+ {"Volleyball","JINKO STYLE / LOCAL PREVIEW"},
+ {"Volleyball","CURVE SPECIAL / EXPERIMENT"},
+ {"Volleyball","AUTO PLAY / BETA"},
+ {"Volleyball","CONSECUTIVE TOUCH / BETA"},
+ {"Volleyball","SPIKE CAMERA"},
+ {"Volleyball","AUTO TILT / BETA"},
+ {"Volleyball","Restore original values"},
+ {"Volleyball","Toggle Ball Expander"},
+ {"Volleyball","Show Hitbox"},
+ {"Volleyball","Show last hitter"},
+ {"Volleyball","Shot Arc"},
+ {"Volleyball","Auto"},
+ {"Volleyball","Spike"},
+ {"Volleyball","Set"},
+ {"Volleyball","Serve"},
+ {"Volleyball","Toggle Trajectory ESP"},
+ {"Volleyball","Toggle Direction ESP"},
+ {"Volleyball","Toggle Jinko preview"},
+ {"Volleyball","Toggle local Curve test"},
+ {"Volleyball","Auto Set"},
+ {"Volleyball","Auto Spike"},
+ {"Volleyball","Auto Dive"},
+ {"Volleyball","Auto Serve"},
+ {"Volleyball","Repeat touch test"},
+ {"Volleyball","Free zone"},
+ {"Volleyball","Court center"},
+ {"Volleyball","Off"},
+ {"Volleyball","Ground prediction"},
+ {"Volleyball","Auto Jump"},
+ {"Volleyball","Anti-out guard"},
+ {"Volleyball","Auto detect court"},
+ {"Volleyball","Corner A"},
+ {"Volleyball","Corner B"},
+ {"Volleyball","Corner C"},
+ {"Volleyball","Toggle Auto Tilt"},
+ {"Volleyball","Clear court"},
+ {"Volleyball","Correct edges"},
+ {"Volleyball","Aim center"},
+ {"Volleyball","Aim left"},
+ {"Volleyball","Aim right"},
+ {"Volleyball","Ball size factor (>=1)"},
+ {"Volleyball","Curve input strength (0–1)"},
+ {"Fonts","Search native typefaces"},
+ {"Simulator","WORLD PREVIEW"},
+ {"Simulator","Use simulator"},
+ {"Simulator","Use game"},
+ {"Simulator","Damage −25"},
+ {"Simulator","Heal +25"},
+ {"Simulator","Respawn"},
+ {"Simulator","Add player"},
+ {"Simulator","Move players"},
+ {"Simulator","Clear players"},
+ {"Simulator","Apply virtual vitals"},
+ {"Simulator","Set virtual HP"},
+ {"Simulator","Virtual max HP"},
+ {"List","ROBLOX PLAYER LIST"},
+ {"List","Toggle native player list"},
+ {"Updates","LIVE UPDATE CENTER"},
+ {"Updates","UPDATE LIST"},
+ {"Updates","Test update"},
+ {"Updates","Check updates"},
+ {"Updates","Rollback"},
+ {"Diagnostics","SESSION"},
+ {"Diagnostics","Refresh"},
+ {"Diagnostics","Clear log"},
+ {"Diagnostics","Reset settings"},
+ {"Diagnostics","Session events"},
+ {"Volleyball","BlockPower"},
+ {"Volleyball","BumpPower"},
+ {"Volleyball","DashPower"},
+ {"Volleyball","DiveSpeed"},
+ {"Volleyball","DrawPower"},
+ {"Volleyball","JumpPower"},
+ {"Volleyball","ServePower"},
+ {"Volleyball","SetPower"},
+ {"Volleyball","Speed"},
+ {"Profiles","Save new"},
+ {"Profiles","Load"},
+ {"Profiles","Update selected"},
+ {"Profiles","Rename"},
+ {"Profiles","Duplicate"},
+ {"Profiles","Delete"},
+ {"Profiles","Save now"},
+ {"Profiles","Reload bank"},
+ {"Profiles","Export bank"},
+ {"Profiles","Import bank"},
+ {"Scripts","AETHER Lua"},
+ {"Scripts","Luau draft"},
+ {"Scripts","Template"},
+ {"Scripts","Complete symbol"},
+ {"Scripts","Select source"},
+ {"Scripts","Check"},
+ {"Wings","Wing styles"},
+ {"Halos","Halo styles"},
+ {"Neon","Neon motion"},
+ {"Character","Walk animation"},
+ {"Character","Pose preview"},
+}
 -- Native GUI at rest: CanvasGroup is only a short-lived fade compositor.
 -- Restore direct descendants at full opacity so text, glyphs and ViewportFrames
 -- do not keep rendering into a potentially downsampled offscreen surface.
@@ -53,7 +189,7 @@ function UI.new(app,gui,scope)
  self.updateChip.TextSize=10;self.updateChip.ZIndex=self.top.ZIndex+2
  self.updateChip.BackgroundTransparency=.15
  self.updateRim=U.stroke(self.updateChip,Color3.fromRGB(166,138,255),.45)
- scope:on(self.updateChip.Activated,function() self:openShortcut("Updates") end)
+ scope:on(self.updateChip.Activated,function() self:openShortcut("Updates",true) end)
  scope:on(self.topButtons[1].Activated,function() self:show(not self.opened) end)
  local coreOriginal,coreApplied={},{}
  scope:add(function()
@@ -84,7 +220,63 @@ function UI.new(app,gui,scope)
  self.place=U.label(self.panel,"PLACE  /  "..tostring(game.PlaceId),10,nil,nil);self.place.TextColor3=dim
  self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
  self.pageBox=U.new("Frame",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
- self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Interaction","Fonts","Simulator","Scripts","Profiles","Updates","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,name);scope:on(b.Activated,function() if self.opened and os.clock()>=(self.tabInputAfter or 0) then self:open(name) end end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
+ self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Interaction","Volleyball","Fonts","Simulator","Scripts","Profiles","Updates","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,if name=="Volleyball" then "Interaction" else name);scope:on(b.Activated,function() if self.opened and os.clock()>=(self.tabInputAfter or 0) then self:open(name) end end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
+ self.search=U.new("TextBox",{Name="FunctionSearch",Text="",PlaceholderText="Search functions...",ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left,Font=Enum.Font.GothamMedium,TextSize=13,TextColor3=Color3.fromRGB(241,234,255),PlaceholderColor3=dim,BackgroundColor3=soft,BorderSizePixel=0},self.panel)
+ U.corner(self.search,8);U.new("UIPadding",{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,10)},self.search)
+ self.searchResults=U.new("ScrollingFrame",{Name="FunctionSearchResults",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=4,Visible=false},self.panel)
+ U.new("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder},self.searchResults)
+ self.searchPool={}
+ self.searchIndex={}
+ for _,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Interaction","Volleyball","Fonts","Simulator","Scripts","Profiles","Updates","List","Diagnostics"} do
+  table.insert(self.searchIndex,{tab=name,label=name,term=name:lower()})
+ end
+ for _,k in S.order do
+  local d=S.defs[k]
+  if k=="robloxRail" or k=="railCustom" or k=="railX" or k=="railY" then continue end
+  local tab=if d.group=="Theme" or d.group=="Motion" then "Dashboard" elseif d.group=="Camera" then "Interaction" else d.group
+  table.insert(self.searchIndex,{tab=tab,label=d.label,key=k,term=(d.label.." "..k.." "..tab):lower()})
+ end
+ for _,item in searchSections do
+  table.insert(self.searchIndex,{tab=item[1],label=item[2],term=(item[2].." "..item[1]):lower()})
+ end
+ self.quickOpen=false
+ self.quickArrow=U.button(self.top,"⌄")
+ self.quickArrow.Name="VolleyballDropdown";self.quickArrow.AnchorPoint=Vector2.new(.5,0)
+ self.quickArrow.Size=UDim2.fromOffset(36,22);self.quickArrow.Position=UDim2.new(.5,0,1,32)
+ self.top.ZIndex=25;self.topButtons[1].ZIndex=26;self.updateChip.ZIndex=27;self.quickArrow.ZIndex=27
+ self.quick=U.new("Frame",{Name="VolleyballQuickPanel",AnchorPoint=Vector2.new(.5,0),Position=UDim2.new(.5,0,1,58),Size=UDim2.fromOffset(268,300),BackgroundColor3=bg,BackgroundTransparency=.10,BorderSizePixel=0,Visible=false,Active=true,ZIndex=28},self.top)
+ U.corner(self.quick,13);self.quickRim=U.stroke(self.quick,Color3.fromRGB(166,138,255),.3)
+ local title=U.label(self.quick,"VOLLEYBALL / QUICK ACCESS",12,UDim2.fromOffset(12,5),UDim2.new(1,-24,0,22));title.ZIndex=29
+ local scroll=U.new("ScrollingFrame",{Name="QuickFunctions",Position=UDim2.fromOffset(8,32),Size=UDim2.new(1,-16,1,-40),BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3,ZIndex=29},self.quick)
+ U.new("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder},scroll)
+ self.quickButtons={}
+ local function quickButton(label,section)
+  local b=U.button(scroll,label.."  ›");b.Size=UDim2.new(1,-5,0,30);b.ZIndex=30;b.TextXAlignment=Enum.TextXAlignment.Left
+  U.new("UIPadding",{PaddingLeft=UDim.new(0,9)},b)
+  b.LayoutOrder=#self.quickButtons+1;table.insert(self.quickButtons,b)
+  scope:on(b.Activated,function()
+   if not self.quickOpen then return end
+   self:setQuick(false);self:jumpTo({tab="Volleyball",label=section})
+  end)
+ end
+ quickButton("All volleyball settings","VOLLEYBALL MODIFIERS / BETA")
+ quickButton("Auto Play","AUTO PLAY / BETA")
+ quickButton("Hitbox Expander","BALL HITBOX EXPANDER / BETA")
+ quickButton("Shot Arc","SHOT ARC / BETA")
+ quickButton("Ball Touch Info","BALL TOUCH INFO")
+ quickButton("Trajectory","TRAJECTORY ESP / BETA")
+ quickButton("Direction","DIRECTION ESP / BETA")
+ quickButton("Auto Tilt","AUTO TILT / BETA")
+ quickButton("Spike Camera","SPIKE CAMERA")
+ quickButton("Consecutive Touch","CONSECUTIVE TOUCH / BETA")
+ quickButton("Style / Curve","JINKO STYLE / LOCAL PREVIEW")
+ scope:on(self.quickArrow.Activated,function()
+  if not self.app.volleyball or self.app.editingHUD then return end
+  local on=not self.quickOpen
+  if on and self.opened then self:show(false) end
+  self:setQuick(on)
+ end)
+ scope:on(self.search:GetPropertyChangedSignal("Text"),function() self:refreshSearch() end)
  function self:layout()
   local sz=self.stage.AbsoluteSize
   if sz.X<2 or sz.Y<2 then return end
@@ -138,7 +330,10 @@ function UI.new(app,gui,scope)
   self.navList.FillDirection=Enum.FillDirection.Horizontal
   self.nav.AutomaticCanvasSize=Enum.AutomaticSize.X;self.nav.ScrollingDirection=Enum.ScrollingDirection.X
   for _,b in self.buttons do b.Size=UDim2.fromOffset(106,32) end
-  self.pageBox.Position=UDim2.fromOffset(10,114);self.pageBox.Size=UDim2.new(1,-20,1,-145)
+  self.search.Position=UDim2.fromOffset(10,111);self.search.Size=UDim2.new(1,-20,0,30)
+  self.pageBox.Position=UDim2.fromOffset(10,148);self.pageBox.Size=UDim2.new(1,-20,1,-179)
+  self.searchResults.Position=self.pageBox.Position;self.searchResults.Size=self.pageBox.Size
+  self.quick.Size=UDim2.fromOffset(math.min(268,math.max(140,sz.X-24)),math.clamp(sz.Y*.48,120,330))
   self.layoutKey=table.concat({s.menuDock,s.menuWidth,s.menuHeight,s.menuFloatX,s.menuFloatY,tostring(s.menuResize),tostring(s.topCustom),s.topX,s.topY},":")
  end
  function self:finishMenuDrag(point,resize)
@@ -236,6 +431,8 @@ function UI:animateBackground(t)
  local accent=U.hex(s.accent)
  local secondary=U.hex(s.secondary)
  self.top.Visible=s.topCapsule
+ self.quickArrow.Visible=self.app.volleyball~=nil
+ self.quick.Visible=self.quickOpen and s.topCapsule and not self.app.editingHUD
  local live=self.app.liveUpdate
  if live then
   local unread=live.unread==true
@@ -248,7 +445,10 @@ function UI:animateBackground(t)
   self.updateRim.Color=accent
   self.updateRim.Transparency=if unread then .15 else .55
  end
- self.topRim.Color=accent
+ self.topRim.Color=accent;self.quickRim.Color=accent
+ local below=6+self.updateChip.Size.Y.Offset+4
+ self.quickArrow.Position=UDim2.new(.5,0,1,below)
+ self.quick.Position=UDim2.new(.5,0,1,below+26)
  self.topButtons[1].BackgroundColor3=if self.opened then accent:Lerp(bg,.55) else soft
  local visible=s.screenParticles and q>.001
  self.screenFX.Visible=visible
@@ -304,13 +504,14 @@ function UI:animateBackground(t)
 end
 function UI:begin(i,fn,origin) if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end;local v=Vector2.new(i.Position.X,i.Position.Y);self.drag={i=i,start=v,fn=fn,origin=origin};fn(v,v,origin) end
 function UI:show(on)
+ if on then self:setQuick(false) end
  if not on and self.opened then
   self.lastClosedTab=self.tab
   self.lastClosedPage=self.sc
   self.lastClosedScroll=self.sc and self.sc.CanvasPosition or nil
-  self.tabInputAfter=os.clock()+.3
+  self.tabInputAfter=os.clock()+.45;self.shortcutBlockUntil=os.clock()+.65
  elseif on and not self.opened then
-  self.tabInputAfter=math.max(self.tabInputAfter or 0,os.clock()+.12)
+  self.tabInputAfter=math.max(self.tabInputAfter or 0,os.clock()+.18);self.shortcutBlockUntil=os.clock()+.65
   if self.lastClosedTab==self.tab and self.lastClosedPage==self.sc and self.sc and self.sc.Parent and self.lastClosedScroll then
    self.sc.CanvasPosition=self.lastClosedScroll
   end
@@ -329,12 +530,92 @@ function UI:show(on)
 end
 function UI:message(s) self.status.Text=s end
 -- Ignore click-through shortcuts during the close transition, but keep intentional shortcuts.
-function UI:openShortcut(tab)
+function UI:openShortcut(tab,explicit)
+ if not explicit and (self.opened or self.quickOpen or os.clock()<(self.shortcutBlockUntil or 0)) then return end
  if os.clock()<(self.tabInputAfter or 0) then return end
  self:open(tab)
 end
+function UI:setQuick(on)
+ self.quickOpen=on==true
+ self.quick.Visible=self.quickOpen and self.app.s.topCapsule
+ self.quickArrow.Text=if self.quickOpen then "⌃" else "⌄"
+end
+local function searchMatch(text,words)
+ for _,word in words do if not text:find(word,1,true) then return false end end
+ return true
+end
+function UI:refreshSearch()
+ if not self.search or not self.searchResults then return end
+ local q=self.search.Text:lower():match("^%s*(.-)%s*$")
+ local words=string.split(q," ")
+ local has=q~=""
+ self.searchResults.Visible=has
+ self.pageBox.Visible=not has
+ if not has then return end
+ local matches,seen={},{}
+ for _,item in self.searchIndex do
+  if self.buttons[item.tab] and searchMatch(item.term,words) then
+   local id=item.tab.."|"..item.label:lower()
+   if not seen[id] then
+    seen[id]=true
+    local label=item.label:lower()
+    local rank=if label==q then 0 elseif label:find(q,1,true)==1 then 1 elseif label:find(q,1,true) then 2 else 3
+    table.insert(matches,{item=item,rank=rank})
+   end
+  end
+ end
+ table.sort(matches,function(a,b) if a.rank~=b.rank then return a.rank<b.rank end;return a.item.label<b.item.label end)
+ for i=1,math.min(60,#matches) do
+  local b=self.searchPool[i]
+  if not b then
+   b=U.button(self.searchResults,"");b.Size=UDim2.new(1,-8,0,34);b.TextXAlignment=Enum.TextXAlignment.Left
+   U.new("UIPadding",{PaddingLeft=UDim.new(0,10)},b)
+   self.searchPool[i]=b
+   self.scope:on(b.Activated,function() local item=self.searchTargets and self.searchTargets[i];if item then self:jumpTo(item) end end)
+  end
+  b.Visible=true;b.LayoutOrder=i;b.Text=matches[i].item.label.."  ·  "..matches[i].item.tab
+ end
+ self.searchTargets={}
+ for i=1,math.min(60,#matches) do self.searchTargets[i]=matches[i].item end
+ if not self.searchEmpty then
+  self.searchEmpty=U.label(self.searchResults,"No functions found",12,nil,UDim2.new(1,-8,0,34));self.searchEmpty.LayoutOrder=999
+ end
+ self.searchEmpty.Visible=#matches==0
+ for i=math.min(60,#matches)+1,#self.searchPool do self.searchPool[i].Visible=false end
+ self.searchResults.CanvasPosition=Vector2.zero
+end
+function UI:jumpTo(item)
+ self:setQuick(false)
+ self.search:ReleaseFocus();self.search.Text=""
+ self:open(item.tab)
+ local sc=self.sc
+ if not sc then return end
+ local label=item.label:lower()
+ local function findRow()
+  for _,row in sc:GetChildren() do
+   if not row:IsA("GuiObject") then continue end
+   if item.key and row.Name==item.key then return row end
+   for _,obj in row:GetDescendants() do
+    if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+     if obj.Text:lower()==label or obj.Name:lower()==label then return row end
+    end
+   end
+  end
+  return nil
+ end
+ task.defer(function()
+  game:GetService("RunService").Heartbeat:Wait()
+  if self.sc~=sc or not sc.Parent then return end
+  local row=findRow()
+  if row then
+   local y=row.AbsolutePosition.Y-sc.AbsolutePosition.Y+sc.CanvasPosition.Y
+   sc.CanvasPosition=Vector2.new(0,math.clamp(y-6,0,math.max(0,sc.AbsoluteCanvasSize.Y-sc.AbsoluteWindowSize.Y)))
+  end
+ end)
+end
 function UI:open(tab)
  if tab=="Camera" then tab="Interaction" end
+ if self.search then self.search.Text="" end
  self.app.bindingLockKey=false
  if not self.buttons[tab] then return end;self:show(true);self.drag=nil;if self.page then self.page:clear() end;self.app.preview=nil;self.page=U.scope();self.syncs={};self.controlKeys={};self.colorKeys={};self.seq=0;self.tab=tab
  self.pageProgress=if self.app.s.reduce or not self.app.s.tabTransition or self.app.s.menuTransition=="Off" then 1 else 0
