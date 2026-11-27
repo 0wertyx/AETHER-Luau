@@ -1194,6 +1194,16 @@ function UI.new(app,gui,scope)
  -- Screen-space paths retain sharp, constant pixel width at every workspace zoom.
  self.workspaceLinks=U.frame(self.panel,"NodeConnections",nil,UDim2.fromScale(1,1),nil,1)
  self.workspaceLinks.Active=false;self.workspaceLinks.Interactable=false;self.workspaceLinks.ZIndex=2
+ -- Fixed screen-space pool: no new GUI instances or tweens during a slide.
+ self.slideSparkLayer=U.frame(self.panel,"WorkspaceSlideSparks",nil,UDim2.fromScale(1,1),nil,1)
+ self.slideSparkLayer.Active=false;self.slideSparkLayer.Interactable=false;self.slideSparkLayer.ZIndex=8
+ self.slideSparkPool={};self.slideSparkCursor=0;self.slideSparkActive=0
+ for i=1,24 do
+  local spark=U.frame(self.slideSparkLayer,"SlideSpark",nil,UDim2.fromOffset(6,2),Color3.new(1,1,1),0)
+  spark.AnchorPoint=Vector2.new(.5,.5);spark.Active=false;spark.Interactable=false;spark.ZIndex=8;spark.Visible=false
+  U.corner(spark,2)
+  self.slideSparkPool[i]={frame=spark,age=0,life=0}
+ end
  self.linkPool={};self.portPool={}
  local nativePaths=true
  for i=1,5 do
@@ -1227,7 +1237,7 @@ function UI.new(app,gui,scope)
   b.Position=UDim2.new((i-1)*.4,4,0,3);b.Size=UDim2.new(.4,-5,1,-6);b.ZIndex=13;b.TextSize=11;self.modeButtons[mode]=b
   scope:on(b.Activated,function()
    if self.app.s.workspaceMode==mode then return end
-   self:finishWorkspaceNode();self:commitWorkspaceCamera();self.drag=nil;self.workspacePan=nil
+   self:finishWorkspaceNode();self:clearWorkspaceSparks();self:commitWorkspaceCamera();self.drag=nil;self.workspacePan=nil
    self.app:set("workspaceMode",mode)
   end)
  end
@@ -1362,19 +1372,74 @@ function UI.new(app,gui,scope)
   end
   self:layout()
  end
+ function self:clearWorkspaceSparks()
+  if self.slideSparkActive==0 then return end
+  for _,p in self.slideSparkPool do p.life=0;p.frame.Visible=false end
+  self.slideSparkActive=0
+ end
+ function self:emitWorkspaceSparks(slide,count)
+  if self.app.s.reduce or not self.opened then return end
+  local speed=slide.velocity.Magnitude*self.workspaceScale.Scale
+  if speed<65 then return end
+  local target=if slide.node=="Root" then self.rootDrag elseif slide.node=="Page" then self.pageDrag else self.branchCards[slide.node].title
+  if not target or not target.Visible or not target.Parent.Visible then return end
+  local direction=slide.velocity.Unit
+  local tangent=Vector2.new(-direction.Y,direction.X)
+  local half=target.AbsoluteSize*.5
+  local edgeDistance=math.min(half.X/math.max(.001,math.abs(direction.X)),half.Y/math.max(.001,math.abs(direction.Y)))
+  local edge=target.AbsolutePosition+half-self.slideSparkLayer.AbsolutePosition-direction*(edgeDistance+3)
+  local color=U.hex(self.app.s.accent):Lerp(Color3.new(1,1,1),.68)
+  for i=1,count do
+   self.slideSparkCursor=self.slideSparkCursor%#self.slideSparkPool+1
+   local p=self.slideSparkPool[self.slideSparkCursor]
+   if p.life<=0 then self.slideSparkActive+=1 end
+   p.age=0;p.life=.13+math.random()*.12
+   p.position=edge+tangent*((math.random()-.5)*math.min(16,half.Magnitude))
+   p.velocity=-direction*(42+math.random()*70)+tangent*((math.random()-.5)*100)
+   p.length=5+math.random()*6
+   local f=p.frame
+   f.Position=UDim2.fromOffset(p.position.X,p.position.Y)
+   f.Size=UDim2.fromOffset(p.length,2)
+   f.Rotation=math.deg(math.atan2(p.velocity.Y,p.velocity.X))
+   f.BackgroundColor3=color;f.BackgroundTransparency=.08;f.Visible=true
+  end
+ end
+ function self:stepWorkspaceSparks(dt)
+  if self.slideSparkActive==0 then return end
+  if not self.opened or self.app.s.reduce then self:clearWorkspaceSparks();return end
+  for _,p in self.slideSparkPool do
+   if p.life>0 then
+    p.age+=dt
+    if p.age>=p.life then
+     p.life=0;p.frame.Visible=false;self.slideSparkActive-=1
+    else
+     local q=p.age/p.life
+     p.position+=p.velocity*dt
+     p.velocity*=math.exp(-5*dt)
+     p.frame.Position=UDim2.fromOffset(p.position.X,p.position.Y)
+     p.frame.Size=UDim2.fromOffset(math.max(1,p.length*(1-q)),math.max(1,2*(1-q)))
+     p.frame.BackgroundTransparency=.08+.92*q
+    end
+   end
+  end
+ end
  function self:stepWorkspaceNode(dt)
   local slide=self.workspaceNodeInertia
   if not slide then return end
   if not self.opened or self.app.s.reduce or self.app.s.workspaceMode~=slide.mode then self:finishWorkspaceNode();return end
-  local step=math.min(dt,math.max(0,.32-slide.elapsed))
-  local decay=math.exp(-12*step)
-  slide.offset+=slide.velocity*((1-decay)/12)
+  local step=math.min(dt,math.max(0,.52-slide.elapsed))
+  local decay=math.exp(-7.2*step)
+  slide.offset+=slide.velocity*((1-decay)/7.2)
   slide.velocity*=decay;slide.elapsed+=step
   self:applyWorkspaceNode(slide.node,slide.offset)
-  if slide.elapsed>=.32 or slide.velocity.Magnitude*self.workspaceScale.Scale<12 then self:finishWorkspaceNode() end
+  if slide.elapsed>=slide.sparkAt then
+   slide.sparkAt=slide.elapsed+.045
+   self:emitWorkspaceSparks(slide,2)
+  end
+  if slide.elapsed>=.52 or slide.velocity.Magnitude*self.workspaceScale.Scale<10 then self:finishWorkspaceNode() end
  end
  function self:resetWorkspace(all)
-  self:finishWorkspaceNode(all)
+  self:finishWorkspaceNode(all);self:clearWorkspaceSparks()
   self.workspaceCameraDraft=nil;self.workspaceCameraRevision=(self.workspaceCameraRevision or 0)+1;self.workspaceNodeDraft=nil;self.workspacePan=nil;self.drag=nil
   local prefix=workspacePrefix(self.app.s)
   local patch={[prefix.."Zoom"]=100,[prefix.."PanX"]=0,[prefix.."PanY"]=0}
@@ -1633,9 +1698,10 @@ function UI.new(app,gui,scope)
    calc(pos)
    local next=self.workspaceNodeDraft.offset
    local idle=os.clock()-lastAt
-   local releaseVelocity=velocity*math.exp(-idle*25)
-   if not self.app.s.reduce and idle<.10 and (pos-origin).Magnitude>=6 and releaseVelocity.Magnitude>=80 then
-    self.workspaceNodeInertia={node=node,mode=self.app.s.workspaceMode,offset=next,velocity=releaseVelocity/zoom,elapsed=0}
+   local releaseVelocity=velocity*(1.25*math.exp(-idle*25))
+   if not self.app.s.reduce and idle<.10 and (pos-origin).Magnitude>=6 and releaseVelocity.Magnitude>=65 then
+    self.workspaceNodeInertia={node=node,mode=self.app.s.workspaceMode,offset=next,velocity=releaseVelocity/zoom,elapsed=0,sparkAt=.045}
+    self:emitWorkspaceSparks(self.workspaceNodeInertia,4)
    else
     self:finishWorkspaceNode()
    end
@@ -1693,6 +1759,7 @@ function UI:animateBackground(t)
  local s=self.app.s
  local dt=math.clamp(t-(self.motionAt or t-1/60),0,.1)
  self.motionAt=t
+ self:stepWorkspaceSparks(dt)
  self:stepWorkspaceNode(dt)
  local immediate=s.reduce or s.menuTransition=="Off"
  local duration=if not self.opened then .24 else math.max(.06,s.duration/1000*100/s.speed)
@@ -1772,7 +1839,7 @@ function UI:begin(i,fn,origin) if i.UserInputType~=Enum.UserInputType.MouseButto
 function UI:show(on)
  self.backgroundTap=nil
  if on then self:setQuick(false) end
- if not on then self.workspacePan=nil;self:finishWorkspaceNode();self:commitWorkspaceCamera() end
+ if not on then self.workspacePan=nil;self:finishWorkspaceNode();self:clearWorkspaceSparks();self:commitWorkspaceCamera() end
  if not on and self.opened then
   self.lastClosedTab=self.tab
   self.lastClosedPage=self.sc
