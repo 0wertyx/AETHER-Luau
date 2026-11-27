@@ -921,7 +921,7 @@ function E.render(a,tab,ui)
   if d then
    local p="appearance"..selected
    ui:title("APPEARANCE / "..d[2]:upper())
-   ui:note("Select a sample below the Interface branch. Individual style overrides the shared theme for this element only.",52)
+   ui:note("Edits automatically enable Individual style and update Live Preview. Turn it off to restore the shared theme.",52)
    ui:chips({"All settings","Reset this element"},function(name)
     if name=="All settings" then ui:open("Interface") else
      local defaults=S.defaults();local patch={}
