@@ -1451,14 +1451,14 @@ function UI:animateBackground(t)
  self.quickArrow.Visible=self.app.volleyball~=nil and not self.app.editingHUD
  self.quick.Visible=editingAux or (self.quickOpen and s.topCapsule and not self.app.editingHUD)
  self.bindPanel.Visible=editingAux or (not self.opened and not self.app.editingHUD and self.app.mode=="Game" and s.keybindWidget)
- self.bindRim.Color=accent
+ self.bindRim.Color=U.hex(s.uiStrokeColor)
  if self.bindPanel.Visible and t>=(self.bindRefreshAt or 0) then self.bindRefreshAt=t+.3;self:refreshBindPanel() end
  if self.quick.Visible and self.quickAdapter and t>=(self.quickRefreshAt or 0) then
   self.quickRefreshAt=t+.25
   for _,refresh in self.quickAdapter.syncs do pcall(refresh) end
  end
  self.updateChip.Visible=false
- self.topRim.Color=accent;self.quickRim.Color=accent
+ self.topRim.Color=U.hex(s.uiStrokeColor);self.quickRim.Color=U.hex(s.uiStrokeColor)
  local below=6
  self.quickArrow.Position=UDim2.new(.5,0,1,below)
  self:layoutAuxWidgets(below)
@@ -1922,6 +1922,8 @@ function UI:sync()
  for _,frame in {self.navGlass,self.contentGlass,self.header,self.top,self.quick,self.bindPanel,self.catalogHost,self.catalogHost and self.sc} do if frame then glassSurface(frame,st) end end
  for _,r in self.branchCards do glassSurface(r.frame,st) end
  self.search.BackgroundColor3=U.hex(st.uiRowColor)
+ self.quickArrow.BackgroundColor3=U.hex(st.uiButtonColor)
+ for _,obj in {self.layoutMove,self.layoutResize,self.layoutDone} do obj.BackgroundColor3=U.hex(st.uiHoverColor) end
  -- Only recolor editor controls, not HUD/3D previews or their own palette.
  for _,obj in self.panel:GetDescendants() do
   if obj:IsA("Frame") and obj:GetAttribute("AETHERControlRow") and obj.BackgroundTransparency<1 then obj.BackgroundColor3=U.hex(st.uiRowColor) end
@@ -2484,7 +2486,7 @@ function H:layoutPreview(s)
   panel.Size=UDim2.fromOffset(originalW,originalH)
   panel.Position=UDim2.fromOffset(math.clamp(x,0,math.max(0,vp.X-w)),math.clamp(y,0,math.max(0,vp.Y-height)))
   panel.Visible=s.topCapsule
-  item.rim.Color=U.hex(s.accent)
+  item.rim.Color=U.hex(s.uiStrokeColor)
   item.rim.Transparency=if key=="top" then .42 else .48
   item.rim.Thickness=1
   local face=U.font(s)
@@ -5062,6 +5064,7 @@ local function visualsHub(a,kind,ui)
  end
  local function drawCards()
   info.Text=string.format("%d / %d   ·   %d",page,maxPage,#items)
+  prev.BackgroundColor3=U.hex(a.s.uiButtonColor);nextButton.BackgroundColor3=U.hex(a.s.uiButtonColor)
   for i,card in cards do
    local item=items[(page-1)*12+i]
    if card.item~=item then card.thumb.Visible=false end
@@ -5071,9 +5074,9 @@ local function visualsHub(a,kind,ui)
    card.name.Text=item.name
    local on=active(item)
    card.badge.Text=if on then "EQUIPPED" else ""
-   card.rim.Color=if selected==item or on then U.hex(a.s.accent) else Color3.fromRGB(138,112,189)
+   card.rim.Color=if selected==item or on then U.hex(a.s.accent) else U.hex(a.s.uiStrokeColor)
    card.rim.Transparency=if selected==item then .02 elseif on then .26 else .72
-   card.button.BackgroundColor3=if selected==item then Color3.fromRGB(74,53,113) else Color3.fromRGB(40,30,65)
+   card.button.BackgroundColor3=U.hex(if selected==item then a.s.uiHoverColor else a.s.uiButtonColor)
   end
  end
  local function buildEditor()
@@ -5086,13 +5089,13 @@ local function visualsHub(a,kind,ui)
   equipButton.Font=Enum.Font.Code;cancel.Font=Enum.Font.Code
   ed.page:on(equipButton.Activated,function() ui:action(function() equip(item,true);ui:sync() end) end)
   ed.page:on(cancel.Activated,function() ui:action(function() equip(item,false);ui:sync() end) end)
-  ed:watch(function() equipButton.Text=if active(item) then "EQUIPPED" else "EQUIP" end)
+  ed:watch(function() equipButton.Text=if active(item) then "EQUIPPED" else "EQUIP";equipButton.BackgroundColor3=U.hex(if active(item) then a.s.uiHoverColor else a.s.uiButtonColor);cancel.BackgroundColor3=U.hex(a.s.uiButtonColor) end)
   local preview=ed:row(210,"SelectedPreview");preview.BackgroundTransparency=.3
   effectThumbnail(ed,preview,a,item,kind)
   local thumbnail=preview:FindFirstChild("EffectThumbnail")
   if thumbnail then thumbnail.Size=UDim2.new(1,-8,1,-8) end
   local editorButton=U.button(ed:row(36,"EditorPill"),if a.catalogEditors[kind] then "EDITOR   −" else "EDITOR   +")
-  editorButton.Font=Enum.Font.Code;editorButton.Size=UDim2.fromScale(1,1);U.corner(editorButton,18)
+  editorButton.Font=Enum.Font.Code;editorButton.Size=UDim2.fromScale(1,1);U.corner(editorButton,18);ed:watch(function() editorButton.BackgroundColor3=U.hex(a.s.uiButtonColor) end)
   ed.page:on(editorButton.Activated,function() a.catalogEditors[kind]=not a.catalogEditors[kind];buildEditor();ui:sync() end)
   if a.catalogEditors[kind] then
    if kind=="Halos" then
