@@ -652,7 +652,7 @@ local function visualsHub(a,kind,ui)
   ui.sc.CanvasPosition=Vector2.zero
  end
  for i=1,12 do
-  local b=U.button(grid,"");b.Name="VisualCard"..i;b.LayoutOrder=i;b.BackgroundTransparency=.27;U.corner(b,12)
+  local b=U.button(grid,"");b.Name="VisualCard"..i;b.LayoutOrder=i;b.BackgroundTransparency=.40;U.corner(b,12)
   local rim=U.stroke(b,Color3.fromRGB(138,112,189),.72)
   local glyph=U.label(b,"",28,UDim2.fromScale(.07,.07),UDim2.fromScale(.86,.56));glyph.TextScaled=true;glyph.TextXAlignment=Enum.TextXAlignment.Center;glyph.Font=Enum.Font.Gotham;U.corner(glyph,9);glyph.Active=false;glyph.Interactable=false
   U.new("UITextSizeConstraint",{MinTextSize=10,MaxTextSize=38},glyph)
