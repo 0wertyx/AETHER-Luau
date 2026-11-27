@@ -189,7 +189,7 @@ function UI.new(app,gui,scope)
  self.updateChip.Position=UDim2.new(.5,0,1,6)
  self.updateChip.Size=UDim2.fromOffset(112,22)
  self.updateChip.TextSize=10;self.updateChip.ZIndex=self.top.ZIndex+2
- self.updateChip.BackgroundTransparency=.15
+ self.updateChip.BackgroundColor3=bg;self.updateChip.BackgroundTransparency=.15
  self.updateRim=U.stroke(self.updateChip,Color3.fromRGB(166,138,255),.45)
  local coreOriginal,coreApplied={},{}
  scope:add(function()
@@ -232,9 +232,11 @@ function UI.new(app,gui,scope)
  end
  for _,k in S.order do
   local d=S.defs[k]
-  if k=="robloxRail" or k=="railCustom" or k=="railX" or k=="railY" then continue end
+  if type(d)~="table" or type(d.group)~="string" or k=="robloxRail" or k=="railCustom" or k=="railX" or k=="railY" then continue end
   local tab=if d.group=="Theme" or d.group=="Motion" then "Dashboard" elseif d.group=="Camera" then "Interaction" else d.group
-  table.insert(self.searchIndex,{tab=tab,label=d.label,key=k,term=(d.label.." "..k.." "..tab):lower()})
+  if not self.buttons[tab] then continue end
+  local label=if type(d.label)=="string" and d.label~="" then d.label elseif k=="players" then "Per-player override" else tostring(k)
+  table.insert(self.searchIndex,{tab=tab,label=label,key=k,term=(label.." "..tostring(k).." "..tab):lower()})
  end
  for _,item in searchSections do
   table.insert(self.searchIndex,{tab=item[1],label=item[2],term=(item[2].." "..item[1]):lower()})
