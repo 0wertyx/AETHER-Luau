@@ -4786,7 +4786,7 @@ local function thumbnailGeometry(item,kind)
  return data
 end
 local function drawThumbnail(host,canvas,item,kind)
- canvas:ClearAllChildren()
+ for _,obj in canvas:GetChildren() do if not obj:IsA("UIScale") then obj:Destroy() end end
  host.BackgroundColor3=Color3.fromRGB(27,22,43);host.BackgroundTransparency=.33
  if kind=="Ambient" then
   canvas.Visible=false
@@ -4909,7 +4909,7 @@ local function visualsHub(a,kind,ui)
     if card.item and card.renderId~=card.item.id then
      local item=card.item
      drawThumbnail(card.thumb,card.canvas,item,kind)
-     card.renderId=item.id
+     card.renderId=item.id;card.thumb.Visible=true
      task.wait()
     end
    end
@@ -4919,8 +4919,10 @@ local function visualsHub(a,kind,ui)
   info.Text=string.format("%d / %d   ·   %d",page,maxPage,#items)
   for i,card in cards do
    local item=items[(page-1)*12+i]
+   if card.item~=item then card.thumb.Visible=false end
    card.item=item;card.button.Visible=item~=nil
    if not item then continue end
+   if card.renderId==item.id then card.thumb.Visible=true end
    card.name.Text=item.name
    local on=active(item)
    card.badge.Text=if on then "EQUIPPED" else ""
