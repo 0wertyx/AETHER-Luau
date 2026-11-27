@@ -865,6 +865,39 @@ local StarterGui=game:GetService("StarterGui");local Input=game:GetService("User
 local Constellation=__aether_require("Constellation")
 local UI={};UI.__index=UI
 local bg=Color3.fromRGB(19,16,32);local dim=Color3.fromRGB(173,163,197);local soft=Color3.fromRGB(43,35,60)
+local branches={
+ {name="Main",tabs={"Dashboard","Profiles","Diagnostics"}},
+ {name="Visuals",tabs={"Character","Wings","Halos","Ambient","Indicators","Cursor"}},
+ {name="Utility",tabs={"Interaction","Volleyball"}},
+ {name="Interface",tabs={"Interface","HUD","Fonts"}},
+}
+local tabBranch={}
+for _,branch in branches do for _,tab in branch.tabs do tabBranch[tab]=branch.name end end
+local function glassSurface(frame,s)
+ local tint=U.hex(s.uiPanelColor)
+ local highlight=U.hex(s.uiSpecularColor)
+ local reflection=s.uiReflection/100
+ frame.BackgroundColor3=Color3.new(1,1,1)
+ frame.BackgroundTransparency=1-s.uiGlassOpacity/100
+ local grad=frame:FindFirstChild("LiquidTint") or U.new("UIGradient",{Name="LiquidTint",Rotation=90},frame)
+ grad.Color=ColorSequence.new({
+  ColorSequenceKeypoint.new(0,tint:Lerp(highlight,.19*reflection)),
+  ColorSequenceKeypoint.new(.15,tint:Lerp(highlight,.06*reflection)),
+  ColorSequenceKeypoint.new(.66,tint:Lerp(Color3.fromRGB(5,6,16),.30)),
+  ColorSequenceKeypoint.new(1,tint:Lerp(highlight,.10*reflection))
+ })
+ local rim=frame:FindFirstChildOfClass("UIStroke") or U.stroke(frame,U.hex(s.uiStrokeColor),.4,1)
+ rim.Color=U.hex(s.uiStrokeColor);rim.Thickness=1.15;rim.Transparency=1-s.rim/100
+ local edge=rim:FindFirstChild("LiquidEdge") or U.new("UIGradient",{Name="LiquidEdge",Rotation=90},rim)
+ edge.Color=ColorSequence.new(highlight,U.hex(s.uiStrokeColor))
+ edge.Transparency=NumberSequence.new({
+  NumberSequenceKeypoint.new(0,.03),NumberSequenceKeypoint.new(.23,.62),
+  NumberSequenceKeypoint.new(.74,.78),NumberSequenceKeypoint.new(1,.15)
+ })
+end
+local function layoutKey(s)
+ return table.concat({s.topX,s.topY,tostring(s.topCustom),s.topScale,tostring(s.layoutCustom),s.layoutX,s.layoutY,s.layoutW,s.layoutH,s.navWidth},":")
+end
 local function chevron(parent)
  local glyph=U.frame(parent,"Chevron",UDim2.fromScale(.5,.5),UDim2.fromOffset(18,12),nil,1)
  glyph.AnchorPoint=Vector2.new(.5,.5);glyph.Active=false;glyph.Interactable=false;glyph.ZIndex=parent.ZIndex+1
@@ -1015,6 +1048,8 @@ function UI.new(app,gui,scope)
  -- Fullscreen hub: one static star field, not 48 animated multi-part particles.
  self.stars={}
  self.top,self.topRim,self.topButtons=U.topPanel(self.stage)
+ self.topHit=U.new("TextButton",{Name="OpenAether",Text="",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,AutoButtonColor=false,Modal=false,ZIndex=27},self.top)
+ scope:on(self.topHit.Activated,function() if not self.app.editingHUD and not self.app.stopping then self:show(not self.opened) end end)
  self.updateChip=U.label(self.top,"v1.0.0",10)
  self.updateChip.TextXAlignment=Enum.TextXAlignment.Center;self.updateChip.Active=false;self.updateChip.Interactable=false
  U.corner(self.updateChip,8)
@@ -1059,19 +1094,83 @@ function UI.new(app,gui,scope)
  self.grip=U.button(self.panel,"◢");self.grip.Name="ResizeGrip";self.grip.Size=UDim2.fromOffset(26,26);self.grip.TextSize=18;self.grip.ZIndex=6;self.grip.BackgroundTransparency=.42
  self.tag.Size=UDim2.new(1,-231,0,40)
  self.place=U.label(self.panel,"PLACE  /  "..tostring(game.PlaceId),10,nil,nil);self.place.TextColor3=dim
- self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
- self.pageBox=U.new("Frame",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
- self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Ambient","Indicators","Cursor","Interaction","Volleyball","Fonts","Profiles","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,if name=="Volleyball" then "Interaction" else name);scope:on(b.Activated,function() if self.opened and os.clock()>=(self.tabInputAfter or 0) then self:open(name) end end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
+ self.nav=U.frame(self.panel,"BranchNavigation",nil,nil,nil,1)
+ self.navList=U.new("UIListLayout",{Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
+ self.branchStack=U.frame(self.panel,"OpenBranches",nil,nil,nil,1);self.branchStack.ZIndex=3
+ self.branchList=U.new("UIListLayout",{Padding=UDim.new(0,10),SortOrder=Enum.SortOrder.LayoutOrder},self.branchStack)
+ self.pageBox=U.new("Frame",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true},self.panel)
+ self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
+ self.buttons={};self.branchCards={};self.branchButtons={}
+ for order,branch in branches do
+  local name=branch.name
+  local button=U.button(self.nav,name);button.Name=name;button.LayoutOrder=order;button.TextXAlignment=Enum.TextXAlignment.Left;button.TextSize=16
+  U.new("UIPadding",{PaddingLeft=UDim.new(0,12),PaddingRight=UDim.new(0,8)},button)
+  local arrow=chevron(button);arrow.Position=UDim2.new(1,-14,.5,0)
+  self.branchButtons[name]={button=button,arrow=arrow}
+  local card=U.frame(self.branchStack,name.."Branch",nil,UDim2.new(1,0,0,0),nil,1)
+  card.LayoutOrder=order;card.ClipsDescendants=true;card.Visible=false;U.corner(card,16)
+  local title=U.label(card,name:upper(),12,UDim2.fromOffset(12,3),UDim2.new(1,-24,0,24));title:SetAttribute("AETHERMuted",true)
+  local record={frame=card,title=title,tabs=branch.tabs,buttons={},expanded=false,revision=0}
+  self.branchCards[name]=record
+  for index,tab in branch.tabs do
+   local b=U.button(card,tab);b.Name=tab;b.TextXAlignment=Enum.TextXAlignment.Left;b.TextSize=13
+   U.new("UIPadding",{PaddingLeft=UDim.new(0,12)},b)
+   self.buttons[tab]=b;record.buttons[index]=b
+   scope:on(b.Activated,function() if self.opened and os.clock()>=(self.tabInputAfter or 0) then self:open(tab) end end)
+   scope:on(b.MouseEnter,function() self.navHover[tab]=true end)
+   scope:on(b.MouseLeave,function() self.navHover[tab]=false end)
+  end
+  scope:on(button.Activated,function()
+   if not self.opened or self.layoutEditing then return end
+   self.app:set("branch"..name,not self.app.s["branch"..name])
+  end)
+ end
+ function self:refreshBranches(immediate)
+  if not self.branchRowH then return end
+  local st=self.app.s
+  for _,branch in branches do
+   local r=self.branchCards[branch.name];local b=self.branchButtons[branch.name]
+   local open=st["branch"..branch.name]==true
+   local height=self.branchTitleH+#r.tabs*self.branchRowH+6
+   r.title.Size=UDim2.new(1,-24,0,self.branchTitleH-3)
+   for i,tab in r.buttons do
+    tab.Position=UDim2.fromOffset(6,self.branchTitleH+(i-1)*self.branchRowH)
+    tab.Size=UDim2.new(1,-12,0,math.max(1,self.branchRowH-3))
+    tab.TextSize=math.clamp(self.branchRowH-9,10,14)
+   end
+   b.button.BackgroundColor3=U.hex(if open then st.uiHoverColor else st.uiButtonColor)
+   if immediate or open~=r.expanded or r.height~=height then
+    r.expanded=open;r.height=height;r.revision+=1
+    local revision=r.revision
+    if r.tween then r.tween:Cancel();r.tween=nil end
+    if r.arrowTween then r.arrowTween:Cancel();r.arrowTween=nil end
+    if open then r.frame.Visible=true end
+    local size=UDim2.new(1,0,0,if open then height else 0)
+    if immediate or st.reduce then
+     r.frame.Size=size;r.frame.Visible=open;b.arrow.Rotation=if open then 0 else -90
+    else
+     local info=TweenInfo.new(.22,Enum.EasingStyle.Quart,Enum.EasingDirection.Out)
+     r.tween=Tween:Create(r.frame,info,{Size=size});r.tween:Play()
+     r.arrowTween=Tween:Create(b.arrow,info,{Rotation=if open then 0 else -90});r.arrowTween:Play()
+     if not open then task.delay(.23,function() if r.frame.Parent and r.revision==revision and not r.expanded then r.frame.Visible=false end end) end
+    end
+   end
+  end
+ end
  self.search=U.new("TextBox",{Name="FunctionSearch",Text="",PlaceholderText="Search functions...",ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left,Font=Enum.Font.GothamMedium,TextSize=13,TextColor3=Color3.fromRGB(241,234,255),PlaceholderColor3=dim,BackgroundColor3=soft,BorderSizePixel=0},self.panel)
  U.corner(self.search,8);U.new("UIPadding",{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,10)},self.search)
  self.navGlass=U.frame(self.panel,"TabRailGlass",nil,nil,Color3.fromRGB(25,20,45),.53);U.corner(self.navGlass,18);U.stroke(self.navGlass,Color3.fromRGB(184,151,243),.68);self.navGlass.Active=false;self.navGlass.Interactable=false
- self.nav.ZIndex=3
+ self.nav.ZIndex=4
  self.contentGlass=U.frame(self.panel,"ContentGlass",nil,nil,Color3.fromRGB(25,20,45),.55);U.corner(self.contentGlass,18);U.stroke(self.contentGlass,Color3.fromRGB(184,151,243),.68);self.contentGlass.Active=false;self.contentGlass.Interactable=false
  self.pageBox.ZIndex=3;self.search.ZIndex=4
  self.searchResults=U.new("ScrollingFrame",{Name="FunctionSearchResults",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=4,Visible=false},self.panel)
  U.new("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder},self.searchResults)
  self.searchResults.ZIndex=3
  self.header.ZIndex=3;self.navGlass.ZIndex=3;self.contentGlass.ZIndex=3;self.status.ZIndex=3
+ self.layoutMove=U.button(self.panel,"MOVE GUI");self.layoutMove.ZIndex=8;self.layoutMove.Visible=false
+ self.layoutResize=U.button(self.panel,"RESIZE");self.layoutResize.ZIndex=8;self.layoutResize.Visible=false
+ self.layoutDone=U.button(self.panel,"DONE");self.layoutDone.ZIndex=8;self.layoutDone.Visible=false
+ scope:on(self.layoutDone.Activated,function() self:editLayout(false) end)
  self.pageBox.Active=true;self.header.Active=true
  local function inside(obj,pos)
   if not obj or not obj.Visible then return false end
@@ -1079,24 +1178,25 @@ function UI.new(app,gui,scope)
   return pos.X>=a.X and pos.X<=a.X+b.X and pos.Y>=a.Y and pos.Y<=a.Y+b.Y
  end
  scope:on(self.backdropHit.Activated,function(input)
-  if not self.opened or self.drag or os.clock()<(self.tabInputAfter or 0) then return end
+  if not self.opened or self.drag or self.layoutEditing or os.clock()<(self.tabInputAfter or 0) then return end
   if not input or (input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch) then return end
   local pos=Vector2.new(input.Position.X,input.Position.Y)
   for _,obj in {self.header,self.navGlass,self.nav,self.search,self.pageBox,self.searchResults,self.status} do
    if inside(obj,pos) then return end
   end
+  for _,r in self.branchCards do if inside(r.frame,pos) then return end end
   self:show(false)
  end)
  self.searchPool={}
  self.searchIndex={}
  self.fullscreen=true
- for _,name in {"Dashboard","HUD","Character","Wings","Halos","Ambient","Indicators","Cursor","Interaction","Volleyball","Fonts","Profiles","Diagnostics"} do
+ for name in self.buttons do
   table.insert(self.searchIndex,{tab=name,label=name,term=name:lower()})
  end
  for _,k in S.order do
   local d=S.defs[k]
   if type(d)~="table" or type(d.group)~="string" or k=="hp" or k:match("^hp[A-Z]") or k:match("^heart") or k=="hudShine" or k=="hudReaction" or k=="compact" or k=="robloxRail" or k=="railCustom" or k=="railX" or k=="railY" then continue end
-  local tab=if d.group=="Theme" or d.group=="Motion" then "Dashboard" elseif d.group=="Camera" then "Interaction" else d.group
+  local tab=if d.group=="Theme" or d.group=="Motion" then "Interface" elseif d.group=="Camera" then "Interaction" else d.group
   if not self.buttons[tab] then continue end
   local label=if type(d.label)=="string" and d.label~="" then d.label elseif k=="players" then "Per-player override" else tostring(k)
   table.insert(self.searchIndex,{tab=tab,label=label,key=k,term=(label.." "..tostring(k).." "..tab):lower()})
@@ -1167,54 +1267,56 @@ function UI.new(app,gui,scope)
   self.brand.Position=UDim2.fromOffset(10,0);self.brand.Size=UDim2.new(1,-20,1,0);self.brand.TextXAlignment=Enum.TextXAlignment.Center
   self.brand.TextSize=if sz.X<500 then 14 else 20
   self.brand.Font=Enum.Font.Code;self.tag.Visible=false
-  local narrow=sz.X<740
-  local rail=if narrow then 68 else 124
-  local pad=if narrow then 8 else math.max(22,math.round(sz.X*.025))
-  local isCatalog=self.catalogHost~=nil and self.catalogHost.Parent~=nil
-  local gap=if narrow then 10 else 22
-  local maxWidth=math.max(1,sz.X-2*pad-rail-gap)
-  local bodyW=math.min(maxWidth,if isCatalog then 1080 else 820,math.round(sz.X*(if narrow then .9 elseif isCatalog then .73 else .57)))
-  local availableH=math.max(100,sz.Y-100)
-  local bodyH=math.min(availableH,if isCatalog then 610 else 590,math.max(240,math.round(sz.Y*(if narrow then .76 else .61))))
-  local y=math.max(70,math.round((sz.Y-bodyH-44)*.5))
-  local contentX=math.max(pad+rail+gap,math.round((sz.X-bodyW)*.5+rail*.24))
-  contentX=math.min(contentX,sz.X-pad-bodyW)
-  local railH=math.min(bodyH+40,math.max(100,sz.Y-y-12))
-  self.navGlass.Position=UDim2.fromOffset(pad,y);self.navGlass.Size=UDim2.fromOffset(rail,railH)
-  self.nav.Position=UDim2.fromOffset(pad+6,y+7);self.nav.Size=UDim2.fromOffset(rail-12,math.max(1,railH-14))
-  self.navList.FillDirection=Enum.FillDirection.Vertical
-  self.nav.AutomaticCanvasSize=Enum.AutomaticSize.Y;self.nav.ScrollingDirection=Enum.ScrollingDirection.Y
-  for name,b in self.buttons do
-   b.Size=UDim2.new(1,-4,0,if narrow then 42 else 44)
-   b.TextSize=if narrow then 9 else 11
-   b.BackgroundTransparency=.24
-   local icon=self.icons[name]
-   if icon then
-    local shift=if narrow then UDim2.new(.5,-10,0,3) else UDim2.new(0,8,.5,-10)
-    icon.native.Position=shift
-    if icon.hd then icon.hd.Position=if narrow then UDim2.new(.5,-11.5,0,2) else UDim2.new(0,7,.5,-11.5) end
-    icon.visual.Position=if narrow then UDim2.new(.5,-12,0,2) else UDim2.new(0,7,.5,-12)
-    local glow=b:FindFirstChild("IconGlow");if glow and icon.hd then glow.Position=icon.hd.Position end
-   end
-   b.TextXAlignment=if narrow then Enum.TextXAlignment.Center else Enum.TextXAlignment.Right
-   b.TextYAlignment=if narrow then Enum.TextYAlignment.Bottom else Enum.TextYAlignment.Center
+  local narrow=sz.X<840
+  local pad=if narrow then 8 else 22
+  local gap=if narrow then 8 else 14
+  local draft=self.layoutDraft or s
+  local custom=draft.layoutCustom
+  local fullW=math.max(1,sz.X-2*pad)
+  local fullH=math.max(60,sz.Y-120)
+  local workW=math.min(fullW,math.max(math.min(fullW,440),math.round(fullW*(if custom then draft.layoutW else 86)/100)))
+  local workH=math.min(fullH,math.max(math.min(fullH,280),math.round(fullH*(if custom then draft.layoutH else 78)/100)))
+  local x=pad+math.round((fullW-workW)*(if custom then draft.layoutX else 50)/100)
+  local y=90+math.round((fullH-workH)*(if custom then draft.layoutY else 50)/100)
+  local rail=math.min(math.round(workW*.23),if narrow then 92 else draft.navWidth)
+  local branchW=math.min(math.round(workW*.24),if narrow then 128 else 202)
+  local contentX=x+rail+branchW+2*gap
+  local bodyW=math.max(1,workW-rail-branchW-2*gap)
+  local bodyH=math.max(1,workH-44)
+  self.layoutBounds={x=x,y=y,w=workW,h=workH,fullW=fullW,fullH=fullH,pad=pad}
+  local buttonH=math.min(54,math.max(22,math.floor((workH-38)/4)))
+  local railH=buttonH*4+40
+  self.navGlass.Position=UDim2.fromOffset(x,y);self.navGlass.Size=UDim2.fromOffset(rail,railH)
+  self.nav.Position=UDim2.fromOffset(x+7,y+8);self.nav.Size=UDim2.fromOffset(math.max(1,rail-14),math.max(1,railH-16))
+  for _,b in self.branchButtons do
+   b.button.Size=UDim2.new(1,0,0,buttonH)
+   b.button.TextSize=if narrow then 12 else 16
   end
+  self.branchStack.Position=UDim2.fromOffset(x+rail+gap,y)
+  self.branchStack.Size=UDim2.fromOffset(branchW,workH)
+  self.branchTitleH=math.clamp(math.floor(workH/20),10,24)
+  self.branchRowH=math.clamp(math.floor((workH-4*(self.branchTitleH+6)-30)/14),8,36)
+  self:refreshBranches(true)
   self.search.Position=UDim2.fromOffset(contentX,y);self.search.Size=UDim2.fromOffset(bodyW,32)
   self.search.BackgroundTransparency=.53
   self.contentGlass.Position=UDim2.fromOffset(contentX,y+42);self.contentGlass.Size=UDim2.fromOffset(bodyW,bodyH)
-  -- Catalog and editor have their own glass, so do not put a third layer behind them.
+  local isCatalog=self.catalogHost~=nil and self.catalogHost.Parent~=nil
   self.contentGlass.Visible=not isCatalog or self.searchResults.Visible
   self.pageBox.Position=self.contentGlass.Position;self.pageBox.Size=self.contentGlass.Size
   self.searchResults.Position=self.pageBox.Position;self.searchResults.Size=self.pageBox.Size
-  self.status.Position=UDim2.fromOffset(contentX,y+bodyH+47);self.status.Size=UDim2.fromOffset(bodyW,21)
-  self.top.Size=UDim2.fromOffset(math.min(136,math.max(90,sz.X-24)),38)
+  self.status.Position=UDim2.fromOffset(contentX,y+workH+5);self.status.Size=UDim2.fromOffset(bodyW,21)
+  self.layoutMove.Position=UDim2.fromOffset(x,math.max(55,y-34));self.layoutMove.Size=UDim2.fromOffset(100,28)
+  self.layoutDone.Position=UDim2.fromOffset(x+workW-74,math.max(55,y-34));self.layoutDone.Size=UDim2.fromOffset(74,28)
+  self.layoutResize.Position=UDim2.fromOffset(x+workW-74,y+workH-28);self.layoutResize.Size=UDim2.fromOffset(74,28)
+  self.layoutMove.Visible=self.layoutEditing==true;self.layoutDone.Visible=self.layoutEditing==true;self.layoutResize.Visible=self.layoutEditing==true
+  self.top.Size=UDim2.fromOffset(math.min(math.round(136*s.topScale/100),math.max(90,sz.X-24)),math.round(38*s.topScale/100))
   self.top.Position=UDim2.new(.5,0,0,if narrow then 48 else 12)
   if s.topCustom and not (s.topX==0 and s.topY==0) then
    self.top.AnchorPoint=Vector2.zero
    self.top.Position=UDim2.fromOffset(math.max(0,sz.X-self.top.Size.X.Offset)*s.topX/100,math.max(0,sz.Y-self.top.Size.Y.Offset)*s.topY/100)
   else self.top.AnchorPoint=Vector2.new(.5,0) end
   self.quick.Size=UDim2.fromOffset(math.min(324,math.max(140,sz.X-24)),math.min(math.clamp(sz.Y*.58,120,440),math.max(120,sz.Y-24)))
-  self.layoutKey=table.concat({s.topX,s.topY,tostring(s.topCustom)},":")
+  self.layoutKey=layoutKey(s)
   self:layoutCatalog()
  end
  function self:finishMenuDrag(point,resize)
@@ -1276,6 +1378,36 @@ function UI.new(app,gui,scope)
   end,origin)
   if self.drag then self.drag.finish=function(point) self:finishMenuDrag(point,true) end end
  end)
+ function self:editLayout(on)
+  self.layoutEditing=on==true;self.layoutDraft=nil;self.drag=nil;self:layout()
+  if not on and self.app.store then self.app.store:save() end
+ end
+ local function beginLayout(input,resize)
+  if not self.layoutEditing or self.drag then return end
+  if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
+  local b=self.layoutBounds;if not b then return end
+  local origin=Vector2.new(input.Position.X,input.Position.Y)
+  local function calc(pos)
+   local delta=pos-origin
+   local w=if resize then math.clamp(b.w+delta.X,b.fullW*.50,b.fullW*.98) else b.w
+   local h=if resize then math.clamp(b.h+delta.Y,b.fullH*.40,b.fullH*.95) else b.h
+   local x=if resize then b.x else b.x+delta.X
+   local y=if resize then b.y else b.y+delta.Y
+   local next=table.clone(self.app.s);next.layoutCustom=true
+   next.layoutW=math.clamp(math.round(w/b.fullW*100),50,98);next.layoutH=math.clamp(math.round(h/b.fullH*100),40,95)
+   next.layoutX=math.clamp(math.round((x-b.pad)/math.max(1,b.fullW-w)*100),0,100)
+   next.layoutY=math.clamp(math.round((y-90)/math.max(1,b.fullH-h)*100),0,100)
+   self.layoutDraft=next;self:layout()
+  end
+  self:begin(input,calc)
+  if self.drag then self.drag.finish=function(pos)
+   calc(pos);local next=self.layoutDraft;self.layoutDraft=nil
+   if next then self.app:patch({layoutCustom=true,layoutX=next.layoutX,layoutY=next.layoutY,layoutW=next.layoutW,layoutH=next.layoutH}) end
+   self:layout()
+  end end
+ end
+ scope:on(self.layoutMove.InputBegan,function(i) beginLayout(i,false) end)
+ scope:on(self.layoutResize.InputBegan,function(i) beginLayout(i,true) end)
  scope:on(self.pageBox:GetPropertyChangedSignal("AbsoluteSize"),function() self:layoutCatalog() end)
  scope:on(self.stage:GetPropertyChangedSignal("AbsoluteSize"),function() self:layout() end);self:layout()
  scope:on(Input.InputChanged,function(i) local d=self.drag;if d and (i==d.i or d.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseMovement) then d.fn(Vector2.new(i.Position.X,i.Position.Y),d.start,d.origin) end end)
@@ -1352,7 +1484,7 @@ function UI:animateBackground(t)
   local k=if s.reduce or not s.navGlow then 1 else 1-math.exp(-math.max(dt,decorDt)*15)
   amount+=(desired-amount)*k
   self.navAmount[name]=amount
-  b.BackgroundColor3=soft:Lerp(accent:Lerp(bg,.42),amount)
+  b.BackgroundColor3=U.hex(s.uiButtonColor):Lerp(U.hex(s.uiHoverColor),amount)
  end
  end
  self.geoLayer.Visible=(s.menuGeometry or s.screenParticles) and self.panel.Visible
@@ -1374,6 +1506,7 @@ function UI:show(on)
   end
  end
  self.opened=on
+ if not on then self.layoutEditing=false;self.layoutDraft=nil;self.layoutMove.Visible=false;self.layoutResize.Visible=false;self.layoutDone.Visible=false end
  self.panel.Interactable=on
  if on then self.panel.Visible=true end
  self.drag=nil
@@ -1726,6 +1859,8 @@ function UI:open(tab)
  self.app.bindingLockKey=false
  if not self.buttons[tab] then return end
  self:show(true);self.drag=nil
+ local branch=tabBranch[tab]
+ if self.app.store and branch and not self.app.s["branch"..branch] then self.app:set("branch"..branch,true) end
  if self.page then self.page:clear() end
  self.app.preview=nil;self.page=U.scope();self.syncs={};self.controlKeys={};self.colorKeys={};self.seq=0;self.tab=tab
  self.catalogHost=nil;self.editorAdapter=nil;self.themeDirty=true;self.navDirty=true
@@ -1740,6 +1875,7 @@ function UI:open(tab)
   U.new("UIPadding",{PaddingTop=UDim.new(0,8),PaddingBottom=UDim.new(0,8),PaddingLeft=UDim.new(0,8),PaddingRight=UDim.new(0,4)},sc)
  else self:title(tab:upper().."   /   AETHER VISUALS HUB") end
  self:layout();self.app:page(tab,self);self:sync()
+ if self.app.store and self.app.s.lastPage~=tab then self.app:set("lastPage",tab) end
 end
 -- A dedicated short-lived editor scope keeps grid cards and navigation intact.
 function UI:makeCatalogEditor()
@@ -1757,7 +1893,7 @@ function UI:makeCatalogEditor()
  self.themeDirty=true
  return editor
 end
-function UI:row(h,name) self.seq+=1;local f=U.frame(self.sc,name or "Row",nil,UDim2.new(1,-8,0,h),soft,.62);f.LayoutOrder=self.seq;U.corner(f,8);return f end
+function UI:row(h,name) self.seq+=1;local f=U.frame(self.sc,name or "Row",nil,UDim2.new(1,-8,0,h),U.hex(self.app.s.uiRowColor),.62);f:SetAttribute("AETHERControlRow",true);f.LayoutOrder=self.seq;U.corner(f,8);return f end
 function UI:title(str) local f=self:row(26,"Heading");f.BackgroundTransparency=1;local n=U.label(f,str,13);n.TextColor3=U.hex(self.app.s.accent);self.titleLabel=n;return n end
 function UI:note(str,h) local f=self:row(h or 36,"Note");f.BackgroundTransparency=1;local l=U.label(f,str,12);l.TextWrapped=true;l.TextTruncate=Enum.TextTruncate.None;l.TextColor3=dim;l:SetAttribute("AETHERMuted",true);return l end
 function UI:watch(fn) table.insert(self.syncs,fn);fn() end
@@ -1767,8 +1903,9 @@ function UI:sync()
  local space=Color3.fromRGB(7,9,22)
  self.backgroundGradient.Color=ColorSequence.new(U.hex(st.constellationBgA):Lerp(space,.64),U.hex(st.constellationBgB):Lerp(space,.53))
  self.backgroundGradient.Rotation=st.constellationAngle
- local layoutKey=table.concat({st.topX,st.topY,tostring(st.topCustom)},":")
- if self.layoutKey~=layoutKey and not self.menuDraft then self:layout() end
+ local key=layoutKey(st)
+ if self.layoutKey~=key and not self.menuDraft and not self.layoutDraft then self:layout() end
+ self:refreshBranches(false)
  local primary=U.hex(st.uiFontColor or "F1E6FF")
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
@@ -1779,11 +1916,16 @@ function UI:sync()
  if self.iconKey~=iconKey then self.iconKey=iconKey;for _,asset in self.icons do asset:sync(st.iconAtlas,st.iconAtlasTile) end;self:layout() end
  for _,f in self.syncs do f() end
  if self.editorAdapter then for _,f in self.editorAdapter.syncs do f() end end
- local themeKey=table.concat({st.accent,st.uiFontColor,st.uiMutedColor},":")
+ local themeKey=table.concat({st.accent,st.uiFontColor,st.uiMutedColor,st.uiPanelColor,st.uiButtonColor,st.uiHoverColor,st.uiRowColor,st.uiStrokeColor,st.uiSpecularColor,st.uiGlassOpacity,st.uiReflection,st.rim},":")
  if not self.themeDirty and self.themeKey==themeKey then return end
  self.themeDirty=false;self.themeKey=themeKey
+ for _,frame in {self.navGlass,self.contentGlass,self.header,self.top,self.quick,self.bindPanel,self.catalogHost,self.catalogHost and self.sc} do if frame then glassSurface(frame,st) end end
+ for _,r in self.branchCards do glassSurface(r.frame,st) end
+ self.search.BackgroundColor3=U.hex(st.uiRowColor)
  -- Only recolor editor controls, not HUD/3D previews or their own palette.
  for _,obj in self.panel:GetDescendants() do
+  if obj:IsA("Frame") and obj:GetAttribute("AETHERControlRow") and obj.BackgroundTransparency<1 then obj.BackgroundColor3=U.hex(st.uiRowColor) end
+  if obj:IsA("TextButton") and obj:GetAttribute("AETHERThemeButton") then obj.BackgroundColor3=U.hex(st.uiButtonColor) end
   if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
    if obj==self.brand or obj==self.tag or obj==self.status then continue end
    if obj:GetAttribute("AETHERKeepFontColor") then continue end
@@ -1817,7 +1959,7 @@ function UI:action(fn)
  if not ok then self.app:log("Error",tostring(err));self:message(tostring(err):sub(-150)) end
 end
 function UI:chips(items,fn,cols,selected)
- cols=cols or 3;for start=1,#items,cols do local row=self:row(33,"Actions");row.BackgroundTransparency=1;for j=0,math.min(cols-1,#items-start) do local item=items[start+j];local b=U.button(row,item);b.Name=item;b.Size=UDim2.new(1/cols,-4,1,0);b.Position=UDim2.fromScale(j/cols,0);self.page:on(b.Activated,function() self:action(function() fn(item) end) end);if selected then self:watch(function() b.BackgroundColor3=if selected()==item then Color3.fromRGB(98,68,150) else soft end) end end end
+ cols=cols or 3;for start=1,#items,cols do local row=self:row(33,"Actions");row.BackgroundTransparency=1;for j=0,math.min(cols-1,#items-start) do local item=items[start+j];local b=U.button(row,item);b:SetAttribute("AETHERThemeButton",not selected);b.BackgroundColor3=U.hex(self.app.s.uiButtonColor);b.Name=item;b.Size=UDim2.new(1/cols,-4,1,0);b.Position=UDim2.fromScale(j/cols,0);self.page:on(b.Activated,function() self:action(function() fn(item) end) end);if selected then self:watch(function() b.BackgroundColor3=U.hex(if selected()==item then self.app.s.uiHoverColor else self.app.s.uiButtonColor) end) end end end
 end
 function UI:box(label,initial,h,commit)
  self:title(label);local r=self:row(h or 34,"Field");local t=U.new("TextBox",{Name=label,Size=UDim2.new(1,-12,1,-4),Position=UDim2.fromOffset(6,2),ClearTextOnFocus=false,MultiLine=(h or 0)>45,TextWrapped=(h or 0)>45,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=if (h or 0)>45 then Enum.TextYAlignment.Top else Enum.TextYAlignment.Center,BackgroundTransparency=1,Text=initial or "",PlaceholderText=label,Font=Enum.Font.Code,TextSize=13,TextColor3=Color3.fromRGB(232,222,255)},r);if commit then self.page:on(t.FocusLost,function() self:action(function() commit(t.Text) end) end) end;return t
@@ -1829,7 +1971,7 @@ function UI:control(k)
  local d=S.defs[k];local app=self.app;local a=d.kind;if a=="players" then return end
  if a=="text" or a=="asset" then local box=self:box(d.label,tostring(app.s[k]),32,function(v) app:set(k,v) end);self:watch(function() if not box:IsFocused() then box.Text=tostring(app.s[k]) end end);return end
  local row=self:row(if a=="number" or a=="angle" then 48 else 34,k);local label=U.label(row,d.label,12,UDim2.fromOffset(9,0),UDim2.new(.57,0,0,30));label.TextColor3=Color3.fromRGB(219,210,234)
- if a=="bool" or a=="choice" then local b=U.button(row,"");b.Name="Value";b.Position=UDim2.new(.58,0,0,3);b.Size=UDim2.new(.42,-6,1,-6);self.page:on(b.Activated,function() if a=="bool" then app:set(k,not app.s[k]) else app:set(k,d.min[(table.find(d.min,app.s[k]) or 0)%#d.min+1]) end end);self:watch(function() b.Text=if a=="bool" then (if app.s[k] then "ON" else "OFF") else tostring(app.s[k]).."  ›";b.BackgroundColor3=if a=="bool" and not app.s[k] then Color3.fromRGB(48,45,59) else Color3.fromRGB(84,61,118) end);return end
+ if a=="bool" or a=="choice" then local b=U.button(row,"");b.Name="Value";b.Position=UDim2.new(.58,0,0,3);b.Size=UDim2.new(.42,-6,1,-6);self.page:on(b.Activated,function() if a=="bool" then app:set(k,not app.s[k]) else app:set(k,d.min[(table.find(d.min,app.s[k]) or 0)%#d.min+1]) end end);self:watch(function() b.Text=if a=="bool" then (if app.s[k] then "ON" else "OFF") else tostring(app.s[k]).."  ›";b.BackgroundColor3=U.hex(if a=="bool" and not app.s[k] then app.s.uiButtonColor else app.s.uiHoverColor) end);return end
  local box=U.new("TextBox",{Name="Value",Position=UDim2.new(.6,0,0,3),Size=UDim2.new(.4,-7,0,23),BackgroundColor3=bg,ClearTextOnFocus=false,TextColor3=Color3.new(1,1,1),Font=Enum.Font.Code,TextSize=12,Text="",BorderSizePixel=0},row);U.corner(box,6)
  self.page:on(box.FocusLost,function() self:action(function() app:set(k,if a=="angle" then assert(tonumber(box.Text),"Enter a finite angle") elseif a=="number" then math.clamp(math.round(assert(tonumber(box.Text),"Enter a number")),d.min,d.max) else (box.Text:gsub("^#",""))) end);self:sync() end)
  if a=="color" then self:watch(function() if not box:IsFocused() then box.Text="#"..app.s[k] end;label.TextColor3=U.hex(app.s[k]) end);return end
@@ -2259,14 +2401,6 @@ function H.new(scope,parent,preview,go,drag,close,showPanels)
  self.profileTitle=U.label(profile,"PERFORMANCE",9,UDim2.fromOffset(25,9),UDim2.new(1,-43,0,18))
  self.name=U.label(profile,"",15,UDim2.fromOffset(14,28),UDim2.new(1,-27,0,22))
  local dock=self.widgets.dock.p
- if close then
-  for _,key in {"clock","profile"} do
-   local button=U.button(self.widgets[key].p,"×")
-   button.Size=UDim2.fromOffset(16,16);button.Position=UDim2.new(1,-19,0,3)
-   button.TextSize=12;button.BackgroundTransparency=.6;button.ZIndex=5
-   scope:on(button.Activated,function() close(key) end)
-  end
- end
  local b=U.button(dock,"A E T H E R")
  b.Name="OpenAetherMenu";b.Size=UDim2.new(1,-10,1,-10);b.Position=UDim2.fromOffset(5,5)
  b.TextSize=13;b.ZIndex=4;b.BackgroundTransparency=.18
@@ -2398,9 +2532,10 @@ function H:setStyle(s)
   w.scale.Scale=if k=="cross" then 1 else factor*s[k.."Scale"]/100
   if w.p:IsA("CanvasGroup") then w.p.GroupTransparency=1-s[k.."Alpha"]/100 end
   w.p.Visible=s[k]
-  w.rim.Color=accent
+  w.rim.Color=U.hex(s.uiStrokeColor)
   w.rim.Transparency=1-s.rim/100
-  w.g.Color=ColorSequence.new(a,b)
+  local tint=if k=="clock" then U.hex(s.clockGlass) elseif k=="profile" then U.hex(s.fpsGlass) else a
+  w.g.Color=ColorSequence.new(tint:Lerp(U.hex(s.uiSpecularColor),.12*s.uiReflection/100),tint:Lerp(b,.5))
   w.p.BackgroundTransparency=1
   if w.p:IsA("CanvasGroup") then w.p.GroupColor3=Color3.new(1,1,1) end
   local legacyGradient=w.p:FindFirstChildOfClass("UIGradient")
@@ -2414,7 +2549,7 @@ function H:setStyle(s)
   local n=item[1]
   n.FontFace=face
   n.TextSize=item[2]*s.fontSize/100
-  n.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA)
+  n.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(if n==self.clock or n==self.clockSub then s.clockText else s.fpsText)
   n.TextStrokeColor3=Color3.fromRGB(20,16,32)
   n.TextStrokeTransparency=1-s.fontOutline/100
   local grad=n:FindFirstChildOfClass("UIGradient") or U.gradient(n,accent,b,0)
@@ -2525,7 +2660,7 @@ function H:animateWidgets(s,f,dt,t)
   w.scale.Scale=self.factor*s[key.."Scale"]/100*(1-entry*.08+pulse)
   local glow=if idle and s.hudMotion~="Off" then (.5+.5*math.sin(phase))*.18*strength else 0
   w.rim.Transparency=1-math.clamp(s.rim/100+glow,0,1)
-  w.rim.Color=U.hex(s.accent):Lerp(U.hex(s.secondary),glow*2)
+  w.rim.Color=U.hex(s.uiStrokeColor):Lerp(U.hex(s.secondary),glow*2)
   w.g.Rotation=if idle and s.hudMotion=="Glass" then 90+math.sin(phase*.5)*18*strength else 90
  end
  self.profileDot.BackgroundTransparency=if enabled then .12+.16*(1-math.sin(time*1.7)) else 0
@@ -5150,8 +5285,26 @@ local function statePanel(ui,a)
  end)
 end
 function E.render(a,tab,ui)
- if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Custom lock keybind is in Interaction. Menu uses F8 (F7 when F8 is assigned to lock). Native Shift Lock is disabled where Roblox allows it.",43);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme",{topCapsule=true,robloxRail=true,menuDock=true,menuWidth=true,menuHeight=true,menuFloatX=true,menuFloatY=true,menuResize=true,menuDrag=true,constellationBgA=true,constellationBgB=true,constellationLineA=true,constellationLineB=true,constellationNodeA=true,constellationNodeB=true});ui:title("CONSTELLATION COLORS");for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end;ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
- elseif tab=="HUD" then preview(ui,a,true);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:title("TOP PANEL");for _,v in {"topCapsule","movePanels"} do ui:control(v) end;ui:note("Enable moving panels to drag the AETHER capsule.",34);ui:chips({"Reset panel position"},function() a:patch({topCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness"} do ui:control(k) end;ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);local widgets={"clock","profile","dock","top"};if not table.find(widgets,a.hudTab) then a.hudTab="clock" end;ui:chips(widgets,function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
+ if tab=="Dashboard" then
+  preview(ui,a);ui:title("AETHER / OVERVIEW")
+  ui:note("Choose a branch on the left. Visual collections, interface settings and profiles are organized separately.",50)
+  ui:chips({"Interface","Profiles","Halos","Wings"},function(n) ui:open(n) end,2)
+ elseif tab=="Interface" then
+  ui:title("LAYOUT & WIDGETS")
+  ui:chips({"Edit GUI size / position"},function() ui:editLayout(true) end,1)
+  ui:chips({"Edit HUD size / position"},function() a:set("movePanels",true);a:editHUD(true) end,1)
+  ui:chips({"Reset GUI layout","Save configuration"},function(n)
+   if n=="Reset GUI layout" then a:patch({layoutCustom=false,navWidth=156,topScale=100,topCustom=false}) else a.store:save() end
+  end,2)
+  for _,k in {"layoutCustom","layoutX","layoutY","layoutW","layoutH","navWidth","topScale","clock","profile","keybindWidget"} do ui:control(k) end
+  ui:title("LIQUID GLASS");preset(ui,a,"Theme")
+  for _,k in {"uiGlassOpacity","uiReflection","rim","glass"} do ui:control(k) end
+  for _,k in {"uiPanelColor","uiButtonColor","uiHoverColor","uiRowColor","uiStrokeColor","uiSpecularColor","accent","secondary","uiFontColor","uiMutedColor","glassColor","clockGlass","fpsGlass","clockText","fpsText"} do ui:colorPicker(k) end
+  ui:title("SPACE BACKGROUND")
+  for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end
+  for _,k in {"menuGeometry","menuShape","menuDensity","menuMotion","menuOpacity","constellationLinks","constellationDistance","constellationThickness","constellationSize","constellationAngle","screenParticles","screenParticleOpacity"} do ui:control(k) end
+  ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
+ elseif tab=="HUD" then preview(ui,a,true);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:title("TOP PANEL");for _,v in {"movePanels","topScale"} do ui:control(v) end;ui:note("Enable moving panels to drag the AETHER capsule.",34);ui:chips({"Reset panel position"},function() a:patch({topCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness"} do ui:control(k) end;ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);local widgets={"clock","profile","top"};if not table.find(widgets,a.hudTab) then a.hudTab="clock" end;ui:chips(widgets,function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
   if k=="top" then for _,v in {k.."Custom",k.."X",k.."Y"} do ui:control(v) end
   else for _,suffix in {"","X","Y","Scale","Turn","Alpha"} do ui:control(k..suffix) end end
  elseif tab=="Character" then
@@ -5870,13 +6023,36 @@ S.vbMultiplierNames={"BlockPower","BumpPower","DashPower","DiveSpeed","DrawPower
 for _,name in S.vbMultiplierNames do
  def("VolleyballState","vbMultiplier_"..name,name,"optionalReal",false,0,math.huge)
 end
+-- Interface settings use the existing validated, persistent profile schema.
+for _,name in {"Main","Visuals","Utility","Interface"} do toggle("Interface","branch"..name,"Expand "..name,name=="Visuals") end
+choice("Interface","lastPage","Last page","Halos",{"Dashboard","Profiles","Diagnostics","Character","Wings","Halos","Ambient","Indicators","Cursor","Interaction","Volleyball","Interface","HUD","Fonts"})
+color("Interface","uiPanelColor","Panel tint","211B36")
+color("Interface","uiButtonColor","Button tint","382B50")
+color("Interface","uiHoverColor","Selected button tint","7154A6")
+color("Interface","uiRowColor","Control row tint","29223D")
+color("Interface","uiStrokeColor","Glass edge tint","D1BEF4")
+color("Interface","uiSpecularColor","Glass highlight","FFFFFF")
+color("Interface","clockGlass","Clock glass tint","211C35")
+color("Interface","fpsGlass","FPS glass tint","211C35")
+color("Interface","clockText","Clock text","F1E6FF")
+color("Interface","fpsText","FPS text","F1E6FF")
+range("Interface","uiGlassOpacity","Panel opacity %",48,10,95)
+range("Interface","uiReflection","Glass reflection %",55,0,100)
+toggle("Interface","layoutCustom","Custom GUI arrangement",false)
+range("Interface","layoutX","GUI horizontal position %",50,0,100)
+range("Interface","layoutY","GUI vertical position %",50,0,100)
+range("Interface","layoutW","GUI width %",86,50,98)
+range("Interface","layoutH","GUI height %",72,40,95)
+range("Interface","navWidth","Branch rail width",156,100,220)
+range("Interface","topScale","Top capsule scale %",100,60,180)
 function S.copy(v) if type(v)~="table" then return v end;local r={};for k,x in v do r[k]=S.copy(x) end;return r end
 local function str(s,n) return type(s)=="string" and #s<=n and utf8.len(s)~=nil end
 local function name(s) return str(s,48) and s:match("%S") and not s:find("%c") end
 local function hex(s) return type(s)=="string" and #s==6 and s:match("^%x+$")~=nil end
 function S.value(k,v)
  -- Deprecated effects stay readable in old banks but cannot be enabled in this edition.
- if (k=="neon" or k=="aura" or k=="trail" or k=="visualBloom") and type(v)=="boolean" then return false end
+ if (k=="neon" or k=="aura" or k=="trail" or k=="visualBloom" or k=="dock") and type(v)=="boolean" then return false end
+ if k=="topCapsule" and type(v)=="boolean" then return true end
  local d=S.defs[k];if not d then error("Unknown setting: "..tostring(k),0) end
  local a=d.kind
  if a=="bool" and type(v)=="boolean" then return v end
@@ -5958,7 +6134,7 @@ function S.capturePeer(settings,publishedMotion,physicalLift)
  return packet
 end
 function S.menuKey(s) return if s.lockKey=="F8" then "F7" else "F8" end
-function S.defaults() local r={};for k,d in S.defs do r[k]=S.copy(d.default) end;return r end
+function S.defaults() local r={};for k,d in S.defs do r[k]=S.copy(d.default) end;r.dock=false;r.topCapsule=true;return r end
 function S.settings(v,group)
  assert(type(v)=="table","Expected settings");local r=if group then {} else S.defaults();local count=0
  for k,x in v do local d=S.defs[k];assert(d and (not group or d.group==group),"Unexpected setting");r[k]=S.value(k,x);count+=1 end
@@ -10928,7 +11104,7 @@ end
 
 local hud = Hud.new(scope, overlay, false, function()
     if app.ui and not app.editingHUD and not app.stopping then app.ui:show(not app.ui.opened) end
-end,nil,function(key) app:set(key,false) end)
+end,nil,nil)
 local avatar = Avatar.new(workspace, false)
 local walkMotion = WalkMotion.new()
 app.walkMotion = walkMotion
@@ -10979,7 +11155,7 @@ scope:on(panelToggle.Activated,function()
     app:updateEditor()
 end)
 local handles={}
-local positions={"clock","profile","dock","input","wallhop","top","keybind","quick"}
+local positions={"clock","profile","input","wallhop","top","keybind","quick"}
 local function isAux(key) return key=="keybind" or key=="quick" end
 local function isPanel(key) return key=="top" or isAux(key) end
 local function widgetFor(key)
@@ -11026,8 +11202,22 @@ for _,key in positions do
     b.TextStrokeTransparency=.35
     U.stroke(b,Color3.fromRGB(224,183,255),0,2.5)
     handles[key]=b
+    if key=="clock" or key=="profile" or key=="top" then
+        local resize=U.button(b,"+");resize.Name="ResizeWidget";resize.AnchorPoint=Vector2.new(1,1);resize.Position=UDim2.fromScale(1,1);resize.Size=UDim2.fromOffset(23,23);resize.ZIndex=11
+        scope:on(resize.InputBegan,function(input)
+            if not app.editingHUD or app.hudEditMode=="Volleyball" then return end
+            if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
+            local prop=key.."Scale";local initial=app.s[prop];local target=widgetFor(key)
+            local width=math.max(1,target.AbsoluteSize.X)
+            ui:begin(input,function(pos,start)
+                local value=math.clamp(math.round(initial*(1+(pos.X-start.X)/width)),if key=="top" then 60 else 50,if key=="top" then 180 else 160)
+                if app.s[prop]~=value then app:set(prop,value) end
+            end)
+        end)
+    end
     scope:on(b.InputBegan,function(input)
         if not app.editingHUD or (input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch) then return end
+        if ui.drag then return end
         local target=widgetFor(key)
         if not target.Visible or (key=="top" and not app.s.movePanels) then return end
         if (app.hudEditMode=="Volleyball")~=isAux(key) then return end
@@ -11088,7 +11278,7 @@ function app:unload()
     -- Defer destruction until the current GUI activation callback has returned.
     task.defer(function() scope:clear() end)
 end
-ui:open("Halos")
+ui:open(app.s.lastPage or "Halos")
 ui:show(false)
 app:log("Startup", "AETHER modules initialized")
 
