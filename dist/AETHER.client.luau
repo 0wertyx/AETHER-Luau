@@ -1036,10 +1036,10 @@ function UI.new(app,gui,scope)
   StarterGui:SetCoreGuiEnabled(kind,not enabled);coreApplied[kind]=not enabled
   self:message(if enabled then "Roblox player list hidden" else "Roblox player list enabled")
  end
- self.panel=U.new("Frame",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=1,BorderSizePixel=0,Size=UDim2.fromScale(1,1),Visible=false,Active=true},self.stage);U.corner(self.panel,17);self.outline=U.stroke(self.panel,Color3.fromRGB(159,127,230),.3)
- self.panelBackground=U.frame(self.panel,"GlassBackground",nil,nil,Color3.new(1,1,1),.025);self.panelBackground.Active=false;self.panelBackground.Interactable=false;self.panelBackground.ZIndex=1;U.corner(self.panelBackground,17)
+ self.panel=U.new("Frame",{Name="Studio",BackgroundColor3=bg,BackgroundTransparency=1,BorderSizePixel=0,Size=UDim2.fromScale(1,1),Visible=false,Active=true},self.stage)
+ self.panelBackground=U.frame(self.panel,"GlassBackground",nil,nil,Color3.new(1,1,1),.025);self.panelBackground.Active=false;self.panelBackground.Interactable=false;self.panelBackground.ZIndex=1
  self.backgroundGradient=U.gradient(self.panelBackground,bg,Color3.fromRGB(39,30,58),82)
- self.geoLayer=U.frame(self.panel,"GeometryBackground",UDim2.fromOffset(3,3),UDim2.new(1,-6,1,-6),nil,1)
+ self.geoLayer=U.frame(self.panel,"GeometryBackground",UDim2.fromOffset(0,0),UDim2.fromScale(1,1),nil,1)
  self.geoLayer.ClipsDescendants=true;self.geoLayer.Active=false;self.geoLayer.ZIndex=1
  self.starField=U.frame(self.geoLayer,"DistantStars",nil,nil,nil,1);self.starField.Active=false;self.starField.Interactable=false
  for i=1,36 do
@@ -1340,10 +1340,6 @@ function UI:animateBackground(t)
  self.starField.Visible=visible
  if not self.panel.Visible then return end
  local tm=if s.reduce then 0 else t*s.speed/100
- self.outline.Color=accent:Lerp(U.hex(s.secondary),if s.reduce or not s.navGlow then 0 else .18+.15*math.sin(tm*1.6))
- self.outline.Transparency=1-math.clamp(s.rim/100*(if s.reduce or not s.navGlow then 1 else .85+.15*math.sin(tm*1.8)),0,1)
- self.outline.Transparency=1-(1-self.outline.Transparency)*q
- self.outline.Thickness=if s.reduce or not s.navGlow then 1 else 1.2+.3*math.sin(tm*1.6)
  self.pageProgress=if immediate or not s.tabTransition then 1 else math.min(1,self.pageProgress+dt/math.max(.06,duration*.72))
  local pageQ=U.ease(self.pageProgress,s.ease)
  transition(self.pageBox,pageQ)
@@ -1776,7 +1772,6 @@ function UI:sync()
  local primary=U.hex(st.uiFontColor or "F1E6FF")
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
- self.outline.Color=self.brand.TextColor3
  self.tag.Text="AETHER / VISUALS"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
