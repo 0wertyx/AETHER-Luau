@@ -623,7 +623,9 @@ function UI:handleQuickKey(input,processed)
  local now=os.clock()
  if self.lastBindKey==key and now-(self.lastBindAt or 0)<.18 then return true end
  self.lastBindKey=key;self.lastBindAt=now
+ local before,generation=self.app:moduleSnapshot(),self.app.moduleGeneration
  local ok,err=pcall(action.invoke)
+ self.app:recordModuleChanges(before,generation)
  if not ok then self.app:log("Keybind",err);self.quickStatus.Text=tostring(err):sub(-100) end
  self:refreshBindPanel()
  return true
@@ -935,7 +937,12 @@ function UI:sync()
   end
  end
 end
-function UI:action(fn) local ok,err=pcall(fn);if not ok then self.app:log("Error",tostring(err));self:message(tostring(err):sub(-150)) end end
+function UI:action(fn)
+ local before,generation=self.app:moduleSnapshot(),self.app.moduleGeneration
+ local ok,err=pcall(fn)
+ self.app:recordModuleChanges(before,generation)
+ if not ok then self.app:log("Error",tostring(err));self:message(tostring(err):sub(-150)) end
+end
 function UI:chips(items,fn,cols,selected)
  cols=cols or 3;for start=1,#items,cols do local row=self:row(33,"Actions");row.BackgroundTransparency=1;for j=0,math.min(cols-1,#items-start) do local item=items[start+j];local b=U.button(row,item);b.Name=item;b.Size=UDim2.new(1/cols,-4,1,0);b.Position=UDim2.fromScale(j/cols,0);self.page:on(b.Activated,function() self:action(function() fn(item) end) end);if selected then self:watch(function() b.BackgroundColor3=if selected()==item then Color3.fromRGB(98,68,150) else soft end) end end end
 end
