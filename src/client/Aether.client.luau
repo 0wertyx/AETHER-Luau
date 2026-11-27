@@ -2722,7 +2722,7 @@ end
 
 local hud = Hud.new(scope, overlay, false, function()
     if app.ui and not app.editingHUD and not app.stopping then app.ui:show(not app.ui.opened) end
-end,nil,function(key) app:set(key,false) end)
+end,nil,nil)
 local avatar = Avatar.new(workspace, false)
 local walkMotion = WalkMotion.new()
 app.walkMotion = walkMotion
@@ -2773,7 +2773,7 @@ scope:on(panelToggle.Activated,function()
     app:updateEditor()
 end)
 local handles={}
-local positions={"clock","profile","dock","input","wallhop","top","keybind","quick"}
+local positions={"clock","profile","input","wallhop","top","keybind","quick"}
 local function isAux(key) return key=="keybind" or key=="quick" end
 local function isPanel(key) return key=="top" or isAux(key) end
 local function widgetFor(key)
@@ -2820,8 +2820,22 @@ for _,key in positions do
     b.TextStrokeTransparency=.35
     U.stroke(b,Color3.fromRGB(224,183,255),0,2.5)
     handles[key]=b
+    if key=="clock" or key=="profile" or key=="top" then
+        local resize=U.button(b,"+");resize.Name="ResizeWidget";resize.AnchorPoint=Vector2.new(1,1);resize.Position=UDim2.fromScale(1,1);resize.Size=UDim2.fromOffset(23,23);resize.ZIndex=11
+        scope:on(resize.InputBegan,function(input)
+            if not app.editingHUD or app.hudEditMode=="Volleyball" then return end
+            if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
+            local prop=key.."Scale";local initial=app.s[prop];local target=widgetFor(key)
+            local width=math.max(1,target.AbsoluteSize.X)
+            ui:begin(input,function(pos,start)
+                local value=math.clamp(math.round(initial*(1+(pos.X-start.X)/width)),if key=="top" then 60 else 50,if key=="top" then 180 else 160)
+                if app.s[prop]~=value then app:set(prop,value) end
+            end)
+        end)
+    end
     scope:on(b.InputBegan,function(input)
         if not app.editingHUD or (input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch) then return end
+        if ui.drag then return end
         local target=widgetFor(key)
         if not target.Visible or (key=="top" and not app.s.movePanels) then return end
         if (app.hudEditMode=="Volleyball")~=isAux(key) then return end
@@ -2882,7 +2896,7 @@ function app:unload()
     -- Defer destruction until the current GUI activation callback has returned.
     task.defer(function() scope:clear() end)
 end
-ui:open("Halos")
+ui:open(app.s.lastPage or "Halos")
 ui:show(false)
 app:log("Startup", "AETHER modules initialized")
 
