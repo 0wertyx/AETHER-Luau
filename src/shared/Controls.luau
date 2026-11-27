@@ -328,16 +328,30 @@ function UI.new(app,gui,scope)
  self.workspace=U.frame(self.panel,"InfiniteWorkspace",UDim2.fromScale(.5,.5),UDim2.fromOffset(1,1),nil,1)
  self.workspace.AnchorPoint=Vector2.new(.5,.5);self.workspace.Active=false;self.workspace.ZIndex=3
  self.workspaceScale=U.new("UIScale",{Scale=1},self.workspace)
- self.workspaceLinks=U.frame(self.workspace,"NodeConnections",nil,nil,nil,1)
- self.workspaceLinks.Active=false;self.workspaceLinks.Interactable=false;self.workspaceLinks.ZIndex=1
+ -- Screen-space paths retain sharp, constant pixel width at every workspace zoom.
+ self.workspaceLinks=U.frame(self.panel,"NodeConnections",nil,UDim2.fromScale(1,1),nil,1)
+ self.workspaceLinks.Active=false;self.workspaceLinks.Interactable=false;self.workspaceLinks.ZIndex=2
  self.linkPool={};self.portPool={}
- for i=1,50 do
-  local line=U.frame(self.workspaceLinks,"LinkSegment",nil,UDim2.fromOffset(1,2),Color3.new(1,1,1),.32)
-  line.AnchorPoint=Vector2.new(.5,.5);line.Active=false;line.Interactable=false;line.Visible=false;U.corner(line,2);self.linkPool[i]=line
+ local nativePaths=true
+ for i=1,5 do
+  local path
+  local ok=pcall(function()
+   path=Instance.new("Path2D");path.Name="NodeWire";path.Thickness=2;path.ZIndex=2;path.Visible=false;path.Parent=self.workspaceLinks
+  end)
+  if not ok then
+   if path then path:Destroy() end
+   nativePaths=false;break
+  end
+  self.linkPool[i]=path
  end
+ if not nativePaths then
+  for _,path in self.linkPool do path:Destroy() end
+  table.clear(self.linkPool)
+ end
+ self.nativeWorkspacePaths=nativePaths
  for i=1,10 do
   local port=U.frame(self.workspaceLinks,"NodePort",nil,UDim2.fromOffset(7,7),Color3.new(1,1,1),.06)
-  port.AnchorPoint=Vector2.new(.5,.5);port.Active=false;port.Interactable=false;port.Visible=false;U.corner(port,9);self.portPool[i]=port
+  port.AnchorPoint=Vector2.new(.5,.5);port.Active=false;port.Interactable=false;port.ZIndex=2;port.Visible=false;U.corner(port,9);self.portPool[i]=port
  end
  for _,obj in {self.navGlass,self.nav,self.branchStack,self.contentGlass,self.pageBox,self.search,self.searchResults,self.status,self.layoutMove,self.layoutResize,self.layoutDone} do obj.Parent=self.workspace end
  self.rootDrag=U.button(self.workspace,"AETHER / MOVE");self.rootDrag.ZIndex=5;self.rootDrag.TextSize=11
@@ -361,15 +375,30 @@ function UI.new(app,gui,scope)
   local a,b=obj.AbsolutePosition,obj.AbsoluteSize
   return pos.X>=a.X and pos.X<=a.X+b.X and pos.Y>=a.Y and pos.Y<=a.Y+b.Y
  end
+ -- Only two consecutive, nearby background activations close the hub.
+ local function isBackground(pos)
+  for _,obj in {self.header,self.modeBar,self.navGlass,self.nav,self.search,self.contentGlass,self.pageBox,self.searchResults,self.status,self.rootDrag,self.pageDrag,self.layoutMove,self.layoutResize,self.layoutDone} do
+   if inside(obj,pos) then return false end
+  end
+  for _,r in self.branchCards do if inside(r.frame,pos) then return false end end
+  return true
+ end
+ scope:on(Input.InputBegan,function(input)
+  if not self.backgroundTap then return end
+  local kind=input.UserInputType
+  if kind~=self.backgroundTap.kind or not isBackground(Vector2.new(input.Position.X,input.Position.Y)) then self.backgroundTap=nil end
+ end)
  scope:on(self.backdropHit.Activated,function(input)
-  if not self.opened or self.drag or self.workspacePan or self.layoutEditing or os.clock()<(self.tabInputAfter or 0) then return end
+  if not self.opened or self.drag or self.workspacePan or self.layoutEditing or os.clock()<(self.tabInputAfter or 0) then self.backgroundTap=nil;return end
   if not input or (input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch) then return end
   local pos=Vector2.new(input.Position.X,input.Position.Y)
-  for _,obj in {self.header,self.modeBar,self.navGlass,self.nav,self.search,self.pageBox,self.searchResults,self.status,self.rootDrag,self.pageDrag,self.layoutMove,self.layoutResize,self.layoutDone} do
-   if inside(obj,pos) then return end
+  if not isBackground(pos) then self.backgroundTap=nil;return end
+  local now=os.clock();local previous=self.backgroundTap
+  if previous and previous.kind==input.UserInputType and now-previous.time<=.35 and (pos-previous.pos).Magnitude<=24 then
+   self.backgroundTap=nil;self:show(false)
+  else
+   self.backgroundTap={time=now,pos=pos,kind=input.UserInputType}
   end
-  for _,r in self.branchCards do if inside(r.frame,pos) then return end end
-  self:show(false)
  end)
  self.searchPool={}
  self.searchIndex={}
@@ -469,10 +498,10 @@ function UI.new(app,gui,scope)
   local s=self.app.s
   self.workspaceLinks.Visible=s.workspaceMode=="Nodes"
   if not self.workspaceLinks.Visible then self.workspaceLinkKey=nil;return end
-  local zoom=self.workspaceScale.Scale;local origin=self.workspace.AbsolutePosition
+  local origin=self.workspaceLinks.AbsolutePosition
   local color=U.hex(s.accent);local lineIndex,portIndex=0,0
   local function point(obj,x,y)
-   return (obj.AbsolutePosition-origin+Vector2.new(obj.AbsoluteSize.X*x,obj.AbsoluteSize.Y*y))/zoom
+   return obj.AbsolutePosition-origin+Vector2.new(obj.AbsoluteSize.X*x,obj.AbsoluteSize.Y*y)
   end
   local function port(p)
    portIndex+=1;local obj=self.portPool[portIndex];if not obj then return end
@@ -480,19 +509,33 @@ function UI.new(app,gui,scope)
   end
   local function wire(a,b)
    local curve=math.max(35,math.abs(b.X-a.X)*.45)
-   local p1=a+Vector2.new(curve,0);local p2=b-Vector2.new(curve,0)
-   local prev=a
    port(a);port(b)
-   for i=1,10 do
-    local t=i/10;local v=1-t
-    local next=a*v^3+p1*(3*v*v*t)+p2*(3*v*t*t)+b*t^3
-    local delta=next-prev;local middle=(prev+next)*.5
+   if self.nativeWorkspacePaths then
+    lineIndex+=1;local path=self.linkPool[lineIndex]
+    path.Color3=color
+    path:SetControlPoints({
+     Path2DControlPoint.new(UDim2.fromOffset(a.X,a.Y),UDim2.new(),UDim2.fromOffset(curve,0)),
+     Path2DControlPoint.new(UDim2.fromOffset(b.X,b.Y),UDim2.fromOffset(-curve,0),UDim2.new())
+    })
+    path.Visible=true
+    return
+   end
+   -- Compatibility fallback: adaptive subdivision with overlapping strokes.
+   local p1=a+Vector2.new(curve,0);local p2=b-Vector2.new(curve,0)
+   local prev=a;local steps=math.clamp(math.ceil(((p1-a).Magnitude+(p2-p1).Magnitude+(b-p2).Magnitude)/12),24,96)
+   for i=1,steps do
+    local t=i/steps;local v=1-t
+    local nextPoint=a*v^3+p1*(3*v*v*t)+p2*(3*v*t*t)+b*t^3
+    local delta=nextPoint-prev;local middle=(prev+nextPoint)*.5
     lineIndex+=1;local line=self.linkPool[lineIndex]
-    if line then
-     line.Position=UDim2.fromOffset(middle.X,middle.Y);line.Size=UDim2.fromOffset(math.max(1,delta.Magnitude+1),2)
-     line.Rotation=math.deg(math.atan2(delta.Y,delta.X));line.BackgroundColor3=color;line.Visible=true
+    if not line then
+     line=U.frame(self.workspaceLinks,"LinkSegment",nil,UDim2.fromOffset(1,2),color,0)
+     line.AnchorPoint=Vector2.new(.5,.5);line.Active=false;line.Interactable=false;line.ZIndex=2
+     self.linkPool[lineIndex]=line
     end
-    prev=next
+    line.Position=UDim2.fromOffset(middle.X,middle.Y);line.Size=UDim2.fromOffset(math.max(2,delta.Magnitude+2),2)
+    line.Rotation=math.deg(math.atan2(delta.Y,delta.X));line.BackgroundColor3=color;line.Visible=true
+    prev=nextPoint
    end
   end
   local pairsToDraw={}
@@ -503,7 +546,7 @@ function UI.new(app,gui,scope)
   local selected=self.buttons[self.tab];local group=tabBranch[self.tab]
   if selected and group and self.branchCards[group].frame.Visible and self.pageBox.Visible then pairsToDraw[#pairsToDraw+1]={point(selected,1,.5),point(self.pageBox,0,.08)} end
   local signature={s.accent}
-  for _,pair in pairsToDraw do for _,v in pair do signature[#signature+1]=math.round(v.X*4);signature[#signature+1]=math.round(v.Y*4) end end
+  for _,pair in pairsToDraw do for _,v in pair do signature[#signature+1]=v.X;signature[#signature+1]=v.Y end end
   local key=table.concat(signature,":")
   if self.workspaceLinkKey==key then return end
   self.workspaceLinkKey=key
@@ -704,6 +747,7 @@ function UI.new(app,gui,scope)
   if i.KeyCode==Enum.KeyCode.Home then self:resetWorkspace(Input:IsKeyDown(Enum.KeyCode.LeftShift) or Input:IsKeyDown(Enum.KeyCode.RightShift));return end
   if i.UserInputType~=Enum.UserInputType.MouseButton3 or self.drag then return end
   local state=self:workspaceCamera()
+  self.backgroundTap=nil
   self.workspacePan={origin=Vector2.new(i.Position.X,i.Position.Y),pan=state.pan,zoom=state.zoom}
  end)
  scope:on(Input.InputChanged,function(i)
@@ -725,6 +769,7 @@ function UI.new(app,gui,scope)
   local center=self.stage.AbsolutePosition+self.stage.AbsoluteSize*.5
   local delta=pos-center
   local next=state.pan+delta/zoom-delta/state.zoom
+  self.backgroundTap=nil
   self.workspaceCameraDraft={zoom=zoom,pan=next};self:applyWorkspaceCamera()
   self.workspaceCameraRevision=(self.workspaceCameraRevision or 0)+1;local rev=self.workspaceCameraRevision
   task.delay(.25,function() if self.workspace.Parent and rev==self.workspaceCameraRevision and not self.workspacePan then self:commitWorkspaceCamera() end end)
@@ -736,7 +781,7 @@ function UI.new(app,gui,scope)
  scope:on(self.stage:GetPropertyChangedSignal("AbsoluteSize"),function() self:layout() end);self:layout()
  scope:on(Input.InputChanged,function(i) local d=self.drag;if d and (i==d.i or d.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseMovement) then d.fn(Vector2.new(i.Position.X,i.Position.Y),d.start,d.origin) end end)
  scope:on(Input.InputEnded,function(i) if self.drag and (self.drag.i==i or self.drag.i.UserInputType==Enum.UserInputType.MouseButton1 and i.UserInputType==Enum.UserInputType.MouseButton1) then local d=self.drag;self.drag=nil;if d.finish then d.finish(Vector2.new(i.Position.X,i.Position.Y)) end end end)
- scope:on(Input.WindowFocusReleased,function() self.drag=nil;self.workspacePan=nil;self.workspaceNodeDraft=nil;self:commitWorkspaceCamera();if self.menuDraft then self.menuDraft=nil end;self:layout() end);scope:add(function() if self.page then self.page:clear() end;Icons.clear() end);return self
+ scope:on(Input.WindowFocusReleased,function() self.backgroundTap=nil;self.drag=nil;self.workspacePan=nil;self.workspaceNodeDraft=nil;self:commitWorkspaceCamera();if self.menuDraft then self.menuDraft=nil end;self:layout() end);scope:add(function() if self.page then self.page:clear() end;Icons.clear() end);return self
 end
 function UI:animateBackground(t)
  if self.layoutPending or self.layoutViewport~=self.stage.AbsoluteSize then self:layout() end
@@ -800,8 +845,9 @@ function UI:animateBackground(t)
  local pageQ=U.ease(self.pageProgress,s.ease)
  transition(self.pageBox,pageQ)
  -- Full-screen content stays anchored; no per-tab position animation.
- if decorDue or self.navDirty then
+ -- Links follow rendered geometry every frame, independently of background effects.
  self:updateWorkspaceLinks()
+ if decorDue or self.navDirty then
  self.navDirty=false
  for name,b in self.buttons do
   local desired=if name==self.tab then 1 elseif self.navHover[name] then .45 else 0
@@ -816,8 +862,9 @@ function UI:animateBackground(t)
  self.constellationLayer.Visible=s.menuGeometry
  if self.geoLayer.Visible and s.menuGeometry and decorDue then self.constellation:step(math.min(.1,decorDt),s) end
 end
-function UI:begin(i,fn,origin) if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end;local v=Vector2.new(i.Position.X,i.Position.Y);self.drag={i=i,start=v,fn=fn,origin=origin};fn(v,v,origin) end
+function UI:begin(i,fn,origin) if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end;self.backgroundTap=nil;local v=Vector2.new(i.Position.X,i.Position.Y);self.drag={i=i,start=v,fn=fn,origin=origin};fn(v,v,origin) end
 function UI:show(on)
+ self.backgroundTap=nil
  if on then self:setQuick(false) end
  if not on then self.workspacePan=nil;self:commitWorkspaceCamera();if self.workspaceNodeDraft then self.workspaceNodeDraft=nil;self:layout() end end
  if not on and self.opened then

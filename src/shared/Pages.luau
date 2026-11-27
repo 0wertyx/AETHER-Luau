@@ -915,7 +915,7 @@ function E.render(a,tab,ui)
   ui:chips({"Interface","Profiles","Halos","Wings"},function(n) ui:open(n) end,2)
  elseif tab=="Interface" then
   ui:title("INFINITE WORKSPACE")
-  ui:note("Middle mouse: pan. Wheel on background or Ctrl + wheel: zoom. Drag node titles to move individual panels. Home resets camera; Shift + Home resets the current workspace.",62)
+  ui:note("Middle mouse: pan. Wheel on background or Ctrl + wheel: zoom. Drag node titles to move individual panels. Home resets camera; Shift + Home resets the current workspace. Double-click or double-tap the background to close.",80)
   ui:control("workspaceMode")
   ui:chips({"Reset camera","Reset current workspace"},function(n) ui:resetWorkspace(n=="Reset current workspace") end,2)
   ui:title("LAYOUT & WIDGETS")
