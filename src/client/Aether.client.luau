@@ -121,6 +121,7 @@ do
     local ReplicatedStorage=game:GetService("ReplicatedStorage")
     local vb={originals={},multiplierRequests={},corners={},auto=false,status="Waiting for compatible game",target=nil,tiltAim="Correct edges",tiltScale=1,tiltWrites=0,tiltOverrides=0}
     app.volleyball=vb
+    vb.edgeGuard=true;vb.guardStatus="Anti-out | waiting"
     vb.curveEnabled=false
     vb.curveStatus="Off | local special experiment"
     local curveController,curveOriginal,curveApplied
@@ -275,7 +276,11 @@ do
             local result=table.pack(original(...))
             local manual=ht.Values.TiltDirection
             local desired=vb.requestedTilt
-            if vb.auto and app.mode=="Game" and not app.stopping and gui.Parent and player:GetAttribute("Gameplay_InGame")==true and typeof(desired)=="Vector3" and vb.tiltFresh and os.clock()-vb.tiltFresh<.25 then
+            if vb.auto and app.mode=="Game" and not app.stopping and gui.Parent and player:GetAttribute("Gameplay_InGame")==true then
+                if not vb.tiltFresh or os.clock()-vb.tiltFresh>=.25 then desired=nil end
+                desired=vb:guardTilt(manual,desired)
+            else desired=nil end
+            if typeof(desired)=="Vector3" then
                 lastManual=manual
                 if manual~=desired then
                     ht.Values.TiltDirection=desired
@@ -340,7 +345,7 @@ do
     end
     function vb:reset()
         self.auto=false;detachTilt()
-        if self.play then self.play.set=false;self.play.spike=false;self.play.dive=false;self.play.ownsTilt=false;self.play.generation+=1;table.clear(self.play.locks);table.clear(self.play.jumpLocks);self.play.jumpPendingUntil=0;self.play.status="Off | reset" end
+        if self.play then self.play.set=false;self.play.spike=false;self.play.dive=false;self.play.serve=false;self.play.serveActive=false;self.play.ownsTilt=false;self.play.generation+=1;table.clear(self.play.locks);table.clear(self.play.jumpLocks);self.play.jumpPendingUntil=0;self.play.status="Off | reset" end
         stopCurve()
         stopStyle()
         table.clear(self.multiplierRequests)
@@ -380,6 +385,8 @@ do
         if length<8 or math.abs(along)>width*.2 then return nil end
         return a,u,cross.Unit,width,length
     end
+    -- Estimate coverage from positions and recent movement, not just distance.
+    local opponentMotion={}
     local function freeZone(a,u,v,width,length,side,root,cameraAim)
         local half=length*.5
         local rel=flatten(root.Position)-a
@@ -387,34 +394,102 @@ do
         local look=flatten(root.CFrame.LookVector)
         local dv=look:Dot(v)
         if not cameraAim and math.abs(dv)<.15 then return nil end
-        local opponents={}
-        for _,other in game:GetService("Players"):GetPlayers() do
+        local opponents,seen={},{}
+        local now=os.clock()
+        for _,other in Players:GetPlayers() do
             if other==player or (player.Team and other.Team==player.Team) then continue end
             local c=other.Character
             local r=c and c:FindFirstChild("HumanoidRootPart")
             local h=c and c:FindFirstChildOfClass("Humanoid")
             if not r or not h or h.Health<=0 then continue end
-            local d=flatten(r.Position)-a
+            local pos=flatten(r.Position)
+            local d=pos-a
             local x,z=d:Dot(u),d:Dot(v)
-            if x>=-2 and x<=width+2 and ((side==-1 and z>=half and z<=length+2) or (side==1 and z<=half and z>=-2)) then
-                table.insert(opponents,Vector2.new(x,z))
+            if x< -3 or x>width+3 or not ((side==-1 and z>=half and z<=length+3) or (side==1 and z<=half and z>=-3)) then continue end
+            seen[other]=true
+            local m=opponentMotion[other]
+            local vel=flatten(r.AssemblyLinearVelocity)
+            if vel.Magnitude>45 then vel=vel.Unit*45 end
+            if not m or m.root~=r then
+                m={root=r,p=pos,t=now,velocity=vel,activity=vel.Magnitude};opponentMotion[other]=m
+            elseif now-m.t>=.09 then
+                local dt=now-m.t
+                local sample=(pos-m.p)/dt
+                if sample.Magnitude>45 then sample=vel end
+                local k=1-math.exp(-dt*3)
+                m.velocity=m.velocity:Lerp(sample,k)
+                m.activity=m.activity+(math.max(sample.Magnitude,vel.Magnitude)-m.activity)*k
+                m.p=pos;m.t=now
             end
+            local predicted=pos+m.velocity*.40-a
+            table.insert(opponents,{p=Vector2.new(x,z),next=Vector2.new(predicted:Dot(u),predicted:Dot(v)),activity=math.clamp(m.activity/16,0,2)})
         end
+        for other in pairs(opponentMotion) do if not seen[other] then opponentMotion[other]=nil end end
         local best,score=nil,-math.huge
-        for ix=1,7 do for iz=1,5 do
-            local x=width*(.12+.76*(ix-1)/6)
-            local f=.18+.64*(iz-1)/4
+        for ix=1,9 do for iz=1,7 do
+            local x=width*(.14+.72*(ix-1)/8)
+            local f=.16+.68*(iz-1)/6
             local z=if side==-1 then half+half*f else half-half*f
             if not cameraAim and (z-pz)*dv<=0 then continue end
             local point=Vector2.new(x,z)
             local nearest=math.min(width,half)
-            for _,o in opponents do nearest=math.min(nearest,(point-o).Magnitude) end
-            local correction=if cameraAim then .04*math.abs(x-px) else .45*math.abs(x-(px+look:Dot(u)*(z-pz)/dv))
+            local pressure=0
+            local radius=math.max(4,width*.21)
+            for _,o in opponents do
+                local d=math.min((point-o.p).Magnitude,(point-o.next).Magnitude)
+                nearest=math.min(nearest,d)
+                pressure+=math.exp(-.5*(d/radius)^2)*(1+o.activity*1.4)
+            end
+            local correction=if cameraAim then .035*math.abs(x-px) else .35*math.abs(x-(px+look:Dot(u)*(z-pz)/dv))
             local edge=math.min(x,width-x,math.abs(z-half),if side==-1 then length-z else z)
-            local q=nearest+.22*edge-correction
+            local q=nearest+.28*edge-pressure*radius*1.1-correction
             if q>score then best,score=point,q end
         end end
         return best
+    end
+    -- Proportional anti-out clamp using the same court projection as Auto Tilt.
+    -- This is a bounded local estimate; styles and server physics can differ.
+    function vb:guardTilt(manual,desired)
+        if not self.edgeGuard then return desired end
+        local a,u,v,width,length=geometry()
+        local char=player.Character
+        local root=char and char:FindFirstChild("HumanoidRootPart")
+        if not a or not root then return desired end
+        local rel=flatten(root.Position)-a
+        local x,z=rel:Dot(u),rel:Dot(v)
+        local half=length*.5
+        local side=if z<half then -1 else 1
+        local forward=flatten(root.CFrame.LookVector)
+        local right=flatten(root.CFrame.RightVector)
+        if forward.Magnitude<.01 or right.Magnitude<.01 then return desired end
+        forward=forward.Unit;right=right.Unit
+        local depth=if side==-1 then length*.75 else length*.25
+        local margin=math.min(math.max(2,width*.10),width*.30)
+        local dv=forward:Dot(v)
+        if math.abs(dv)<.12 or (depth-z)*dv<=0 then
+            local target=a+u*(width*.5)+v*depth
+            local inward=target-flatten(root.Position)
+            self.guardStatus="Heading outside | maximum inward correction"
+            return if inward.Magnitude>.1 then inward.Unit+Vector3.yAxis else Vector3.yAxis
+        end
+        local straight=x+forward:Dot(u)*(depth-z)/dv
+        local reach=math.max(4,width*.15)
+        local base=if typeof(desired)=="Vector3" then desired elseif typeof(manual)=="Vector3" then manual else Vector3.yAxis
+        local lateral=math.clamp(flatten(base):Dot(right),-1,1)
+        local axis=right:Dot(u)
+        if math.abs(axis)<.12 then return desired end
+        local projected=straight+lateral*reach*axis
+        local safe=math.clamp(projected,margin,width-margin)
+        if math.abs(projected-safe)>.01 or straight<margin or straight>width-margin then
+            -- Recompute inward correction from the uncurved heading; outward manual input cannot replace it.
+            local value=math.clamp((safe-straight)/(reach*axis),-1,1)
+            if straight<margin then value=math.clamp((margin-straight)/(reach*axis),-1,1)
+            elseif straight>width-margin then value=math.clamp((width-margin-straight)/(reach*axis),-1,1) end
+            self.guardStatus=string.format("Anti-out | %.0f%% inward",math.abs(value)*100)
+            return right*value+Vector3.yAxis
+        end
+        self.guardStatus="Anti-out | within estimated corridor"
+        return desired
     end
     -- Identify a full, horizontal rectangular court from explicitly named
     -- map geometry. Do not guess from an arbitrary baseplate or half-court.
@@ -540,7 +615,7 @@ do
         self.auto=true;self.status="Local tilt correction enabled; ball response depends on style"
     end
     -- Auto Play dispatches normal game inputs; it does not bypass move validation.
-    local play={set=false,spike=false,dive=false,busy=false,ownsTilt=false,status="Off",locks={},nextLockCheck=0,lastAt=0,generation=0,attempts=0,hits=0,cameraAim="Free zone",groundPredict=true,cameraStatus="Off",cameraTargetAt=0,autoJump=true,jumpStatus="Off",jumpCount=0,jumpLocks={},jumpCheckAt=0,nextJumpAt=0,jumpPendingUntil=0}
+    local play={set=false,spike=false,dive=false,busy=false,ownsTilt=false,status="Off",locks={},nextLockCheck=0,lastAt=0,generation=0,attempts=0,hits=0,cameraAim="Free zone",groundPredict=true,cameraStatus="Off",cameraTargetAt=0,autoJump=true,jumpStatus="Off",jumpCount=0,jumpLocks={},jumpCheckAt=0,nextJumpAt=0,jumpPendingUntil=0,serve=false,serveActive=false,serveShotAttempted=false,serveStatus="Off",serveUntil=0,serveNextAt=0,serveDetectAt=0}
     vb.play=play
     local api,retryAt=nil,0
     local tags=game:GetService("CollectionService")
@@ -561,11 +636,13 @@ do
         assert(c and c.Loaded,"GameController is loading")
         local h=require(g.Handlers)
         local bind=require(registry.DoMove)
+        local tossBinding=require(registry.Toss)
+        assert(type(tossBinding.onTossRequest)=="function" and type(tossBinding.canToss)=="function","Toss binding unavailable")
         local jumpBinding=require(registry.Jump)
         local jumpPhysics=require(move.Jump.Physics)
         assert(type(jumpBinding.onJumpRequest)=="function" and type(jumpPhysics.LaunchSpeed)=="number","Jump binding unavailable")
         assert(type(bind.onMoveRequest)=="function" and type(bind.canDoMove)=="function","Action binding unavailable")
-        return {controller=c,jumpBinding=jumpBinding,jumpPhysics=jumpPhysics,service=knit.GetService("BallService"),config=require(ReplicatedStorage.Configuration.Game),states=h.States,values=h.Values,input=knit.GetController("InputController"),
+        return {controller=c,tossBinding=tossBinding,jumpBinding=jumpBinding,jumpPhysics=jumpPhysics,service=knit.GetService("BallService"),config=require(ReplicatedStorage.Configuration.Game),states=h.States,values=h.Values,input=knit.GetController("InputController"),
             balls=knit.GetController("BallController"),binding=bind,orch=require(dm.Orchestrator),
             rules=require(dm.Game),special=require(dm.StyleSpecial),hitbox=require(ReplicatedStorage.Tools.Hitbox),
             joint=require(ReplicatedStorage.Tools.TiltJoint),physics=require(ReplicatedStorage.Common.Physics),
@@ -602,6 +679,51 @@ do
         end
         return out
     end
+    local function ballMotion(m,b)
+        local id=b:GetAttribute("ServerId")
+        local state=id~=nil and m.balls.ActiveBalls[id] or nil
+        if not state and id~=nil then state=m.balls.ActiveBalls[tonumber(id) or tostring(id)] end
+        if not state then
+            for _,s in pairs(m.balls.ActiveBalls) do if type(s)=="table" and s.Ball==b then state=s;break end end
+        end
+        local vel=state and state.Velocity
+        if typeof(vel)~="Vector3" or vel~=vel or vel.Magnitude>500 then return nil end
+        local g=ReplicatedStorage:GetAttribute("Modifier_BallGravity")
+        if type(g)~="number" or g~=g then g=m.config.Physics.Gravity end
+        local gm=state.GravityMultiplier
+        if type(gm)~="number" or gm~=gm then gm=1 end
+        local acc=Vector3.new(0,-g*gm,0)
+        if typeof(state.Acceleration)=="Vector3" and state.Acceleration==state.Acceleration and state.Acceleration.Magnitude<1000 then acc+=state.Acceleration end
+        local jerk=state.Jerk
+        if typeof(jerk)~="Vector3" or jerk~=jerk or jerk.Magnitude>600 then jerk=Vector3.zero end
+        return vel,acc,jerk
+    end
+    local function netTop()
+        local map=workspace:FindFirstChild("Map")
+        local colliders=map and map:FindFirstChild("BallCollideOnly")
+        local net=colliders and colliders:FindFirstChild("Net")
+        if not net or not net:IsA("BasePart") then net=tags:GetTagged("Net")[1] end
+        if net and net:IsA("BasePart") then return net.Position.Y+net.Size.Y*.5 end
+        return nil
+    end
+    local function servingShot()
+        return play.serveActive or ReplicatedStorage:GetAttribute("ServedByPlayer")==player.Name
+    end
+    local function wantsSpike()
+        return play.spike or (play.serve and play.serveActive)
+    end
+    local function contactAllowed(m,ball)
+        local vel=ballMotion(m,ball)
+        if not vel then return false,"Waiting for measured ball velocity" end
+        if vel.Y>=-.2 then return false,"Waiting for descending ball" end
+        if servingShot() then
+            local top=netTop()
+            if not top then return false,"Serve | net height unavailable" end
+            local radius=m.config.Physics.Radius*(ReplicatedStorage:GetAttribute("Modifier_BallSizeMultiplier") or 1)
+            if ball:GetPivot().Position.Y<top+radius+.25 then return false,"Serve | below net clearance" end
+        end
+        return true
+    end
     local function ballKey(ball)
         local id=ball:GetAttribute("ServerId")
         return if id~=nil then "ball:"..tostring(id) else ball
@@ -620,9 +742,10 @@ do
             local lock=play.locks[key]
             if who==player then
                 if lock and lock.pending then play.hits+=1 end
+                if play.serveActive and play.serveShotAttempted then play.serveActive=false;play.serveStatus="Serve touch confirmed" end
                 if lock then
                     lock.pending=false;lock.outSince=nil;lock.at=os.clock()
-                elseif play.set or play.spike or play.dive then
+                elseif play.set or play.spike or play.dive or play.serve then
                     for _,ball in candidates(m) do
                         if ballKey(ball)==key then
                             play.locks[key]={ball=ball,at=os.clock(),move="Manual",pending=false}
@@ -694,9 +817,14 @@ do
         local list=candidates(m)
         if #list==0 then return nil,"No streamed ball" end
         local chosen,best,locked=nil,math.huge,false
+        local rejected
         for _,b in list do
             if overlaps(b,transform,size) then
                 if play.locks[ballKey(b)] then locked=true;continue end
+                if action=="Spike" then
+                    local valid,why=contactAllowed(m,b)
+                    if not valid then rejected=why;continue end
+                end
                 local p=b:GetPivot().Position
                 local distance=(p-char.PrimaryPart.Position).Magnitude
                 if distance<best and m.physics.canInteract(player,action,p) and m.rules.isBallInNetBoundary(b) then
@@ -704,7 +832,7 @@ do
                 end
             end
         end
-        if not chosen then return nil,if locked then "Touch locked | wait for next approach" else "Ball outside "..action.." reach or game validation" end
+        if not chosen then return nil,if locked then "Touch locked | wait for next approach" else (rejected or "Ball outside "..action.." reach or game validation") end
         return chosen
     end
     local function findDive(m,char)
@@ -759,9 +887,10 @@ do
         if not a then return nil end
         local rel=flatten(root.Position)-a
         local x,z=rel:Dot(u),rel:Dot(v)
-        if x< -5 or x>width+5 or z< -12 or z>length+12 then return nil end
+        local pad=if play.serve and (play.serveActive or (api and api.states.IsServing())) then 45 else 12
+        if x< -5 or x>width+5 or z< -pad or z>length+pad then return nil end
         local side=if math.abs(z-length*.5)<1 then (vb.side or (if z<length*.5 then -1 else 1)) else (if z<length*.5 then -1 else 1)
-        local p=if play.cameraAim=="Free zone" then freeZone(a,u,v,width,length,side,root,true) else nil
+        local p=if play.cameraAim=="Free zone" or (play.serve and (play.serveActive or (api and api.states.IsServing()))) then freeZone(a,u,v,width,length,side,root,true) else nil
         local flat=a+u*(if p then p.X else width*.5)+v*(if p then p.Y else (if side==-1 then length*.75 else length*.25))
         local y=play.groundY or (root.Position.Y-4)
         if vb.courtPart and vb.courtPart.Parent then y=vb.courtPart.Position.Y+vb.courtPart.Size.Y*.5 end
@@ -818,10 +947,12 @@ do
         local function idle(reason)
             play.cameraPhase=nil;play.cameraPoint=nil;play.cameraTargetAt=0;play.cameraStatus=reason
         end
-        if not play.spike or play.cameraAim=="Off" or app.stopping or not gui.Parent or app.mode~="Game" then idle("Off");return end
+        if (not play.spike and not play.serve) or app.stopping or not gui.Parent or app.mode~="Game" then idle("Off");return end
         if blocked or UserInputService:GetFocusedTextBox() or game:GetService("GuiService").MenuIsOpen or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then idle("Paused | manual camera/menu");return end
         local m=api
-        if not m or not m.states.IsPlaying() or m.states.IsStunned() or m.states.IsServing() then idle("Waiting for rally");return end
+        if not m or not m.states.IsPlaying() or m.states.IsStunned() then idle("Waiting for rally");return end
+        local serveAim=play.serve and (m.states.IsServing() or play.serveActive)
+        if not serveAim and (not play.spike or play.cameraAim=="Off" or m.states.IsServing()) then idle("Off");return end
         local char=player.Character
         local root=char and char:FindFirstChild("HumanoidRootPart")
         local hum=char and char:FindFirstChildOfClass("Humanoid")
@@ -835,15 +966,15 @@ do
                 if leg and leg:IsA("BasePart") then play.groundY-=leg.Size.Y end
             end
         end
-        if not air and not play.groundPredict then idle("Manual ground camera");return end
-        local phase=if air then "Air" else "Ground"
+        if not serveAim and not air and not play.groundPredict then idle("Manual ground camera");return end
+        local phase=if serveAim then "Serve" elseif air then "Air" else "Ground"
         local now=os.clock()
         if phase~=play.cameraPhase or now>=play.cameraTargetAt then
             play.cameraPhase=phase;play.cameraTargetAt=now+.12
-            play.cameraPoint=if air then courtAim(root) else incomingAim(m,root)
+            play.cameraPoint=if air or serveAim then courtAim(root) else incomingAim(m,root)
         end
         local target=play.cameraPoint
-        if not target then play.cameraStatus=if air then "Waiting for court" else "Waiting for incoming prediction";return end
+        if not target then play.cameraStatus=if air or serveAim then "Waiting for court" else "Waiting for incoming prediction";return end
         local focus=cam.Focus.Position
         local direction=target-focus
         if direction.Magnitude<.1 or flatten(direction).Magnitude<.15 then return end
@@ -859,7 +990,7 @@ do
         end
         if (target-pos).Magnitude<.1 then return end
         cam.CFrame=CFrame.lookAt(pos,target)
-        play.cameraStatus=(if air then "Air | "..play.cameraAim else "Ground | predicted contact")..(if lockActive then " | AETHER Lock" else "")
+        play.cameraStatus=(if serveAim then "Serve | low-activity zone" elseif air then "Air | "..play.cameraAim else "Ground | predicted contact")..(if lockActive then " | AETHER Lock" else "")
         play.cameraAppliedAt=os.clock()
     end
     local function refreshJumpLocks(m,char,now)
@@ -915,6 +1046,11 @@ do
         if launch<=0 or g<=0 then return nil end
         local flight=math.min(1.35,2*launch/g)
         if flight<.08 then return nil end
+        local apex=launch/g
+        local peak=launch*apex-.5*g*apex*apex
+        local isServe=servingShot()
+        local top=if isServe then netTop() else nil
+        if isServe and not top then play.jumpStatus="Serve | net height unavailable";return nil end
         local scale=ReplicatedStorage:GetAttribute("GlobalTimeScale")
         if type(scale)~="number" or scale~=scale then scale=1 end
         if scale<=.01 then return nil end
@@ -926,22 +1062,16 @@ do
             local key=ballKey(ball)
             if play.locks[key] or play.jumpLocks[key] then continue end
             local p=ball:GetPivot().Position
-            local id=ball:GetAttribute("ServerId")
-            local state=id~=nil and m.balls.ActiveBalls[id] or nil
-            local vel=state and state.Velocity
-            if typeof(vel)~="Vector3" or vel~=vel or vel.Magnitude>500 then vel=ball.PrimaryPart.AssemblyLinearVelocity end
-            if vel.Magnitude<.5 or vel~=vel then continue end
-            local gm=state and state.GravityMultiplier
-            if type(gm)~="number" or gm~=gm then gm=1 end
-            local acc=Vector3.new(0,-ballG*gm,0)
-            if state and typeof(state.Acceleration)=="Vector3" and state.Acceleration==state.Acceleration and state.Acceleration.Magnitude<1000 then acc+=state.Acceleration end
-            local jerk=state and state.Jerk
-            if typeof(jerk)~="Vector3" or jerk~=jerk or jerk.Magnitude>600 then jerk=Vector3.zero end
+            local vel,acc,jerk=ballMotion(m,ball)
+            if not vel or vel.Magnitude<.5 then continue end
             local radius=math.clamp(math.min(ball.PrimaryPart.Size.X,ball.PrimaryPart.Size.Y,ball.PrimaryPart.Size.Z)*.5,.1,3)
             for t=.06,flight,.035 do
-                local bt=t*scale
+                local bt=(t+.025)*scale
+                local fallVelocity=vel.Y+acc.Y*bt+.5*jerk.Y*bt*bt
+                if fallVelocity>=-.2 then continue end
                 local bp=p+vel*bt+acc*(.5*bt*bt)+jerk*(bt*bt*bt/6)
                 local rise=launch*t-.5*g*t*t
+                if isServe and (rise<peak*.75 or bp.Y<top+radius+.25) then continue end
                 if rise<.35 or bp.Y<root.Position.Y+1 then continue end
                 local d=flatten(bp)-a
                 local x,z=d:Dot(u),d:Dot(v)
@@ -954,14 +1084,14 @@ do
                 if delta.Magnitude>radius then continue end
                 -- Do not replace an immediately reachable low Set with a marginal jump.
                 if setCF and overlaps(ball,setCF,setSize) and bp.Y<root.Position.Y+2.5 then continue end
-                local score=t+.025*q.Magnitude
+                local score=math.abs(t-apex)*.8+.025*q.Magnitude+(if isServe then -math.min(bp.Y-top,8)*.035 else t*.08)
                 if score<bestScore then best,bestPoint,bestT,bestScore=ball,bp,t,score end
             end
         end
         return best,bestPoint,bestT
     end
     local function tryAutoJump(m,char,now)
-        if not play.spike or not play.autoJump then play.jumpStatus="Off";return false end
+        if not wantsSpike() or (not play.autoJump and not play.serveActive) then play.jumpStatus="Off";return false end
         if now<play.jumpPendingUntil then return true end
         if now<play.nextJumpAt then return false end
         play.nextJumpAt=now+.055
@@ -973,7 +1103,7 @@ do
         if not hum then return false end
         local valid=m.rules.isMoveInvalidOnServe("Spike")
         if not valid or m.rules.isHitboxSkipped("Spike") then play.jumpStatus="Waiting for legal Spike";return false end
-        play.jumpStatus="Waiting for reachable prediction"
+        play.jumpStatus="Waiting for descending reachable prediction"
         local ball,point,t=jumpPrediction(m,char,hum)
         if not ball then return false end
         local key=ballKey(ball)
@@ -986,7 +1116,7 @@ do
         local gen=play.generation
         task.spawn(function()
             local ok,err=pcall(function()
-                if gen~=play.generation or not play.spike or not play.autoJump or player.Character~=char or m.states.IsJumping() or not allowed(m) then return end
+                if gen~=play.generation or not wantsSpike() or (not play.autoJump and not play.serveActive) or player.Character~=char or m.states.IsJumping() or not allowed(m) then return end
                 m.jumpBinding.onJumpRequest(Enum.UserInputState.Begin)
             end)
             play.busy=false
@@ -994,28 +1124,81 @@ do
         end)
         return true
     end
+    -- The saved place has a two-step Toss binding. Use it, then the ordinary jump/Spike.
+    local function tryAutoServe(m,char,now)
+        if not play.serve then return false end
+        if not m.states.IsServing() then return false end
+        play.serveActive=false
+        if (app.ui and app.ui.opened) or app.editingHUD or game:GetService("GuiService").MenuIsOpen or m.input.GameplaySuppressed() then
+            play.serveStatus="Paused | menu";return true
+        end
+        if m.states.IsStunned() or m.states.IsBusy() or m.states.IsJumping() then play.serveStatus="Waiting for ready state";return true end
+        if not geometry() then
+            if now>=play.serveDetectAt then
+                play.serveDetectAt=now+1
+                pcall(function() vb:detectCourt() end)
+            end
+            play.serveStatus="Waiting for court calibration";return true
+        end
+        local target=play.cameraPoint
+        if play.cameraPhase~="Serve" or not target or not play.cameraAppliedAt or now-play.cameraAppliedAt>.3 then
+            play.serveStatus="Waiting for serve aim";return true
+        end
+        local root=char.PrimaryPart
+        local d=flatten(target-root.Position)
+        local look=flatten(root.CFrame.LookVector)
+        if d.Magnitude<.1 or look.Magnitude<.1 or d.Unit:Dot(look.Unit)<.93 then
+            play.serveStatus="Waiting for alignment | AETHER Shift Lock";return true
+        end
+        if now<play.serveNextAt then return true end
+        if not m.tossBinding.canToss(Enum.UserInputState.Begin) then play.serveStatus="Toss unavailable";return true end
+        local visible=m.states.IsPowerBallVisible()==true
+        if not visible and m.states.Charge()~=nil then play.serveStatus="Manual charge in progress";return true end
+        play.serveNextAt=now+.58
+        play.busy=true
+        play.serveStatus=if visible then "Tossing for jump serve" else "Preparing serve"
+        local gen=play.generation
+        task.spawn(function()
+            local ok,err=pcall(function()
+                if gen~=play.generation or not play.serve or not m.states.IsServing() or not m.tossBinding.canToss(Enum.UserInputState.Begin) then return end
+                if visible then
+                    -- Keep the toss vertical; the normal camera/character aim selects the shot direction.
+                    m.states.TossDirection:set(Vector3.zero)
+                    play.serveActive=true;play.serveShotAttempted=false;play.serveUntil=os.clock()+8
+                end
+                m.tossBinding.onTossRequest(Enum.UserInputState.Begin)
+                if visible and m.states.IsServing() then play.serveActive=false end
+            end)
+            play.busy=false
+            if not ok then play.serveActive=false;play.serveStatus="Toss error: "..tostring(err)
+            elseif visible and play.serveActive then play.serveStatus="Waiting for high descending contact" end
+        end)
+        return true
+    end
     local function stopPlay(reason)
-        play.set=false;play.spike=false;play.dive=false;play.generation+=1;table.clear(play.locks);table.clear(play.jumpLocks);play.jumpPendingUntil=0;play.jumpStatus="Off"
+        play.set=false;play.spike=false;play.dive=false;play.serve=false;play.serveActive=false;play.serveStatus="Off";play.generation+=1;table.clear(play.locks);table.clear(play.jumpLocks);play.jumpPendingUntil=0;play.jumpStatus="Off"
         if play.ownsTilt and vb.auto then vb:toggleAuto() end
         play.ownsTilt=false;play.status=reason
     end
     function vb:togglePlay(which)
-        local key=if which=="Set" then "set" elseif which=="Spike" then "spike" else "dive"
+        local key=if which=="Set" then "set" elseif which=="Spike" then "spike" elseif which=="Serve" then "serve" else "dive"
         play[key]=not play[key];play.generation+=1
         if play[key] then
             retryAt=0;play.status="Waiting for game controller"
-            if key=="spike" and not self.auto then
+            if key=="serve" then play.serveNextAt=0;play.serveStatus="Waiting for serve turn" end
+            if (key=="spike" or key=="serve") and not self.auto then
                 local ok=pcall(function() self:toggleAuto() end)
                 play.ownsTilt=ok and self.auto
             end
         else
-            if key=="spike" and play.ownsTilt and self.auto then self:toggleAuto() end
-            if key=="spike" then play.ownsTilt=false;table.clear(play.jumpLocks);play.jumpPendingUntil=0;play.jumpStatus="Off" end
+            if (key=="spike" or key=="serve") and not play.spike and not play.serve and play.ownsTilt and self.auto then self:toggleAuto();play.ownsTilt=false end
+            if key=="spike" and not play.serveActive then table.clear(play.jumpLocks);play.jumpPendingUntil=0;play.jumpStatus="Off" end
+            if key=="serve" then play.serveActive=false;play.serveStatus="Off" end
             play.status="Auto "..which.." off"
         end
     end
     local function playTick()
-        if not (play.set or play.spike or play.dive) then return end
+        if not (play.set or play.spike or play.dive or play.serve) then return end
         if app.stopping or not gui.Parent or app.mode~="Game" then stopPlay("Off | left Game mode");return end
         if play.busy then return end
         local now=os.clock()
@@ -1027,9 +1210,16 @@ do
             listenTouches(m);api=m
         end
         local m=api
-        if not m.states.IsPlaying() then table.clear(play.locks);table.clear(play.jumpLocks);play.jumpPendingUntil=0;return waiting("Waiting for match") end
+        if not m.states.IsPlaying() then table.clear(play.locks);table.clear(play.jumpLocks);play.jumpPendingUntil=0;play.serveActive=false;return waiting("Waiting for match") end
         local char=m.states.Character
         if not char or char~=player.Character or not char.PrimaryPart then return waiting("Waiting for character") end
+        if m.states.IsServing() then
+            if tryAutoServe(m,char,now) then return waiting(play.serveStatus) end
+            return waiting("Serving manually")
+        end
+        if play.serveActive and (now>play.serveUntil or (ReplicatedStorage:GetAttribute("ServedByPlayer")~=nil and ReplicatedStorage:GetAttribute("ServedByPlayer")~=player.Name)) then
+            play.serveActive=false;play.serveStatus="Waiting for next turn"
+        end
         refreshLocks(m,char,now);refreshJumpLocks(m,char,now)
         local ready,reason=allowed(m)
         if not ready then return waiting(reason) end
@@ -1038,14 +1228,14 @@ do
         if jumping then play.jumpPendingUntil=0 end
         local action=if jumping then "Spike" else "Set"
         if m.states.Charge()~=nil then return waiting("Manual charge in progress") end
-        if jumping and not play.spike then return waiting("Waiting for landing") end
+        if jumping and not wantsSpike() then return waiting("Waiting for landing") end
         if not jumping and not (play.set or play.dive) then return waiting("Waiting for jump") end
         if m.rules.isHitboxSkipped(action) then return waiting("Game skipped consecutive hit") end
         local valid,why=m.rules.isMoveInvalidOnServe(action)
         if not valid then return waiting("Serve rule: "..tostring(why or action)) end
         local ball,ballWhy,dir
-        if jumping or play.set then ball,ballWhy=findReachable(m,char,action) end
-        if not ball and not jumping and play.dive then
+        if jumping or (play.set and not play.serveActive) then ball,ballWhy=findReachable(m,char,action) end
+        if not ball and not jumping and play.dive and not play.serveActive then
             local dv,dwhy=m.rules.isMoveInvalidOnServe("Dive")
             if dv and not m.rules.isHitboxSkipped("Dive") then
                 local b,d=findDive(m,char)
@@ -1076,9 +1266,12 @@ do
                     m.controller:Dive({Target=dir})
                     return
                 end
-                if jumping and vb.auto and vb.target and vb.tiltFresh and os.clock()-vb.tiltFresh<.25 and typeof(vb.requestedTilt)=="Vector3" then
-                    lastManual=m.values.TiltDirection;lastApplied=vb.requestedTilt;m.values.TiltDirection=vb.requestedTilt
+                if jumping and vb.auto then
+                    local desired=if vb.tiltFresh and os.clock()-vb.tiltFresh<.25 then vb.requestedTilt else nil
+                    desired=vb:guardTilt(m.values.TiltDirection,desired)
+                    if typeof(desired)=="Vector3" then lastManual=m.values.TiltDirection;lastApplied=desired;m.values.TiltDirection=desired end
                 end
+                if action=="Spike" and play.serveActive then play.serveShotAttempted=true;play.serveStatus="Serve Spike dispatched" end
                 m.binding.onMoveRequest(request)
                 ownedCharge=m.binding.AdvancedChargeAction==action and m.states.Charge()~=nil
                 if ownedCharge then
@@ -1180,7 +1373,7 @@ do
             if math.abs(pz-half)>1 then vb.side=if pz<half then -1 else 1 end
             local side=vb.side or (if pz<half then -1 else 1)
             local depth=if side==-1 then length*.75 else length*.25
-            local aimPoint=if vb.play and vb.play.spike and vb.play.cameraPhase=="Air" then vb.play.cameraPoint else nil
+            local aimPoint=if vb.play and (vb.play.spike or vb.play.serveActive) and (vb.play.cameraPhase=="Air" or vb.play.cameraPhase=="Serve") then vb.play.cameraPoint else nil
             local open=if aimPoint then Vector2.new((flatten(aimPoint)-a):Dot(u),(flatten(aimPoint)-a):Dot(v)) elseif vb.tiltAim=="Free zone" or (vb.play and vb.play.spike) then freeZone(a,u,v,width,length,side,root) else nil
             if open then depth=open.Y end
             local look=flatten(root.CFrame.LookVector)
