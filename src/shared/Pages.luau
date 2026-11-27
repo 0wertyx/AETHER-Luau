@@ -620,7 +620,7 @@ local function configs(ui,a)
   end
  end,3)
  ui:title("STORAGE")
- ui:note(if a.store.remote then "Server storage available. Durable saving depends on the game's DataStore configuration." else "Auto-saves during this game session. For reuse after leaving, export a backup or install server storage in your own place.",54)
+ ui:note(if a.store.device then "DEVICE STORAGE · Your settings, profiles and assets are saved automatically in two rotating JSON files. Restored on startup; no server upload. Match experiments remain session-only." elseif a.store.remote then "Server storage available. Durable saving depends on the game's DataStore configuration." else "Local file storage is unavailable. Auto-saves this session; export a JSON backup for reuse after leaving.",76)
  ui:chips({"Save now","Reload bank"},function(op) if op=="Save now" then a.store:save() else a.store:read(true) end;ui:message(a.store.status);if not ui.page.dead then ui:sync() end end,2)
  ui:chips({if a.showConfigJSON then "Hide JSON tools" else "Advanced / JSON backup"},function() a.showConfigJSON=not a.showConfigJSON;ui:open("Profiles") end,1)
  if a.showConfigJSON then
@@ -978,7 +978,7 @@ function E.render(a,tab,ui)
    end
    changelog.Text=if #rows>0 then table.concat(rows,"\n\n") else "No updates applied in this session yet."
   end)
- elseif tab=="Diagnostics" then local info=ui:note("",54);local log=ui:box("Session events","",165);log.TextEditable=false;local function refresh() info.Text=string.format("%s  ·  HP %s / %s  ·  %d tracked\n%s",a.mode,tostring(a.frame.hp),tostring(a.frame.max),#a.frame.targets,a.store.status);log.Text=table.concat(a.logs,"\n") end;ui:chips({"Refresh","Clear log","Reset settings"},function(n) if n=="Clear log" then table.clear(a.logs) elseif n=="Reset settings" then a:replace(S.defaults()) end;refresh() end,3);refresh();ui:title("SESSION");ui:note("Unload stops AETHER, removes its HUD and effects, and releases its camera and mouse controls. Export a bank first to retain local-only settings.",52);-- Allocate one confirmation row, once per Diagnostics page. Never append rows from clicks.
+ elseif tab=="Diagnostics" then local info=ui:note("",54);local log=ui:box("Session events","",165);log.TextEditable=false;local function refresh() info.Text=string.format("%s  ·  HP %s / %s  ·  %d tracked\n%s",a.mode,tostring(a.frame.hp),tostring(a.frame.max),#a.frame.targets,a.store.status);log.Text=table.concat(a.logs,"\n") end;ui:chips({"Refresh","Clear log","Reset settings"},function(n) if n=="Clear log" then table.clear(a.logs) elseif n=="Reset settings" then a:replace(S.defaults()) end;refresh() end,3);refresh();ui:title("SESSION");ui:note("Unload stops AETHER, removes its HUD and effects, and releases its camera and mouse controls. Device storage, when available, retains your saved configuration. Otherwise export a JSON backup.",52);-- Allocate one confirmation row, once per Diagnostics page. Never append rows from clicks.
   local page=ui.page
   local row=ui:row(40,"UnloadConfirmation")
   row.BackgroundTransparency=1

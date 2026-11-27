@@ -1512,7 +1512,7 @@ function app:unload()
     if self.stopping then return end
     self.stopping=true
     self.editingHUD=false;editorGui.Enabled=false
-    if store.dirty and store.ready and not store.pending then pcall(function() store:save() end) end
+    if store.dirty and (store.device or store.ready) and not store.pending then pcall(function() store:save() end) end
     -- Defer destruction until the current GUI activation callback has returned.
     task.defer(function() scope:clear() end)
 end

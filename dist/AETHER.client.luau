@@ -4473,7 +4473,7 @@ local function configs(ui,a)
   end
  end,3)
  ui:title("STORAGE")
- ui:note(if a.store.remote then "Server storage available. Durable saving depends on the game's DataStore configuration." else "Auto-saves during this game session. For reuse after leaving, export a backup or install server storage in your own place.",54)
+ ui:note(if a.store.device then "DEVICE STORAGE · Your settings, profiles and assets are saved automatically in two rotating JSON files. Restored on startup; no server upload. Match experiments remain session-only." elseif a.store.remote then "Server storage available. Durable saving depends on the game's DataStore configuration." else "Local file storage is unavailable. Auto-saves this session; export a JSON backup for reuse after leaving.",76)
  ui:chips({"Save now","Reload bank"},function(op) if op=="Save now" then a.store:save() else a.store:read(true) end;ui:message(a.store.status);if not ui.page.dead then ui:sync() end end,2)
  ui:chips({if a.showConfigJSON then "Hide JSON tools" else "Advanced / JSON backup"},function() a.showConfigJSON=not a.showConfigJSON;ui:open("Profiles") end,1)
  if a.showConfigJSON then
@@ -4831,7 +4831,7 @@ function E.render(a,tab,ui)
    end
    changelog.Text=if #rows>0 then table.concat(rows,"\n\n") else "No updates applied in this session yet."
   end)
- elseif tab=="Diagnostics" then local info=ui:note("",54);local log=ui:box("Session events","",165);log.TextEditable=false;local function refresh() info.Text=string.format("%s  ·  HP %s / %s  ·  %d tracked\n%s",a.mode,tostring(a.frame.hp),tostring(a.frame.max),#a.frame.targets,a.store.status);log.Text=table.concat(a.logs,"\n") end;ui:chips({"Refresh","Clear log","Reset settings"},function(n) if n=="Clear log" then table.clear(a.logs) elseif n=="Reset settings" then a:replace(S.defaults()) end;refresh() end,3);refresh();ui:title("SESSION");ui:note("Unload stops AETHER, removes its HUD and effects, and releases its camera and mouse controls. Export a bank first to retain local-only settings.",52);-- Allocate one confirmation row, once per Diagnostics page. Never append rows from clicks.
+ elseif tab=="Diagnostics" then local info=ui:note("",54);local log=ui:box("Session events","",165);log.TextEditable=false;local function refresh() info.Text=string.format("%s  ·  HP %s / %s  ·  %d tracked\n%s",a.mode,tostring(a.frame.hp),tostring(a.frame.max),#a.frame.targets,a.store.status);log.Text=table.concat(a.logs,"\n") end;ui:chips({"Refresh","Clear log","Reset settings"},function(n) if n=="Clear log" then table.clear(a.logs) elseif n=="Reset settings" then a:replace(S.defaults()) end;refresh() end,3);refresh();ui:title("SESSION");ui:note("Unload stops AETHER, removes its HUD and effects, and releases its camera and mouse controls. Device storage, when available, retains your saved configuration. Otherwise export a JSON backup.",52);-- Allocate one confirmation row, once per Diagnostics page. Never append rows from clicks.
   local page=ui.page
   local row=ui:row(40,"UnloadConfirmation")
   row.BackgroundTransparency=1
@@ -5735,15 +5735,70 @@ end
 __aether_factories["Storage"] = function()
 local RS=game:GetService("ReplicatedStorage");local Http=game:GetService("HttpService");local S=__aether_require("Schema")
 local Store={};Store.__index=Store
+-- Optional host-provided file storage. Ordinary Roblox clients fall back to
+-- the existing session / explicitly installed server store.
+local FILES={"AETHER_config_v1_a.json","AETHER_config_v1_b.json"}
+local MAX_BYTES=120000
+local function readSlot(path)
+ local ok,raw=pcall(readfile,path)
+ if not ok or type(raw)~="string" or #raw>MAX_BYTES then return nil end
+ local good,result=pcall(function()
+  local envelope=Http:JSONDecode(raw)
+  assert(envelope.format=="aether.device/1" and type(envelope.sequence)=="number" and envelope.sequence>=1 and envelope.sequence<=9007199254740990 and envelope.sequence==math.floor(envelope.sequence),"Invalid device bank")
+  return {sequence=envelope.sequence,bank=S.bank(envelope.data)}
+ end)
+ return if good then result else nil
+end
+function Store:loadDevice()
+ local best,index
+ for i,path in FILES do
+  local result=readSlot(path)
+  if result and (not best or result.sequence>best.sequence) then best=result;index=i end
+ end
+ if not best then return false end
+ self.app:restore(best.bank)
+ self.deviceSequence=best.sequence;self.deviceSlot=index;self.dirty=false
+ self:cacheBank();self.status="Device configuration restored"
+ return true
+end
+function Store:writeDevice()
+ local valid,raw=pcall(function()
+  return Http:JSONEncode({format="aether.device/1",sequence=self.deviceSequence+1,data=S.bank(self.app.bank)})
+ end)
+ if not valid or #raw>MAX_BYTES then self.status="Device bank invalid or too large";return false end
+ local slot=if self.deviceSlot==1 then 2 else 1
+ local serial=self.serial
+ self.lastWrite=os.clock()
+ local ok=pcall(writefile,FILES[slot],raw)
+ local checked=if ok then readSlot(FILES[slot]) else nil
+ if not checked or checked.sequence~=self.deviceSequence+1 then
+  self.status="Device save failed · previous config retained"
+  return false
+ end
+ self.deviceSequence=checked.sequence;self.deviceSlot=slot
+ if self.serial==serial then self.dirty=false end
+ self.status="Saved on this device"
+ return true
+end
 function Store.new(app,scope)
  local self=setmetatable({app=app,revision=0,serial=0,dirty=false,id=0,lastEdit=0,lastWrite=-100,status="Local session · JSON available",ready=false},Store)
  local pg=game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
  local cache=pg:FindFirstChild("AETHER_SessionBank")
  if not cache then cache=Instance.new("StringValue");cache.Name="AETHER_SessionBank";cache.Parent=pg end
  self.cache=cache
+ self.device=type(readfile)=="function" and type(writefile)=="function"
+ self.deviceSequence=0;self.deviceSlot=0
  if cache:IsA("StringValue") and cache.Value~="" then
   local ok,bank=pcall(function() return S.bank(Http:JSONDecode(cache.Value)) end)
   if ok then app:restore(bank);self.status="Local session restored" end
+ end
+ if self.device then
+  if not self:loadDevice() then
+   self.status="Device storage · first save pending"
+   if cache:IsA("StringValue") and cache.Value~="" then self.dirty=true end
+  end
+  -- A local device bank is private and is never sent to an experience.
+  return self
  end
  local function attach(r)
   if self.remote or r.Name~="AetherFullStoreV1" or not r:IsA("RemoteEvent") then return end;self.remote=r
@@ -5766,12 +5821,22 @@ end
 function Store:edit()
  self.serial+=1;self.dirty=true;self.lastEdit=os.clock()
  self:cacheBank()
+ if self.device then
+  self.status="Device changes pending"
+  -- First edit is saved immediately; continuous slider edits are coalesced.
+  if os.clock()-self.lastWrite>=.5 and not self.writing then self:save() end
+ end
 end
 function Store:request(op,body,force)
  if not self.remote or not self.remote.Parent then self.status="Local session only · export a JSON bank";return false end
  if self.pending then return false end;self.id+=1;self.pending={id=self.id,op=op,serial=self.serial,force=force,start=os.clock()};self.status=if op=="read" then "Reading bank…" else "Saving bank…";self.remote:FireServer(self.id,op,self.revision,body);return true
 end
 function Store:read(force)
+ if self.device then
+  if self.writing then self.status="Device save in progress";return false end
+  if not self:loadDevice() then self.status="No valid device configuration";return false end
+  return true
+ end
  if self.remote then return self:request("read",nil,force) end
  if force and self.cache and self.cache:IsA("StringValue") and self.cache.Value~="" then
   local ok,bank=pcall(function() return S.bank(Http:JSONDecode(self.cache.Value)) end)
@@ -5780,10 +5845,25 @@ function Store:read(force)
  self.status="No saved session bank";return false
 end
 function Store:save()
+ if self.device then
+  if self.writing then return false end
+  self.writing=true
+  local ok,result=pcall(function() return self:writeDevice() end)
+  self.writing=false
+  if not ok then self.lastWrite=os.clock();self.status="Device save failed · previous config retained";return false end
+  return result
+ end
  if not self.ready then if self:cacheBank() then self.status="Saved for this game session";return true end;return false end
  local data=Http:JSONEncode(self.app.bank);if #data>110000 then self.status="Bank exceeds 110 KB · remove or export assets";return false end;self.lastWrite=os.clock();return self:request("write",data,false)
 end
 function Store:tick(now)
+ if self.device then
+  if self.dirty and not self.writing and os.clock()-self.lastWrite>=.5 and os.clock()-self.lastEdit>=.25 then
+   task.defer(function() if self.dirty and not self.writing then self:save() end end)
+   self.lastWrite=os.clock()
+  end
+  return
+ end
  if self.pending and now-self.pending.start>18 then self.pending=nil;self.ready=false;self.status="Store timeout · reload or export" end
  if self.dirty and self.ready and not self.pending and now-self.lastEdit>2 and now-self.lastWrite>12 then self:save() end
 end
@@ -9027,7 +9107,7 @@ function app:unload()
     if self.stopping then return end
     self.stopping=true
     self.editingHUD=false;editorGui.Enabled=false
-    if store.dirty and store.ready and not store.pending then pcall(function() store:save() end) end
+    if store.dirty and (store.device or store.ready) and not store.pending then pcall(function() store:save() end) end
     -- Defer destruction until the current GUI activation callback has returned.
     task.defer(function() scope:clear() end)
 end
