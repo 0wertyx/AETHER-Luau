@@ -74,6 +74,13 @@ toggle("VolleyballState","vbEdgeGuard","Edge guard",true)
 choice("VolleyballState","vbShotMode","Shot mode","Auto",{"Auto","Spike","Set","Serve"})
 choice("VolleyballState","vbCameraAim","Camera aim","Free zone",{"Free zone","Court center","Off"})
 choice("VolleyballState","vbTiltAim","Tilt aim","Correct edges",{"Correct edges","Aim center","Aim left","Aim right","Free zone"})
+-- Decimal module options use the same JSON/profile pipeline as toggles.
+def("VolleyballState","vbBallFactor","Ball size factor","real",2,1,math.huge)
+def("VolleyballState","vbTiltScale","Curve input strength","real",1,0,1)
+S.vbMultiplierNames={"BlockPower","BumpPower","DashPower","DiveSpeed","DrawPower","JumpPower","ServePower","SetPower","Speed"}
+for _,name in S.vbMultiplierNames do
+ def("VolleyballState","vbMultiplier_"..name,name,"optionalReal",false,0,math.huge)
+end
 function S.copy(v) if type(v)~="table" then return v end;local r={};for k,x in v do r[k]=S.copy(x) end;return r end
 local function str(s,n) return type(s)=="string" and #s<=n and utf8.len(s)~=nil end
 local function name(s) return str(s,48) and s:match("%S") and not s:find("%c") end
@@ -84,6 +91,8 @@ function S.value(k,v)
  if a=="bool" and type(v)=="boolean" then return v end
  if a=="angle" and type(v)=="number" and v==v and math.abs(v)<math.huge then return v end
  if a=="number" and type(v)=="number" and v==math.floor(v) and v>=d.min and v<=d.max then return v end
+ if a=="optionalReal" and v==false then return false end
+ if (a=="real" or a=="optionalReal") and type(v)=="number" and v==v and math.abs(v)<math.huge and v>=d.min and v<=d.max then return v end
  if a=="choice" and table.find(d.min,v) then return v end
  if a=="color" and hex(v) then return string.upper(v) end
  if a=="text" and str(v,d.max) then return v end
