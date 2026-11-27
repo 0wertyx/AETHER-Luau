@@ -81,13 +81,36 @@ S.vbMultiplierNames={"BlockPower","BumpPower","DashPower","DiveSpeed","DrawPower
 for _,name in S.vbMultiplierNames do
  def("VolleyballState","vbMultiplier_"..name,name,"optionalReal",false,0,math.huge)
 end
+-- Interface settings use the existing validated, persistent profile schema.
+for _,name in {"Main","Visuals","Utility","Interface"} do toggle("Interface","branch"..name,"Expand "..name,name=="Visuals") end
+choice("Interface","lastPage","Last page","Halos",{"Dashboard","Profiles","Diagnostics","Character","Wings","Halos","Ambient","Indicators","Cursor","Interaction","Volleyball","Interface","HUD","Fonts"})
+color("Interface","uiPanelColor","Panel tint","211B36")
+color("Interface","uiButtonColor","Button tint","382B50")
+color("Interface","uiHoverColor","Selected button tint","7154A6")
+color("Interface","uiRowColor","Control row tint","29223D")
+color("Interface","uiStrokeColor","Glass edge tint","D1BEF4")
+color("Interface","uiSpecularColor","Glass highlight","FFFFFF")
+color("Interface","clockGlass","Clock glass tint","211C35")
+color("Interface","fpsGlass","FPS glass tint","211C35")
+color("Interface","clockText","Clock text","F1E6FF")
+color("Interface","fpsText","FPS text","F1E6FF")
+range("Interface","uiGlassOpacity","Panel opacity %",48,10,95)
+range("Interface","uiReflection","Glass reflection %",55,0,100)
+toggle("Interface","layoutCustom","Custom GUI arrangement",false)
+range("Interface","layoutX","GUI horizontal position %",50,0,100)
+range("Interface","layoutY","GUI vertical position %",50,0,100)
+range("Interface","layoutW","GUI width %",86,50,98)
+range("Interface","layoutH","GUI height %",72,40,95)
+range("Interface","navWidth","Branch rail width",156,100,220)
+range("Interface","topScale","Top capsule scale %",100,60,180)
 function S.copy(v) if type(v)~="table" then return v end;local r={};for k,x in v do r[k]=S.copy(x) end;return r end
 local function str(s,n) return type(s)=="string" and #s<=n and utf8.len(s)~=nil end
 local function name(s) return str(s,48) and s:match("%S") and not s:find("%c") end
 local function hex(s) return type(s)=="string" and #s==6 and s:match("^%x+$")~=nil end
 function S.value(k,v)
  -- Deprecated effects stay readable in old banks but cannot be enabled in this edition.
- if (k=="neon" or k=="aura" or k=="trail" or k=="visualBloom") and type(v)=="boolean" then return false end
+ if (k=="neon" or k=="aura" or k=="trail" or k=="visualBloom" or k=="dock") and type(v)=="boolean" then return false end
+ if k=="topCapsule" and type(v)=="boolean" then return true end
  local d=S.defs[k];if not d then error("Unknown setting: "..tostring(k),0) end
  local a=d.kind
  if a=="bool" and type(v)=="boolean" then return v end
@@ -169,7 +192,7 @@ function S.capturePeer(settings,publishedMotion,physicalLift)
  return packet
 end
 function S.menuKey(s) return if s.lockKey=="F8" then "F7" else "F8" end
-function S.defaults() local r={};for k,d in S.defs do r[k]=S.copy(d.default) end;return r end
+function S.defaults() local r={};for k,d in S.defs do r[k]=S.copy(d.default) end;r.dock=false;r.topCapsule=true;return r end
 function S.settings(v,group)
  assert(type(v)=="table","Expected settings");local r=if group then {} else S.defaults();local count=0
  for k,x in v do local d=S.defs[k];assert(d and (not group or d.group==group),"Unexpected setting");r[k]=S.value(k,x);count+=1 end
