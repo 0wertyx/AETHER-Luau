@@ -415,20 +415,21 @@ function UI:animateBackground(t)
  local dt=math.clamp(t-(self.motionAt or t-1/60),0,.1)
  self.motionAt=t
  local immediate=s.reduce or s.menuTransition=="Off"
- local duration=math.max(.06,s.duration/1000*100/s.speed)
+ local duration=if not self.opened then .24 else math.max(.06,s.duration/1000*100/s.speed)
  local target=if self.opened then 1 else 0
  local step=dt/duration
  if immediate then self.menuProgress=target
  else self.menuProgress=math.clamp(self.menuProgress+step*(if self.opened then 1 else -1),0,1) end
+ local wasVisible=self.panel.Visible
  self.panel.Visible=self.opened or self.menuProgress>0
  local q=U.ease(self.menuProgress,s.ease)
- transition(self.panel,if self.panel.Visible then q else 1)
+ if self.panel.Visible or wasVisible then transition(self.panel,if self.panel.Visible then q else 1) end
  local strength=s.menuAnimStrength/100
  if self.xy then
   local dx,dy=0,0
   local side=self.layoutSide or s.menuDock
   local distance=(1-q)*(.65+.35*strength)
-  if not immediate and s.menuTransition~="Fade" and not self.menuDraft then
+  if self.opened and not immediate and s.menuTransition~="Fade" and not self.menuDraft then
    local extent=self.panelExtent or self.panel.AbsoluteSize;local sz=self.stage.AbsoluteSize
    if side=="Left" then dx=-(self.xy.X+extent.X+8)*distance
    elseif side=="Right" then dx=(sz.X-self.xy.X+8)*distance
@@ -469,8 +470,12 @@ function UI:animateBackground(t)
  self:layoutAuxWidgets(below)
  self.topButtons[1].TextColor3=U.hex(s.uiFontColor or "F1E6FF")
  local visible=s.screenParticles and q>.001
+ local decorDt=(self.decorElapsed or 0)+dt
+ self.decorElapsed=decorDt
+ local decorDue=decorDt>=1/20 or self.decorSettings~=s or self.lastDecorVisible~=visible
+ if decorDue then self.decorElapsed=0;self.decorSettings=s;self.lastDecorVisible=visible end
  self.screenFX.Visible=visible
- if visible then
+ if visible and (decorDue or self.menuProgress<1) then
   local motion=if s.reduce then 0 else t*s.menuMotion/100
   local alpha=q*s.screenParticleOpacity/100
   self.screenDim.BackgroundTransparency=1-alpha*.12
@@ -518,7 +523,7 @@ function UI:animateBackground(t)
   b.BackgroundColor3=soft:Lerp(accent:Lerp(bg,.42),amount)
  end
  self.geoLayer.Visible=s.menuGeometry and self.panel.Visible
- if self.geoLayer.Visible then self.constellation:step(dt,s) end
+ if self.geoLayer.Visible and decorDue then self.constellation:step(math.min(.1,decorDt),s) end
 end
 function UI:begin(i,fn,origin) if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end;local v=Vector2.new(i.Position.X,i.Position.Y);self.drag={i=i,start=v,fn=fn,origin=origin};fn(v,v,origin) end
 function UI:show(on)
