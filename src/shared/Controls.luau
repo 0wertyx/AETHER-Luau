@@ -588,14 +588,14 @@ function UI:animateBackground(t)
  self.quickArrow.Visible=self.app.volleyball~=nil and not self.app.editingHUD
  self.quick.Visible=editingAux or (self.quickOpen and s.topCapsule and not self.app.editingHUD)
  self.bindPanel.Visible=editingAux or (not self.opened and not self.app.editingHUD and self.app.mode=="Game" and s.keybindWidget)
- self.bindRim.Color=accent
+ self.bindRim.Color=U.hex(s.uiStrokeColor)
  if self.bindPanel.Visible and t>=(self.bindRefreshAt or 0) then self.bindRefreshAt=t+.3;self:refreshBindPanel() end
  if self.quick.Visible and self.quickAdapter and t>=(self.quickRefreshAt or 0) then
   self.quickRefreshAt=t+.25
   for _,refresh in self.quickAdapter.syncs do pcall(refresh) end
  end
  self.updateChip.Visible=false
- self.topRim.Color=accent;self.quickRim.Color=accent
+ self.topRim.Color=U.hex(s.uiStrokeColor);self.quickRim.Color=U.hex(s.uiStrokeColor)
  local below=6
  self.quickArrow.Position=UDim2.new(.5,0,1,below)
  self:layoutAuxWidgets(below)
@@ -1059,6 +1059,8 @@ function UI:sync()
  for _,frame in {self.navGlass,self.contentGlass,self.header,self.top,self.quick,self.bindPanel,self.catalogHost,self.catalogHost and self.sc} do if frame then glassSurface(frame,st) end end
  for _,r in self.branchCards do glassSurface(r.frame,st) end
  self.search.BackgroundColor3=U.hex(st.uiRowColor)
+ self.quickArrow.BackgroundColor3=U.hex(st.uiButtonColor)
+ for _,obj in {self.layoutMove,self.layoutResize,self.layoutDone} do obj.BackgroundColor3=U.hex(st.uiHoverColor) end
  -- Only recolor editor controls, not HUD/3D previews or their own palette.
  for _,obj in self.panel:GetDescendants() do
   if obj:IsA("Frame") and obj:GetAttribute("AETHERControlRow") and obj.BackgroundTransparency<1 then obj.BackgroundColor3=U.hex(st.uiRowColor) end
