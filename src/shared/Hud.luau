@@ -131,7 +131,7 @@ function H:layoutPreview(s)
   panel.Size=UDim2.fromOffset(originalW,originalH)
   panel.Position=UDim2.fromOffset(math.clamp(x,0,math.max(0,vp.X-w)),math.clamp(y,0,math.max(0,vp.Y-height)))
   panel.Visible=s.topCapsule
-  item.rim.Color=U.hex(s.accent)
+  item.rim.Color=U.hex(s.uiStrokeColor)
   item.rim.Transparency=if key=="top" then .42 else .48
   item.rim.Thickness=1
   local face=U.font(s)
