@@ -4642,7 +4642,7 @@ function E.render(a,tab,ui)
    local radiusStatus=ui:note("",72)
    local function refreshRadius()
     if not radiusField:IsFocused() then radiusField.Text=tostring(vb.ballRadius.factor) end
-    radiusStatus.Text=(if vb.ballRadius.enabled then "ON | " else "OFF | ")..vb.ballRadius.status.." | Guide: "..(if vb.ballRadius.show then "ON" else "OFF")
+    radiusStatus.Text=(if vb.ballRadius.enabled then "ON | " else "OFF | ")..vb.ballRadius.status.." | Guide: "..(if vb.ballRadius.show then "ON" else "OFF").." | Reconnects: "..tostring(vb.ballRadius.reconnects)
    end
    ui:watch(refreshRadius)
    local radiusElapsed=0
@@ -9076,10 +9076,12 @@ do
     local vb=app.volleyball
     local rs=game:GetService("ReplicatedStorage")
     local tags=game:GetService("CollectionService")
-    local exp={factor=2,enabled=false,show=true,status="Off"}
+    local exp={factor=2,enabled=false,show=true,status="Off",reconnects=0}
     vb.ballRadius=exp
     local entry,folder
     local searchAt=0
+    local controller,controllerRetry=nil,0
+    local lastActive=nil
     local function clear()
         local e=entry;entry=nil
         if e and e.part.Parent then
@@ -9091,7 +9093,7 @@ do
         if folder then folder:Destroy();folder=nil end
     end
     local function reset(reason)
-        clear();searchAt=0;exp.enabled=false;exp.status=reason or "Off"
+        clear();searchAt=0;lastActive=nil;exp.enabled=false;exp.status=reason or "Off"
     end
     local function resolvePart(model)
         if not model or not model:IsA("Model") or not model.Name:match("^CLIENT_BALL_") or not model:IsDescendantOf(workspace) then return nil end
@@ -9106,30 +9108,49 @@ do
         end
         return found
     end
+    local function resolveController()
+        if controller and type(controller.ActiveBalls)=="table" then return controller end
+        local now=os.clock()
+        if now<controllerRetry then return nil end
+        controllerRetry=now+2
+        local ok,c=pcall(function() return require(rs.Packages.Knit).GetController("BallController") end)
+        if ok and type(c)=="table" and type(c.ActiveBalls)=="table" then controller=c;return c end
+        return nil
+    end
     local function findPart()
         local seen,models={},{}
         local function add(obj)
-            if obj:IsA("BasePart") then obj=obj.Parent end
+            if typeof(obj)~="Instance" then return end
+            if obj:IsA("BasePart") then obj=obj:FindFirstAncestorWhichIsA("Model") end
             if obj and not seen[obj] then
                 seen[obj]=true
                 if resolvePart(obj) then table.insert(models,obj) end
             end
         end
+        local c=resolveController()
+        if c then
+            for _,state in pairs(c.ActiveBalls) do if type(state)=="table" then add(state.Ball) end end
+        end
         for _,obj in tags:GetTagged("Ball") do add(obj) end
-        if #models==0 then
+        local active=rs:GetAttribute("ActiveBall")
+        local function matches(model)
+            return active~=nil and (model.Name=="CLIENT_BALL_"..tostring(active) or tostring(model:GetAttribute("ServerId"))==tostring(active))
+        end
+        for _,model in models do if matches(model) then return resolvePart(model) end end
+        if #models==0 or active~=nil then
             for _,obj in workspace:GetDescendants() do
                 if obj.Name:match("^CLIENT_BALL_") then add(obj) end
             end
         end
-        local active=rs:GetAttribute("ActiveBall")
         if active~=nil then
-            for _,model in models do
-                if model.Name=="CLIENT_BALL_"..tostring(active) or tostring(model:GetAttribute("ServerId"))==tostring(active) then
-                    return resolvePart(model)
-                end
-            end
+            for _,model in models do if matches(model) then return resolvePart(model) end end
+            -- Do not bind a stale ball while the next round is loading.
+            return nil
         end
         if #models==1 then return resolvePart(models[1]) end
+        if entry then
+            for _,model in models do if resolvePart(model)==entry.part then return entry.part end end
+        end
         return nil
     end
     local function nonInteractive(p)
@@ -9165,6 +9186,7 @@ do
         guide.Color3=outline.Color3;guide.Transparency=.94
         guide.AlwaysOnTop=false;guide.Radius=base.X*.5;guide.Parent=folder
         entry={part=p,base=base,applied=base,ltm=p.LocalTransparencyModifier,copy=copy,guide=guide,outline=outline}
+        exp.reconnects+=1
     end
     function vb:setBallRadiusFactor(value)
         assert(type(value)=="number" and value==value and value>=1 and value<math.huge,"Enter a finite number >= 1")
@@ -9185,19 +9207,22 @@ do
         if not exp.enabled then return end
         if app.stopping or not gui.Parent or app.mode~="Game" then reset("Off | left Game mode");return end
         if player:GetAttribute("Gameplay_InGame")~=true then
-            if entry then reset("Off | match ended") else exp.status="Waiting for match" end
+            if entry or folder then clear() end
+            searchAt=0;lastActive=nil;exp.status="Waiting for match | auto reconnect"
             return
         end
-        if entry and (not entry.part:IsDescendantOf(workspace) or not entry.part.CanQuery or not folder or not folder.Parent) then
+        local active=rs:GetAttribute("ActiveBall")
+        if active~=lastActive then lastActive=active;searchAt=0 end
+        if entry and (not entry.part:IsDescendantOf(workspace) or not entry.part.CanQuery or not folder or not folder.Parent or entry.copy.Parent~=folder or entry.guide.Parent~=folder or entry.outline.Parent~=folder) then
             clear();searchAt=0
         end
         if os.clock()>=searchAt then
-            searchAt=os.clock()+.5
+            searchAt=os.clock()+(if entry then .5 else .25)
             local p=findPart()
             if entry and p~=entry.part then clear() end
             if p and not entry then attach(p) end
         end
-        if not entry then exp.status="Waiting for one identifiable queryable ball mesh";return end
+        if not entry then exp.status="Waiting for active ball | auto reconnect";return end
         local e=entry
         local p=e.part
         if p.Size~=e.applied then e.base=p.Size end
@@ -9219,7 +9244,10 @@ do
     end
     scope:on(RunService.RenderStepped,function()
         local ok,err=pcall(tick)
-        if not ok then reset("Ball hitbox error: "..tostring(err)) end
+        if not ok then
+            clear();searchAt=os.clock()+.5
+            exp.status="Retrying | "..tostring(err)
+        end
     end)
     scope:add(function() reset() end)
 end

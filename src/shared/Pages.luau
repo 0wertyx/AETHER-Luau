@@ -789,7 +789,7 @@ function E.render(a,tab,ui)
    local radiusStatus=ui:note("",72)
    local function refreshRadius()
     if not radiusField:IsFocused() then radiusField.Text=tostring(vb.ballRadius.factor) end
-    radiusStatus.Text=(if vb.ballRadius.enabled then "ON | " else "OFF | ")..vb.ballRadius.status.." | Guide: "..(if vb.ballRadius.show then "ON" else "OFF")
+    radiusStatus.Text=(if vb.ballRadius.enabled then "ON | " else "OFF | ")..vb.ballRadius.status.." | Guide: "..(if vb.ballRadius.show then "ON" else "OFF").." | Reconnects: "..tostring(vb.ballRadius.reconnects)
    end
    ui:watch(refreshRadius)
    local radiusElapsed=0
