@@ -936,6 +936,15 @@ function E.render(a,tab,ui)
   ui:control("afkImageOpacity")
   ui:note("Image mode uses a Roblox image asset ID. Only images accessible in the current experience can load.",36)
   for _,k in {"afkBgA","afkBgB","afkPatternColor","afkBrandColor","afkTitleColor","afkDetailColor","afkButtonColor","afkButtonText","afkButtonEdge","afkImageTint"} do ui:colorPicker(k) end
+  ui:title("QUICK MENU / APPEARANCE")
+  ui:note("Independent colors and fade for the compact modules panel under the AETHER capsule.",38)
+  ui:chips({"Reset quick menu appearance"},function()
+   local defaults=S.defaults();local patch={}
+   for _,k in {"modulePanelColor","moduleRowColor","moduleAccentColor","moduleStrokeColor","moduleTextColor","moduleMutedColor","moduleToggleOnColor","moduleToggleOffColor","moduleBackgroundOpacity","moduleFadeMs"} do patch[k]=defaults[k] end
+   a:patch(patch)
+  end,1)
+  ui:control("moduleFadeMs");ui:control("moduleBackgroundOpacity")
+  for _,k in {"modulePanelColor","moduleRowColor","moduleAccentColor","moduleStrokeColor","moduleTextColor","moduleMutedColor","moduleToggleOnColor","moduleToggleOffColor"} do ui:colorPicker(k) end
   ui:title("LAYOUT & WIDGETS")
   ui:chips({"Edit GUI size / position"},function() ui:editLayout(true) end,1)
   ui:chips({"Edit HUD size / position"},function() a:set("movePanels",true);a:editHUD(true) end,1)

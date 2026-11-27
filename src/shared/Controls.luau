@@ -611,7 +611,7 @@ function UI.new(app,gui,scope)
  self.bindList=U.new("ScrollingFrame",{Name="AssignedKeys",Position=UDim2.fromOffset(8,29),Size=UDim2.new(1,-16,1,-35),BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=2,ZIndex=21},self.bindPanel)
  U.new("UIListLayout",{Padding=UDim.new(0,3),SortOrder=Enum.SortOrder.LayoutOrder},self.bindList)
  self.bindEmpty=U.label(self.bindList,"No keybinds assigned",11,nil,UDim2.new(1,0,0,25));self.bindEmpty.ZIndex=22;self.bindEmpty.LayoutOrder=999
- self.quickOpen=false
+ self.quickOpen=false;self.quickProgress=0
  self.quickArrow=U.button(self.top,"")
  self.quickArrow.Name="VolleyballDropdown";self.quickArrow.AnchorPoint=Vector2.new(.5,0)
  self.quickArrow.Size=UDim2.fromOffset(36,24);self.quickArrow.Position=UDim2.new(.5,0,1,32)
@@ -619,14 +619,74 @@ function UI.new(app,gui,scope)
  self.quickGlyph=chevron(self.quickArrow)
  self.quick=U.new("Frame",{Name="VolleyballQuickPanel",AnchorPoint=Vector2.new(.5,0),Position=UDim2.new(.5,0,1,58),Size=UDim2.fromOffset(324,380),BackgroundColor3=bg,BackgroundTransparency=.10,BorderSizePixel=0,Visible=false,Active=true,ZIndex=28},self.top)
  U.corner(self.quick,13);self.quickRim=U.stroke(self.quick,Color3.fromRGB(166,138,255),.3)
+ self.quickGradient=U.gradient(self.quick,Color3.new(1,1,1),Color3.new(1,1,1),90)
+ self.quick.BackgroundColor3=Color3.new(1,1,1)
  local title=U.label(self.quick,"VOLLEYBALL / MODULES",12,UDim2.fromOffset(12,5),UDim2.new(1,-88,0,22));title.ZIndex=29
  local edit=U.button(self.quick,"EDIT HUD");edit.Name="EditWidgetPositions";edit.Size=UDim2.fromOffset(68,23);edit.Position=UDim2.new(1,-76,0,5);edit.TextSize=10;edit.ZIndex=30
  scope:on(edit.Activated,function() if self.quickOpen and not self.app.editingHUD then self.app:editHUD(true,"Volleyball",true) end end)
  self.quickScroll=U.new("ScrollingFrame",{Name="QuickFunctions",Position=UDim2.fromOffset(8,32),Size=UDim2.new(1,-16,1,-60),BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3,ZIndex=29},self.quick)
  U.new("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder},self.quickScroll)
  self.quickStatus=U.label(self.quick,"Tap a module to expand",10,UDim2.new(0,10,1,-24),UDim2.new(1,-20,0,20))
- self.quickStatus.ZIndex=29
+ self.quickStatus.ZIndex=29;self.quickStatus:SetAttribute("AETHERMuted",true)
  self.quickExpanded={}
+ function self:applyQuickTheme()
+  local s=self.app.s
+  local panel,row,accent=U.hex(s.modulePanelColor),U.hex(s.moduleRowColor),U.hex(s.moduleAccentColor)
+  local edge,primary,muted=U.hex(s.moduleStrokeColor),U.hex(s.moduleTextColor),U.hex(s.moduleMutedColor)
+  local on,off=U.hex(s.moduleToggleOnColor),U.hex(s.moduleToggleOffColor)
+  self.quick.BackgroundColor3=Color3.new(1,1,1)
+  self.quickGradient.Color=ColorSequence.new(panel:Lerp(edge,.06),panel:Lerp(Color3.new(),.16))
+  self.quickRim.Color=edge;self.quickArrow.BackgroundColor3=row
+  self.quickScroll.ScrollBarImageColor3=edge
+  for _,line in self.quickGlyph:GetChildren() do if line:IsA("Frame") then line.BackgroundColor3=primary end end
+  for _,obj in self.quick:GetDescendants() do
+   local role=obj:GetAttribute("AETHERQuickRole")
+   if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+    if not obj:GetAttribute("AETHERKeepFontColor") then
+     local holder=obj.Parent
+     local isColorValue=holder and S.defs[holder.Name] and S.defs[holder.Name].kind=="color" and obj:IsA("TextLabel")
+     if not isColorValue then
+      obj.TextColor3=if obj:GetAttribute("AETHERMuted") or obj==self.quickStatus then muted else primary
+     end
+    end
+    if obj:IsA("TextButton") and obj.BackgroundTransparency<1 then
+     if role=="Switch" or obj.Text=="ON" or obj.Text=="OFF" then obj.BackgroundColor3=if obj.Text=="ON" then on else off
+     elseif role=="Bind" then obj.BackgroundColor3=if obj.Text=="PRESS KEY" then accent else off
+     elseif obj.Name=="ExpandModule" then obj.BackgroundColor3=row
+     elseif obj.BackgroundColor3==U.hex(s.uiHoverColor) then obj.BackgroundColor3=accent
+     else obj.BackgroundColor3=row end
+    elseif obj:IsA("TextBox") and obj.BackgroundTransparency<1 then obj.BackgroundColor3=off end
+   elseif obj:IsA("Frame") then
+    if role=="Row" and obj.BackgroundTransparency<1 then obj.BackgroundColor3=row
+    elseif role=="Card" then obj.BackgroundColor3=panel
+    elseif obj.Name=="Track" then obj.BackgroundColor3=off
+    elseif obj.Name=="Fill" then obj.BackgroundColor3=accent
+    elseif obj.Name=="Thumb" or (obj.Parent and obj.Parent.Name=="Chevron") then obj.BackgroundColor3=primary end
+   elseif obj:IsA("UIStroke") and obj~=self.quickRim then
+    if obj.Parent and obj.Parent:IsA("TextButton") then obj.Color=edge end
+   end
+  end
+ end
+ function self:stepQuick(dt,editingAux)
+  local s=self.app.s
+  local want=editingAux or (self.quickOpen and s.topCapsule and not self.app.editingHUD)
+  local target=if want then 1 else 0
+  local prev=self.quickProgress
+  local step=dt/math.max(.08,s.moduleFadeMs/1000)
+  if s.reduce or editingAux then self.quickProgress=target
+  elseif prev<target then self.quickProgress=math.min(target,prev+step)
+  elseif prev>target then self.quickProgress=math.max(target,prev-step) end
+  local alpha=U.ease(self.quickProgress,"Sine")
+  self.quick.Visible=want or self.quickProgress>0
+  self.quick.Interactable=want and not editingAux
+  self.quick.BackgroundTransparency=1-alpha*s.moduleBackgroundOpacity/100
+  self.quickRim.Transparency=1-alpha*.7
+  if self.quickProgress>0 and self.quickProgress<1 then
+   transition(self.quick,alpha)
+  elseif prev~=self.quickProgress or self.quick:FindFirstChild("AETHERTransitionSurface") then
+   transition(self.quick,1)
+  end
+ end
  scope:add(function() if self.quickPage then self.quickPage:clear();self.quickPage=nil end end)
  scope:on(self.quickArrow.Activated,function()
   if not self.app.volleyball or self.app.editingHUD then return end
@@ -1195,16 +1255,17 @@ function UI:animateBackground(t)
  local editingAux=self.app.editingHUD and self.app.hudEditMode=="Volleyball"
  self.top.Visible=(s.topCapsule and not self.panel.Visible) or editingAux
  self.quickArrow.Visible=self.app.volleyball~=nil and not self.app.editingHUD
- self.quick.Visible=editingAux or (self.quickOpen and s.topCapsule and not self.app.editingHUD)
+ self:stepQuick(dt,editingAux)
  self.bindPanel.Visible=editingAux or (not self.opened and not self.app.editingHUD and self.app.mode=="Game" and s.keybindWidget)
  self.bindRim.Color=U.hex(s.uiStrokeColor)
  if self.bindPanel.Visible and t>=(self.bindRefreshAt or 0) then self.bindRefreshAt=t+.3;self:refreshBindPanel() end
  if self.quick.Visible and self.quickAdapter and t>=(self.quickRefreshAt or 0) then
   self.quickRefreshAt=t+.25
   for _,refresh in self.quickAdapter.syncs do pcall(refresh) end
+  self:applyQuickTheme()
  end
  self.updateChip.Visible=false
- self.topRim.Color=U.hex(s.uiStrokeColor);self.quickRim.Color=U.hex(s.uiStrokeColor)
+ self.topRim.Color=U.hex(s.uiStrokeColor)
  local below=6
  self.quickArrow.Position=UDim2.new(.5,0,1,below)
  self:layoutAuxWidgets(below)
@@ -1419,13 +1480,13 @@ function UI:buildQuick()
    local ok,err=pcall(fn)
    if not ok then owner.quickStatus.Text=tostring(err):sub(-120) end
   end
-  owner:sync()
+  owner:sync();owner:applyQuickTheme()
  end
  function q:row(h,name)
   assert(current,"Quick section missing")
   self.seq+=1
   local f=U.frame(current.body,name or "Row",nil,UDim2.new(1,-4,0,h),soft,.47)
-  f.LayoutOrder=self.seq;f.ZIndex=32;U.corner(f,8)
+  f.LayoutOrder=self.seq;f.ZIndex=32;f:SetAttribute("AETHERQuickRole","Row");U.corner(f,8)
   current.height+=h+(if current.rows>0 then 5 else 0);current.rows+=1
   current.body.Size=UDim2.new(1,-12,0,current.height)
   current.layout()
@@ -1436,7 +1497,7 @@ function UI:buildQuick()
   owner:registerBind(id,label,invoke,read)
   local row=self:row(28,"BindRow")
   local text=U.label(row,"Bind · "..label,10,UDim2.fromOffset(6,0),UDim2.new(1,-90,1,0));text.ZIndex=33
-  local b=U.button(row,"Bind");b.Size=UDim2.fromOffset(78,24);b.Position=UDim2.new(1,-82,0,2);b.ZIndex=34;b.TextSize=11
+  local b=U.button(row,"Bind");b:SetAttribute("AETHERQuickRole","Bind");b.Size=UDim2.fromOffset(78,24);b.Position=UDim2.new(1,-82,0,2);b.ZIndex=34;b.TextSize=11
   self:watch(function()
    b.Text=if owner.captureBind==id then "PRESS KEY" else (owner:bindMap()[id] or "Bind")
    b.BackgroundColor3=if owner.captureBind==id then Color3.fromRGB(112,76,170) else bg
@@ -1447,7 +1508,7 @@ function UI:buildQuick()
   if self.fieldTitle then return UI.title(self,str) end
   sectionCount+=1
   local card=page:add(U.frame(owner.quickScroll,"Module_"..sectionCount,nil,UDim2.new(1,-5,0,34),soft,.35))
-  card.LayoutOrder=sectionCount;card.ZIndex=30;U.corner(card,8)
+  card.LayoutOrder=sectionCount;card.ZIndex=30;card:SetAttribute("AETHERQuickRole","Card");U.corner(card,8)
   local header=U.button(card,"");header.Name="ExpandModule";header.Size=UDim2.new(1,0,0,34);header.ZIndex=31
   local spec=quickSwitches[str]
   local title=U.label(header,str:gsub(" / BETA",""):gsub(" / EXPERIMENT",""):gsub(" / LOCAL PREVIEW",""),11,UDim2.fromOffset(9,0),UDim2.new(1,if spec then -91 else -32,1,0))
@@ -1466,7 +1527,7 @@ function UI:buildQuick()
    section.expanded=not section.expanded;owner.quickExpanded[str]=section.expanded;section.layout()
   end)
   if spec then
-   local switch=U.button(card,"OFF")
+   local switch=U.button(card,"OFF");switch:SetAttribute("AETHERQuickRole","Switch")
    switch.Size=UDim2.fromOffset(48,26);switch.Position=UDim2.new(1,-82,0,4);switch.ZIndex=34;switch.TextSize=11
    local function refresh()
     local vb=owner.app.volleyball;local enabled=vb and spec[1](vb)==true
@@ -1518,7 +1579,8 @@ end
 function UI:setQuick(on)
  self.quickOpen=on==true
  if not self.quickOpen then self.captureBind=nil end
- self.quick.Visible=self.quickOpen and self.app.s.topCapsule
+ if self.quickOpen and self.app.s.topCapsule then self.quick.Visible=true end
+ self.quick.Interactable=self.quickOpen
  self.quickGlyph.Rotation=if self.quickOpen then 180 else 0
  if self.quickOpen then
   if not self.quickAdapter then
@@ -1530,6 +1592,7 @@ function UI:setQuick(on)
    end
   else self.quickAdapter.opened=true;self.quickAdapter:sync() end
  elseif self.quickAdapter then self.quickAdapter.opened=false end
+ self:applyQuickTheme()
 end
 local function searchMatch(text,words)
  for _,word in words do if not text:find(word,1,true) then return false end end
@@ -1656,7 +1719,7 @@ function UI:note(str,h) local f=self:row(h or 36,"Note");f.BackgroundTransparenc
 function UI:watch(fn) table.insert(self.syncs,fn);fn() end
 function UI:sync()
  if not self.panel.Parent then return end
- self:applyAFKTheme()
+ self:applyAFKTheme();self:applyQuickTheme()
  local st=self.app.s
  local space=Color3.fromRGB(7,9,22)
  self.backgroundGradient.Color=ColorSequence.new(U.hex(st.constellationBgA):Lerp(space,.64),U.hex(st.constellationBgB):Lerp(space,.53))
@@ -1680,10 +1743,9 @@ function UI:sync()
  local themeKey=table.concat({st.accent,st.uiFontColor,st.uiMutedColor,st.uiPanelColor,st.uiButtonColor,st.uiHoverColor,st.uiRowColor,st.uiStrokeColor,st.uiSpecularColor,st.uiGlassOpacity,st.uiReflection,st.rim},":")
  if not self.themeDirty and self.themeKey==themeKey then return end
  self.themeDirty=false;self.themeKey=themeKey
- for _,frame in {self.navGlass,self.contentGlass,self.header,self.top,self.quick,self.bindPanel,self.modeBar,self.catalogHost,self.catalogHost and self.sc} do if frame then glassSurface(frame,st) end end
+ for _,frame in {self.navGlass,self.contentGlass,self.header,self.top,self.bindPanel,self.modeBar,self.catalogHost,self.catalogHost and self.sc} do if frame then glassSurface(frame,st) end end
  for _,r in self.branchCards do glassSurface(r.frame,st) end
  self.search.BackgroundColor3=U.hex(st.uiRowColor)
- self.quickArrow.BackgroundColor3=U.hex(st.uiButtonColor)
  for _,header in {self.rootDrag,self.pageDrag} do
   header.BackgroundTransparency=1;header.HeaderDivider.BackgroundColor3=U.hex(st.uiStrokeColor)
  end
