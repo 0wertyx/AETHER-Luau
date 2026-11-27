@@ -23,8 +23,6 @@ local searchSections={
  {"Character","AETHER MOTION STUDIO V12.14"},
  {"Halos","HALO COLLECTION"},
  {"Wings","WING COLLECTION"},
- {"Neon","EFFECT COLLECTION"},
- {"Neon","EFFECT SETTINGS"},
  {"Halos","Disable all halos"},
  {"Ambient","AMBIENT COLLECTION"},
  {"Ambient","AMBIENT SETTINGS"},
@@ -93,25 +91,6 @@ local searchSections={
  {"Volleyball","Ball size factor (>=1)"},
  {"Volleyball","Curve input strength (0–1)"},
  {"Fonts","Search native typefaces"},
- {"Simulator","WORLD PREVIEW"},
- {"Simulator","Use simulator"},
- {"Simulator","Use game"},
- {"Simulator","Damage −25"},
- {"Simulator","Heal +25"},
- {"Simulator","Respawn"},
- {"Simulator","Add player"},
- {"Simulator","Move players"},
- {"Simulator","Clear players"},
- {"Simulator","Apply virtual vitals"},
- {"Simulator","Set virtual HP"},
- {"Simulator","Virtual max HP"},
- {"List","ROBLOX PLAYER LIST"},
- {"List","Toggle native player list"},
- {"Updates","LIVE UPDATE CENTER"},
- {"Updates","UPDATE LIST"},
- {"Updates","Test update"},
- {"Updates","Check updates"},
- {"Updates","Rollback"},
  {"Diagnostics","SESSION"},
  {"Diagnostics","Refresh"},
  {"Diagnostics","Clear log"},
@@ -136,15 +115,8 @@ local searchSections={
  {"Profiles","Reload bank"},
  {"Profiles","Export bank"},
  {"Profiles","Import bank"},
- {"Scripts","AETHER Lua"},
- {"Scripts","Luau draft"},
- {"Scripts","Template"},
- {"Scripts","Complete symbol"},
- {"Scripts","Select source"},
- {"Scripts","Check"},
  {"Wings","Wing styles"},
  {"Halos","Halo styles"},
- {"Neon","Neon motion"},
  {"Character","Walk animation"},
  {"Character","Pose preview"},
 }
@@ -226,7 +198,7 @@ function UI.new(app,gui,scope)
  self.place=U.label(self.panel,"PLACE  /  "..tostring(game.PlaceId),10,nil,nil);self.place.TextColor3=dim
  self.nav=U.new("ScrollingFrame",{Name="Navigation",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3},self.panel);self.navList=U.new("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},self.nav)
  self.pageBox=U.new("Frame",{Name="PageArea",BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true},self.panel);self.status=U.label(self.panel,"",11,UDim2.new(0,16,1,-28),UDim2.new(1,-32,0,22));self.status.TextColor3=dim
- self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Interaction","Volleyball","Fonts","Simulator","Scripts","Profiles","Updates","List","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,if name=="Volleyball" then "Interaction" else name);scope:on(b.Activated,function() if self.opened and os.clock()>=(self.tabInputAfter or 0) then self:open(name) end end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
+ self.buttons={};for i,name in {"Dashboard","HUD","Character","Wings","Halos","Ambient","Indicators","Cursor","Interaction","Volleyball","Fonts","Profiles","Diagnostics"} do local b=U.button(self.nav,name);b.Name=name;b.LayoutOrder=i;self.buttons[name]=b;self.icons[name]=Icons.new(b,if name=="Volleyball" then "Interaction" else name);scope:on(b.Activated,function() if self.opened and os.clock()>=(self.tabInputAfter or 0) then self:open(name) end end);scope:on(b.MouseEnter,function() self.navHover[name]=true end);scope:on(b.MouseLeave,function() self.navHover[name]=false end) end
  self.search=U.new("TextBox",{Name="FunctionSearch",Text="",PlaceholderText="Search functions...",ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Left,Font=Enum.Font.GothamMedium,TextSize=13,TextColor3=Color3.fromRGB(241,234,255),PlaceholderColor3=dim,BackgroundColor3=soft,BorderSizePixel=0},self.panel)
  U.corner(self.search,8);U.new("UIPadding",{PaddingLeft=UDim.new(0,10),PaddingRight=UDim.new(0,10)},self.search)
  self.navGlass=U.frame(self.panel,"TabRailGlass",nil,nil,Color3.fromRGB(25,20,45),.53);U.corner(self.navGlass,18);U.stroke(self.navGlass,Color3.fromRGB(184,151,243),.68);self.navGlass.Active=false;self.navGlass.Interactable=false
@@ -239,7 +211,7 @@ function UI.new(app,gui,scope)
  self.searchPool={}
  self.searchIndex={}
  self.fullscreen=true
- for _,name in {"Dashboard","HUD","Character","Wings","Halos","Neon","Ambient","Indicators","Cursor","Interaction","Volleyball","Fonts","Simulator","Scripts","Profiles","Updates","List","Diagnostics"} do
+ for _,name in {"Dashboard","HUD","Character","Wings","Halos","Ambient","Indicators","Cursor","Interaction","Volleyball","Fonts","Profiles","Diagnostics"} do
   table.insert(self.searchIndex,{tab=name,label=name,term=name:lower()})
  end
  for _,k in S.order do
@@ -475,20 +447,9 @@ function UI:animateBackground(t)
   self.quickRefreshAt=t+.25
   for _,refresh in self.quickAdapter.syncs do pcall(refresh) end
  end
- local live=self.app.liveUpdate
- if live then
-  local unread=live.unread==true
-  local version=live.version..(if (live.testCount or 0)>0 and live.isTest then " · TEST "..tostring(live.testCount) else "")
-  local text=if unread then "v"..version.."  |  VERSION UPDATED  |  CHECK UPDATE LIST" else "v"..version
-  if self.updateChip.Text~=text then self.updateChip.Text=text end
-  local width=if unread then math.min(370,math.max(150,self.stage.AbsoluteSize.X-24)) else math.min(180,math.max(90,#text*7+20))
-  self.updateChip.Size=UDim2.fromOffset(width,if unread then 28 else 22)
-  self.updateChip.BackgroundColor3=if unread then accent:Lerp(Color3.fromRGB(22,17,35),.65) else Color3.fromRGB(24,20,40)
-  self.updateRim.Color=accent
-  self.updateRim.Transparency=if unread then .15 else .55
- end
+ self.updateChip.Visible=false
  self.topRim.Color=accent;self.quickRim.Color=accent
- local below=6+self.updateChip.Size.Y.Offset+4
+ local below=6
  self.quickArrow.Position=UDim2.new(.5,0,1,below)
  self:layoutAuxWidgets(below)
  self.topButtons[1].TextColor3=U.hex(s.uiFontColor or "F1E6FF")
@@ -884,7 +845,7 @@ function UI:jumpTo(item)
   end
  end)
 end
-local visualTabs={Halos=true,Wings=true,Neon=true,Ambient=true}
+local visualTabs={Halos=true,Wings=true,Ambient=true}
 function UI:open(tab)
  if tab=="Camera" then tab="Interaction" end
  if self.search then self.search.Text="" end
@@ -938,7 +899,7 @@ function UI:sync()
  local muted=U.hex(st.uiMutedColor or "ADA3C5")
  self.brand.TextColor3=U.hex(st.accent)
  self.outline.Color=self.brand.TextColor3
- self.tag.Text=self.app.mode.." / "..(self.app.liveUpdate and self.app.liveUpdate.version or "LIVE 1.0")
+ self.tag.Text="AETHER / VISUALS"
  self.tag.TextColor3=muted
  self.status.TextColor3=muted
  local iconKey=tostring(st.iconAtlas)..":"..tostring(st.iconAtlasTile)
