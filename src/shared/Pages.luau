@@ -234,7 +234,7 @@ local function avatarPreview(ui,a,worldMode)
       if delta.Magnitude>.001 and w:Raycast(pos,delta+delta.Unit*.4,sceneParams) then delta=Vector3.zero end
      end
     end
-    if (jumpRequested or (settings.bunnyHop and keys[Enum.KeyCode.Space])) and grounded then verticalSpeed=36;grounded=false end
+    if (jumpRequested or (settings.bunnyHop and keys[Enum.KeyCode.Space])) and grounded and not (a.mode=="Simulator" and a.sim.stateBusy and not a.sim.stateOverride) then verticalSpeed=36;grounded=false end
     jumpRequested=false
     verticalSpeed-=workspace.Gravity*dt
     local nextPos=pos+delta+Vector3.new(0,verticalSpeed*dt,0)
@@ -680,6 +680,72 @@ local function airControls(ui,a)
    airPosition.Text=if m then string.format("Jump requests: %d | height range: %.2f | position travel: %.2f | peak Y velocity: %.2f",a.airJumpRequests or 0,m.maxY-m.minY,m.travel,m.peakY) else "No live position sample"
   end)
 end
+-- Read-only game state monitor and isolated virtual-character controls.
+local function statePanel(ui,a)
+ ui:title("STATE MONITOR")
+ local status=ui:note("",72)
+ local cache=a.stateMonitorCache
+ if not cache then
+  cache={text="Waiting for game state",nextAt=0,pending=false}
+  a.stateMonitorCache=cache
+ end
+ local function flag(value)
+  if value==true then return "ON" elseif value==false then return "OFF" end
+  return "N/A"
+ end
+ local function refresh()
+  if a.mode=="Simulator" then
+   local raw=a.sim.stateBusy==true
+   local override=a.sim.stateOverride==true
+   status.Text="SIMULATOR | Busy: "..flag(raw).." | Effective: "..flag(raw and not override).."\nOverride: "..flag(override).." | Virtual character only"
+   return
+  end
+  status.Text="GAME | "..cache.text
+  local now=os.clock()
+  if cache.pending or now<cache.nextAt then return end
+  cache.pending=true;cache.nextAt=now+.35
+  task.spawn(function()
+   local ok,result=pcall(function()
+    local rf=game:GetService("ReplicatedFirst")
+    local controllers=rf:FindFirstChild("Controllers")
+    local g=controllers and controllers:FindFirstChild("GameController")
+    local handlers=g and g:FindFirstChild("Handlers")
+    if not handlers or not handlers:IsA("ModuleScript") then return "State module unavailable" end
+    local states=require(handlers).States
+    if not states then return "State table unavailable" end
+    local function get(key)
+     local success,value=pcall(function() return states[key]() end)
+     return if success then flag(value) else "N/A"
+    end
+    return "Busy: "..get("IsBusy").." | Stunned: "..get("IsStunned").."\nJumping: "..get("IsJumping").." | Serving: "..get("IsServing")
+   end)
+   cache.text=if ok then result else "State read unavailable"
+   cache.pending=false;cache.nextAt=os.clock()+.35
+   if not ui.page.dead and ui.opened and a.mode=="Game" then status.Text="GAME | "..cache.text end
+  end)
+ end
+ ui:watch(refresh)
+ local elapsed=0
+ ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
+  elapsed+=dt
+  if elapsed>=.35 then elapsed=0;if ui.opened then refresh() end end
+ end)
+ ui:title("STATE OVERRIDE / SIMULATOR")
+ ui:note("Test only: simulate a Busy state, then override it to Free. This affects virtual jump permission only; the Game mode monitor never writes states.",76)
+ ui:chips({"Open simulator mode"},function() a:modeSet("Simulator");ui:sync() end,1)
+ ui:chips({"Simulated Busy"},function()
+  assert(a.mode=="Simulator","Switch to Simulator first")
+  a.sim.stateBusy=not a.sim.stateBusy
+  a:log("State",if a.sim.stateBusy then "Simulated Busy" else "Simulated Free")
+  ui:sync()
+ end,1,function() return if a.mode=="Simulator" and a.sim.stateBusy then "Simulated Busy" else "" end)
+ ui:chips({"State Override"},function()
+  assert(a.mode=="Simulator","Switch to Simulator first")
+  a.sim.stateOverride=not a.sim.stateOverride
+  a:log("State",if a.sim.stateOverride then "Simulator override ON" else "Simulator override OFF")
+  ui:sync()
+ end,1,function() return if a.mode=="Simulator" and a.sim.stateOverride then "State Override" else "" end)
+end
 function E.render(a,tab,ui)
  if tab=="Dashboard" then preview(ui,a);ui:note("Game reads the local Humanoid and authorized targets. Simulator edits only a separate virtual scene. Custom lock keybind is in Interaction. Menu uses F8 (F7 when F8 is assigned to lock). Native Shift Lock is disabled where Roblox allows it.",43);ui:title("THEMES");preset(ui,a,"Theme");ui:group("Theme",{topCapsule=true,robloxRail=true,constellationBgA=true,constellationBgB=true,constellationLineA=true,constellationLineB=true,constellationNodeA=true,constellationNodeB=true});ui:title("CONSTELLATION COLORS");for _,k in {"constellationBgA","constellationBgB","constellationLineA","constellationLineB","constellationNodeA","constellationNodeB"} do ui:colorPicker(k) end;ui:note("Upload AETHER_original_atlas_128.png to Roblox and enter the image asset ID above. Choose 128 for the new atlas or 224 for the original atlas. Native icons remain as a fallback.",53);ui:title("MOTION");preset(ui,a,"Motion");ui:group("Motion")
  elseif tab=="HUD" then preview(ui,a,true);ui:chips({"Edit HUD on screen"},function() a:editHUD(true) end,1);preset(ui,a,"HUD");ui:control("layoutMode");ui:control("locked");ui:control("compact");ui:title("TOP PANEL");for _,v in {"topCapsule","movePanels"} do ui:control(v) end;ui:note("Enable moving panels to drag the AETHER capsule.",34);ui:chips({"Reset panel position"},function() a:patch({topCustom=false}) end,1);ui:title("HUD MOTION");for _,k in {"hudMotion","hudMotionStrength","hudSmoothness","hudShine","hudReaction"} do ui:control(k) end;ui:title("HEART GRADIENT");ui:chips(S.defs.heartPalette.min,function(v) a:set("heartPalette",v) end,3,function() return a.s.heartPalette end);for _,k in {"heartDirection","heartGradientSpeed","heartA","heartMid","heartB","heartGlow"} do ui:control(k) end;ui:note("Heart gradient is independent from the HP bar. Low health blends into warning colors; death freezes the heartbeat and removes the glow.",42);ui:note("Sketch places the HUD along screen edges. Select Custom to edit widget coordinates or drag in the unlocked preview.",29);local widgets={"hp","clock","profile","dock","top"};if not table.find(widgets,a.hudTab) then a.hudTab="hp" end;ui:chips(widgets,function(n) a.hudTab=n;ui:open("HUD") end,3,function() return a.hudTab end);local k=a.hudTab
@@ -817,6 +883,7 @@ function E.render(a,tab,ui)
   if a.volleyball then
    local vb=a.volleyball
    local lp=game:GetService("Players").LocalPlayer
+   statePanel(ui,a)
    ui:title("VOLLEYBALL MODIFIERS / BETA")
    local availability=ui:note("",64)
    ui:watch(function() availability.Text=vb:availabilityStatus() end)
@@ -1014,7 +1081,7 @@ function E.render(a,tab,ui)
   end
   airControls(ui,a)
  elseif tab=="Fonts" then local text=ui:note(a.s.sample,62);text:SetAttribute("AETHERKeepFontColor",true);text.TextXAlignment=Enum.TextXAlignment.Center;local gradient=U.gradient(text,Color3.new(),Color3.new(),10);local glow=U.stroke(text,U.hex(a.s.fontB),.8);glow.ApplyStrokeMode=Enum.ApplyStrokeMode.Contextual;ui:watch(function() local s=a.s;text.Text=s.sample;text.FontFace=U.font(s);text.TextSize=s.fontSize*.23;text.TextColor3=if s.fontGradient then Color3.new(1,1,1) else U.hex(s.fontA);text.TextStrokeTransparency=1-s.fontOutline/100;gradient.Enabled=s.fontGradient;gradient.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB));glow.Color=U.hex(s.fontB);glow.Transparency=1-s.fontGlow*.008;glow.Thickness=1+s.fontGlow*.023 end);local query=ui:box("Search native typefaces",a.fontQuery or "",32,function(q) if q~=(a.fontQuery or "") then a.fontQuery=q;ui:open("Fonts") end end);local fonts={};for _,n in S.fonts do if n:lower():find((a.fontQuery or ""):lower(),1,true) then table.insert(fonts,n) end end;ui:chips(fonts,function(n) a:patch({font=n,fontAsset=""}) end,3,function() return a.s.font end);ui:group(tab,{font=true});preset(ui,a,tab)
- elseif tab=="Simulator" then preview(ui,a);ui:title("WORLD PREVIEW");ui:control("airControl");ui:control("airControlStrength");ui:control("airControlSpeed");ui:control("airTiltAngle");ui:control("bunnyHop");avatarPreview(ui,a,true);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
+ elseif tab=="Simulator" then preview(ui,a);ui:title("WORLD PREVIEW");ui:control("airControl");ui:control("airControlStrength");ui:control("airControlSpeed");ui:control("airTiltAngle");ui:control("bunnyHop");avatarPreview(ui,a,true);statePanel(ui,a);ui:chips({"Use simulator","Use game"},function(n) a:modeSet(if n=="Use game" then "Game" else "Simulator") end,2);simMap(ui,a);ui:chips({"Damage −25","Heal +25","Respawn","Add player","Move players","Clear players"},function(k) a:simulate(k);ui:open("Simulator") end,3);local hp=ui:box("Set virtual HP",tostring(a.sim.hp));local mx=ui:box("Virtual max HP",tostring(a.sim.max));ui:chips({"Apply virtual vitals"},function() local h,m=tonumber(hp.Text),tonumber(mx.Text);assert(m and h and m>=1 and m<=100000 and h>=0 and h<=m,"Invalid HP / maximum");a:modeSet("Simulator");a:simVitals(h,m,"set") end,1)
  elseif tab=="Scripts" then scripts(ui,a)
  elseif tab=="Profiles" then configs(ui,a)
  elseif tab=="List" then
