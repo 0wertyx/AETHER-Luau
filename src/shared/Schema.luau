@@ -63,6 +63,17 @@ choice("Fonts","font","Typeface","Gotham",S.fonts);choice("Fonts","weight","Weig
 S.example='hud.widget("status", "Ready", 8, 38)\nfunction onHealthChanged(hp, maxHP)\n  hud.widget("status", hud.join("HP: ", hp), 8, 38)\n  if hp > 0 and hp <= maxHP * 0.3 then\n    hud.animate("status", "pulse")\n  else\n    hud.animate("status", "none")\n  end\nend'
 text("Scripts","cue","HUD script",S.example,8192);text("Scripts","luau","Luau draft",'-- ModuleScript for your own place\nreturn function(humanoid: Humanoid)\n  return humanoid.HealthChanged:Connect(function(hp)\n    print(hp, humanoid.MaxHealth)\n  end)\nend',8192)
 S.defs.players={group="Indicators",kind="players",default={}};table.insert(S.order,"players")
+-- Session module preferences are private configuration fields, never peer cosmetics.
+for _,key in {"vbBallRadius","vbBallTouchInfo","vbShotArc","vbTrajectory","vbDirection","vbStyle","vbCurve","vbRepeatTouch","vbAutoTilt","vbAutoSet","vbAutoSpike","vbAutoDive","vbAutoServe"} do
+ toggle("VolleyballState",key,key,false)
+end
+toggle("VolleyballState","vbBallGuide","Ball guide",true)
+toggle("VolleyballState","vbGroundPredict","Ground prediction",true)
+toggle("VolleyballState","vbAutoJump","Auto jump",true)
+toggle("VolleyballState","vbEdgeGuard","Edge guard",true)
+choice("VolleyballState","vbShotMode","Shot mode","Auto",{"Auto","Spike","Set","Serve"})
+choice("VolleyballState","vbCameraAim","Camera aim","Free zone",{"Free zone","Court center","Off"})
+choice("VolleyballState","vbTiltAim","Tilt aim","Correct edges",{"Correct edges","Aim center","Aim left","Aim right","Free zone"})
 function S.copy(v) if type(v)~="table" then return v end;local r={};for k,x in v do r[k]=S.copy(x) end;return r end
 local function str(s,n) return type(s)=="string" and #s<=n and utf8.len(s)~=nil end
 local function name(s) return str(s,48) and s:match("%S") and not s:find("%c") end
