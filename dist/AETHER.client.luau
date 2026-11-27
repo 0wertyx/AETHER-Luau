@@ -7907,9 +7907,9 @@ do
         self.target=nil
         self.status="Original values restored where unchanged"
     end
-    -- Consecutive-touch experiment for the locally saved training place.
-    -- Preserve public-match rules, serve checks and every ordinary hit cooldown.
-    vb.repeatTouch={enabled=false,status="Off | training only",checks=0}
+    -- Consecutive-touch client experiment.
+    -- Keep serve checks and ordinary hit cooldowns unchanged.
+    vb.repeatTouch={enabled=false,status="Off | beta",checks=0}
     local repeatRules,repeatOriginal,repeatWrapped
     local function stopRepeatTouch(reason)
         if repeatRules and repeatRules.isHitboxSkipped==repeatWrapped then
@@ -7919,13 +7919,10 @@ do
         vb.repeatTouch.enabled=false
         vb.repeatTouch.status=reason or "Off"
     end
-    local function repeatTrainingAllowed()
-        return RunService:IsStudio()
-    end
-    function vb:toggleRepeatTouch()
+        function vb:toggleRepeatTouch()
         if self.repeatTouch.enabled then stopRepeatTouch();return end
-        if app.mode~="Game" or not repeatTrainingAllowed() then
-            self.repeatTouch.status="Open your local training place in Studio"
+        if app.mode~="Game" then
+            self.repeatTouch.status="Switch to Game mode"
             return
         end
         local ok,err=pcall(function()
@@ -7941,10 +7938,10 @@ do
             local original=rules.isHitboxSkipped
             local wrapped=function(action,...)
                 local skipped=original(action,...)
-                if skipped and vb.repeatTouch.enabled and repeatTrainingAllowed() and app.mode=="Game" and not app.stopping and gui.Parent and ReplicatedStorage:GetAttribute("LastHitter")==player.Name
+                if skipped and vb.repeatTouch.enabled and app.mode=="Game" and not app.stopping and gui.Parent and ReplicatedStorage:GetAttribute("LastHitter")==player.Name
                     and (action=="Set" or action=="Spike" or action=="Bump" or action=="JumpSet" or action=="Dive") then
                     vb.repeatTouch.checks+=1
-                    vb.repeatTouch.status="Training | consecutive check allowed"
+                    vb.repeatTouch.status="Beta | consecutive check allowed"
                     return false
                 end
                 return skipped
@@ -7952,7 +7949,7 @@ do
             rules.isHitboxSkipped=wrapped
             repeatRules=rules;repeatOriginal=original;repeatWrapped=wrapped
             self.repeatTouch.checks=0;self.repeatTouch.enabled=true
-            self.repeatTouch.status="Training | waiting for consecutive touch"
+            self.repeatTouch.status="Beta | waiting for consecutive touch"
         end)
         if not ok then stopRepeatTouch("Error: "..tostring(err)) end
     end
@@ -7962,8 +7959,8 @@ do
         repeatElapsed+=dt
         if repeatElapsed<.2 then return end
         repeatElapsed=0
-        if app.stopping or not gui.Parent or app.mode~="Game" or not repeatTrainingAllowed() then
-            stopRepeatTouch("Off | left training")
+        if app.stopping or not gui.Parent or app.mode~="Game" then
+            stopRepeatTouch("Off | left Game mode")
         elseif not repeatRules or repeatRules.isHitboxSkipped~=repeatWrapped then
             stopRepeatTouch("Off | rule module changed")
         end
