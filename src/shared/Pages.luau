@@ -478,7 +478,7 @@ end
 local function gallery(ui,a)
  ui:title("24 DIRECTION STYLES · HD");for i=1,#S.shapes,4 do local r=ui:row(72,"ShapeGallery");for j=0,3 do local n=S.shapes[i+j];local b=U.button(r,"");b.Name=n;b.Position=UDim2.fromScale(j/4,0);b.Size=UDim2.new(.25,-3,1,0);local g=Symbol.gallery(b,n,30);g.root.Position=UDim2.fromScale(.5,.37);g.root.Size=UDim2.fromOffset(47,47);local l=U.label(b,n,10,UDim2.fromScale(0,.65),UDim2.fromScale(1,.3));l.TextXAlignment=Enum.TextXAlignment.Center;ui.page:on(b.Activated,function() a:set("shape",n) end);ui:watch(function() b.BackgroundColor3=if a.s.shape==n then U.hex("624785") else U.hex("30273E");g:paint(U.hex(a.s.arrowA),U.hex(a.s.arrowB),a.s.ink,a.s.spread) end) end end
 end
--- A static low-detail 3D thumbnail uses the same halo/wing renderer as the full preview.
+-- One static low-detail 3D preview, refreshed only when relevant settings change.
 local function effectThumbnail(ui,card,a,item,kind)
  local host=U.frame(card,"EffectThumbnail",UDim2.fromOffset(4,4),UDim2.new(1,-8,0,66),Color3.fromRGB(27,22,43),0)
  host.ClipsDescendants=true;U.corner(host,7)
@@ -501,12 +501,18 @@ local function effectThumbnail(ui,card,a,item,kind)
  local rig=Avatar.mannequin(wm)
  local fx=Avatar.new(wm,true)
  ui.page:add(function() fx:clear() end)
- local s=S.defaults();s.wings=false;s.halo=false;s.neon=false;s.reduce=true;s.wingDetail="Balanced";s.haloDetail="Balanced"
- if kind=="Halos" then
-  if item.classic then s.halo=true;s.haloStyle=item.name
-  else s[item.key.."Enabled"]=true;s[item.key.."Count"]=5 end
- else s.wings=true;s.wingStyle=item.name end
- local ok,err=pcall(function() fx:step(rig,s,0) end)
+ local function previewSettings()
+  local s=S.copy(a.s)
+  s.wings=false;s.halo=false;s.neon=false;s.aura=false;s.trail=false;s.reduce=true;s.wingDetail="Balanced";s.haloDetail="Balanced"
+  for i in S.haloV2Styles do s["haloV2"..i.."Enabled"]=false end
+  if kind=="Halos" then
+   if item.classic then s.halo=true;s.haloStyle=item.name
+   else s[item.key.."Enabled"]=true;s[item.key.."Count"]=math.min(s[item.key.."Count"] or 5,12) end
+  else s.wings=true;s.wingStyle=item.name end
+  return s
+ end
+ local snapshot=a.s
+ local ok,err=pcall(function() fx:step(rig,previewSettings(),0) end)
  if not ok then
   fx:clear();vp:Destroy()
   local fallback=U.label(host,"Preview unavailable",10);fallback.TextWrapped=true;fallback.TextXAlignment=Enum.TextXAlignment.Center
@@ -524,6 +530,17 @@ local function effectThumbnail(ui,card,a,item,kind)
   cam.CFrame=CFrame.lookAt(focus+direction*distance,focus)
  end
  fit();ui.page:on(vp:GetPropertyChangedSignal("AbsoluteSize"),fit)
+ local pending=false
+ ui:watch(function()
+  if snapshot==a.s or pending then return end
+  pending=true
+  task.delay(.12,function()
+   pending=false
+   if ui.page.dead or not vp.Parent then return end
+   snapshot=a.s
+   pcall(function() fx:step(rig,previewSettings(),0) end)
+  end)
+ end)
 end
 -- Twelve lightweight cards are reused across pages. Only the selected effect
 -- has a real 3D viewport, and selection never implicitly equips it.
