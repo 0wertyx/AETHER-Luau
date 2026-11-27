@@ -1049,8 +1049,8 @@ function UI.new(app,gui,scope)
  end
  self.constellationLayer=U.frame(self.geoLayer,"ConstellationLinks",nil,nil,nil,1);self.constellationLayer.Active=false;self.constellationLayer.Interactable=false
  self.constellation=Constellation.new(self.constellationLayer)
+ self.backdropHit=U.new("TextButton",{Name="CloseOnBackground",Text="",AutoButtonColor=false,BackgroundTransparency=1,BorderSizePixel=0,Size=UDim2.fromScale(1,1),ZIndex=2,Modal=false},self.panel)
  self.header=U.frame(self.panel,"Titlebar",nil,UDim2.new(1,0,0,46),nil,1);self.header.Active=false;self.header.BackgroundColor3=Color3.fromRGB(28,23,48);self.header.BackgroundTransparency=.19;U.corner(self.header,24);U.stroke(self.header,Color3.fromRGB(192,158,255),.55);self.brand=U.label(self.header,"AETHER   VISUALS   HUB",20,UDim2.fromOffset(16,2),UDim2.fromOffset(135,40));self.tag=U.label(self.header,"",10,UDim2.fromOffset(147,3),UDim2.new(1,-190,0,40));self.tag.TextColor3=dim
- self.close=U.button(self.header,"×");self.close.Modal=false;self.close.Size=UDim2.fromOffset(33,29);self.close.Position=UDim2.new(1,-43,0,8);scope:on(self.close.Activated,function() self:show(false) end)
  self.dockPicker=U.button(self.header,"←");self.dockPicker.Size=UDim2.fromOffset(32,29);self.dockPicker.Position=UDim2.new(1,-79,0,8);self.dockPicker.TextSize=18
  local sides={"Left","Right","Top","Bottom","Floating"}
  scope:on(self.dockPicker.Activated,function()
@@ -1071,6 +1071,22 @@ function UI.new(app,gui,scope)
  self.searchResults=U.new("ScrollingFrame",{Name="FunctionSearchResults",BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=4,Visible=false},self.panel)
  U.new("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder},self.searchResults)
  self.searchResults.ZIndex=3
+ self.header.ZIndex=3;self.navGlass.ZIndex=3;self.contentGlass.ZIndex=3;self.status.ZIndex=3
+ self.pageBox.Active=true;self.header.Active=true
+ local function inside(obj,pos)
+  if not obj or not obj.Visible then return false end
+  local a,b=obj.AbsolutePosition,obj.AbsoluteSize
+  return pos.X>=a.X and pos.X<=a.X+b.X and pos.Y>=a.Y and pos.Y<=a.Y+b.Y
+ end
+ scope:on(self.backdropHit.Activated,function(input)
+  if not self.opened or self.drag or os.clock()<(self.tabInputAfter or 0) then return end
+  if not input or (input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch) then return end
+  local pos=Vector2.new(input.Position.X,input.Position.Y)
+  for _,obj in {self.header,self.navGlass,self.nav,self.search,self.pageBox,self.searchResults,self.status} do
+   if inside(obj,pos) then return end
+  end
+  self:show(false)
+ end)
  self.searchPool={}
  self.searchIndex={}
  self.fullscreen=true
@@ -1151,7 +1167,6 @@ function UI.new(app,gui,scope)
   self.brand.Position=UDim2.fromOffset(10,0);self.brand.Size=UDim2.new(1,-20,1,0);self.brand.TextXAlignment=Enum.TextXAlignment.Center
   self.brand.TextSize=if sz.X<500 then 14 else 20
   self.brand.Font=Enum.Font.Code;self.tag.Visible=false
-  self.close.Position=UDim2.new(1,-42,.5,-14)
   local narrow=sz.X<740
   local rail=if narrow then 68 else 124
   local pad=if narrow then 8 else math.max(22,math.round(sz.X*.025))
@@ -9711,6 +9726,18 @@ do
     local searchAt=0
     local controller,controllerRetry=nil,0
     local lastActive=nil
+    local lastFailure,lastFailureAt=nil,0
+    local phase="idle"
+    local function reportFailure(stage,err)
+        local message=stage..": "..tostring(err)
+        local now=os.clock()
+        if message~=lastFailure or now-lastFailureAt>=5 then
+            lastFailure=message;lastFailureAt=now
+            app:log("Ball bounds",message)
+            warn("[AETHER Ball bounds] "..message)
+        end
+        return message
+    end
     local function clear()
         local e=entry;entry=nil
         if e and e.part.Parent then
@@ -9722,7 +9749,7 @@ do
         if folder then folder:Destroy();folder=nil end
     end
     local function reset(reason)
-        clear();searchAt=0;lastActive=nil;exp.enabled=false;exp.status=reason or "Off"
+        clear();searchAt=0;lastActive=nil;exp.enabled=false;exp.status=reason or "Off";lastFailure=nil
     end
     local function resolvePart(model)
         if not model or not model:IsA("Model") or not model.Name:match("^CLIENT_BALL_") or not model:IsDescendantOf(workspace) then return nil end
@@ -9847,8 +9874,10 @@ do
         end
         if os.clock()>=searchAt then
             searchAt=os.clock()+(if entry then .5 else .25)
+            phase="Find active ball"
             local p=findPart()
             if entry and p~=entry.part then clear() end
+            phase="Create ball preview"
             if p and not entry then attach(p) end
         end
         if not entry then exp.status="Waiting for active ball | auto reconnect";return end
@@ -9856,26 +9885,39 @@ do
         local p=e.part
         if p.Size~=e.applied then e.base=p.Size end
         if p.LocalTransparencyModifier~=1 then e.ltm=p.LocalTransparencyModifier end
+        phase="Compute requested dimensions"
         local target=e.base*exp.factor
         if target.X>=math.huge or target.Y>=math.huge or target.Z>=math.huge then error("Size exceeds numeric range") end
         -- Remember the engine readback so clamped dimensions never compound.
+        phase="Apply requested dimensions"
         if e.requested~=target or p.Size~=e.applied then p.Size=target;e.requested=target end
         e.applied=p.Size
+        phase="Update visual copy"
         p.LocalTransparencyModifier=1
         e.copy.Size=e.base;e.copy.CFrame=p.CFrame
         e.copy.Transparency=p.Transparency;e.copy.Color=p.Color;e.copy.Material=p.Material
         local size=e.applied
         local round=math.abs(size.X-size.Y)<.01 and math.abs(size.X-size.Z)<.01
-        e.guide.Radius=size.X*.5
-        e.guide.Visible=exp.show and round
-        e.outline.Visible=exp.show
-        exp.status=string.format("Requested %.5gx | actual %.5gx | bounds %.2f x %.2f x %.2f studs",exp.factor,size.X/e.base.X,size.X,size.Y,size.Z)
+        phase="Update guide"
+        local ok,err=pcall(function()
+            e.guide.Radius=size.X*.5
+            e.guide.Visible=exp.show and round
+            e.outline.Visible=exp.show
+        end)
+        local detail=""
+        if not ok then
+            detail=" | Guide unavailable: "..reportFailure(phase,err)
+            pcall(function() e.guide.Visible=false;e.outline.Visible=false end)
+        end
+        local mismatch=(size-target).Magnitude>math.max(.01,target.Magnitude*1e-5)
+        if mismatch then detail=detail.." | Size limited by engine" end
+        exp.status=string.format("Requested %.5gx | actual %.5gx | bounds %.2f x %.2f x %.2f studs",exp.factor,size.X/e.base.X,size.X,size.Y,size.Z)..detail
     end
     scope:on(RunService.RenderStepped,function()
         local ok,err=pcall(tick)
         if not ok then
             clear();searchAt=os.clock()+.5
-            exp.status="Retrying | "..tostring(err)
+            exp.status="Retrying | "..reportFailure(phase,err)
         end
     end)
     scope:add(function() reset() end)
