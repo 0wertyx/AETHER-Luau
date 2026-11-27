@@ -4707,9 +4707,13 @@ function E.render(a,tab,ui)
    ui:chips({"Auto Set"},function() vb:togglePlay("Set");ui:sync() end,1,function() return if vb.play.set then "Auto Set" else "" end)
    ui:chips({"Auto Spike"},function() vb:togglePlay("Spike");ui:sync() end,1,function() return if vb.play.spike then "Auto Spike" else "" end)
    ui:chips({"Auto Dive"},function() vb:togglePlay("Dive");ui:sync() end,1,function() return if vb.play.dive then "Auto Dive" else "" end)
-   local playStatus=ui:note("",88)
+   ui:title("SPIKE CAMERA")
+   ui:chips({"Free zone","Court center","Off"},function(n) vb.play.cameraAim=n;vb.play.cameraTargetAt=0;vb.play.cameraPoint=nil;ui:sync() end,3,function() return vb.play.cameraAim end)
+   ui:chips({"Ground prediction"},function() vb.play.groundPredict=not vb.play.groundPredict;vb.play.cameraTargetAt=0;ui:sync() end,1,function() return if vb.play.groundPredict then "Ground prediction" else "" end)
+   ui:note("Auto Spike only. Air: look at the opponent half. Ground: look at an estimated incoming contact point. Paused in menus.",60)
+   local playStatus=ui:note("",112)
    local function refreshPlay()
-    playStatus.Text=string.format("SET %s | SPIKE %s | DIVE %s\n%s\nAttempts %d | confirmed touches %d",if vb.play.set then "ON" else "OFF",if vb.play.spike then "ON" else "OFF",if vb.play.dive then "ON" else "OFF",vb.play.status,vb.play.attempts,vb.play.hits)
+    playStatus.Text=string.format("SET %s | SPIKE %s | DIVE %s\n%s\nAttempts %d | confirmed touches %d\nCamera: %s",if vb.play.set then "ON" else "OFF",if vb.play.spike then "ON" else "OFF",if vb.play.dive then "ON" else "OFF",vb.play.status,vb.play.attempts,vb.play.hits,vb.play.cameraStatus)
    end
    ui:watch(refreshPlay)
    local playRefresh=0
@@ -7910,13 +7914,13 @@ do
         if length<8 or math.abs(along)>width*.2 then return nil end
         return a,u,cross.Unit,width,length
     end
-    local function freeZone(a,u,v,width,length,side,root)
+    local function freeZone(a,u,v,width,length,side,root,cameraAim)
         local half=length*.5
         local rel=flatten(root.Position)-a
         local px,pz=rel:Dot(u),rel:Dot(v)
         local look=flatten(root.CFrame.LookVector)
         local dv=look:Dot(v)
-        if math.abs(dv)<.15 then return nil end
+        if not cameraAim and math.abs(dv)<.15 then return nil end
         local opponents={}
         for _,other in game:GetService("Players"):GetPlayers() do
             if other==player or (player.Team and other.Team==player.Team) then continue end
@@ -7935,13 +7939,13 @@ do
             local x=width*(.12+.76*(ix-1)/6)
             local f=.18+.64*(iz-1)/4
             local z=if side==-1 then half+half*f else half-half*f
-            if (z-pz)*dv<=0 then continue end
+            if not cameraAim and (z-pz)*dv<=0 then continue end
             local point=Vector2.new(x,z)
             local nearest=math.min(width,half)
             for _,o in opponents do nearest=math.min(nearest,(point-o).Magnitude) end
-            local straight=px+look:Dot(u)*(z-pz)/dv
+            local correction=if cameraAim then .04*math.abs(x-px) else .45*math.abs(x-(px+look:Dot(u)*(z-pz)/dv))
             local edge=math.min(x,width-x,math.abs(z-half),if side==-1 then length-z else z)
-            local q=nearest+.22*edge-.45*math.abs(x-straight)
+            local q=nearest+.22*edge-correction
             if q>score then best,score=point,q end
         end end
         return best
@@ -8070,7 +8074,7 @@ do
         self.auto=true;self.status="Local tilt correction enabled; ball response depends on style"
     end
     -- Auto Play dispatches normal game inputs; it does not bypass move validation.
-    local play={set=false,spike=false,dive=false,busy=false,ownsTilt=false,status="Off",locks={},nextLockCheck=0,lastAt=0,generation=0,attempts=0,hits=0}
+    local play={set=false,spike=false,dive=false,busy=false,ownsTilt=false,status="Off",locks={},nextLockCheck=0,lastAt=0,generation=0,attempts=0,hits=0,cameraAim="Free zone",groundPredict=true,cameraStatus="Off",cameraTargetAt=0}
     vb.play=play
     local api,retryAt=nil,0
     local tags=game:GetService("CollectionService")
@@ -8277,6 +8281,117 @@ do
         if not chosen then return nil,"Waiting for a low ball within dive range" end
         return chosen,dir
     end
+    -- Camera assistance is independent of the hit lock and uses the local camera only.
+    local cameraRay=RaycastParams.new()
+    cameraRay.FilterType=Enum.RaycastFilterType.Exclude
+    cameraRay.RespectCanCollide=true
+    local function courtAim(root)
+        local a,u,v,width,length=geometry()
+        if not a then return nil end
+        local rel=flatten(root.Position)-a
+        local x,z=rel:Dot(u),rel:Dot(v)
+        if x< -5 or x>width+5 or z< -12 or z>length+12 then return nil end
+        local side=if math.abs(z-length*.5)<1 then (vb.side or (if z<length*.5 then -1 else 1)) else (if z<length*.5 then -1 else 1)
+        local p=if play.cameraAim=="Free zone" then freeZone(a,u,v,width,length,side,root,true) else nil
+        local flat=a+u*(if p then p.X else width*.5)+v*(if p then p.Y else (if side==-1 then length*.75 else length*.25))
+        local y=play.groundY or (root.Position.Y-4)
+        if vb.courtPart and vb.courtPart.Parent then y=vb.courtPart.Position.Y+vb.courtPart.Size.Y*.5 end
+        return Vector3.new(flat.X,y+1,flat.Z)
+    end
+    local function incomingAim(m,root)
+        local a,u,v,width,length=geometry()
+        if not a then return nil end
+        local rel=flatten(root.Position)-a
+        local ownZ=rel:Dot(v)
+        local ownSide=if ownZ<length*.5 then -1 else 1
+        local gravity=ReplicatedStorage:GetAttribute("Modifier_BallGravity")
+        if type(gravity)~="number" or gravity~=gravity then gravity=17 end
+        local scale=ReplicatedStorage:GetAttribute("GlobalTimeScale")
+        if type(scale)~="number" or scale~=scale then scale=1 end
+        if scale<=.01 then return nil end
+        local best,distance=nil,math.huge
+        for _,b in candidates(m) do
+            if play.locks[ballKey(b)] then continue end
+            local p=b:GetPivot().Position
+            local id=b:GetAttribute("ServerId")
+            local state=id~=nil and m.balls.ActiveBalls[id] or nil
+            local vel=state and state.Velocity
+            if typeof(vel)~="Vector3" or vel~=vel or vel.Magnitude>500 then
+                vel=b.PrimaryPart.AssemblyLinearVelocity
+            end
+            local gm=state and state.GravityMultiplier
+            if type(gm)~="number" or gm~=gm then gm=1 end
+            local acc=Vector3.new(0,-gravity*gm,0)
+            if state and typeof(state.Acceleration)=="Vector3" and state.Acceleration==state.Acceleration and state.Acceleration.Magnitude<1000 then acc+=state.Acceleration end
+            -- Solve the descending crossing of a standing player's contact height.
+            local h=p.Y-(root.Position.Y+2)
+            local t=nil
+            if math.abs(acc.Y)>.01 then
+                local disc=vel.Y*vel.Y-2*acc.Y*h
+                if disc>=0 then
+                    local q=(-vel.Y-math.sqrt(disc))/acc.Y
+                    if q>=0 then t=q end
+                end
+            elseif vel.Y< -.01 then t=-h/vel.Y end
+            if not t or t<0 or t/scale>1.7 then continue end
+            local target=p+vel*t+acc*(.5*t*t)
+            local d=flatten(target)-a
+            local x,z=d:Dot(u),d:Dot(v)
+            if x< -2 or x>width+2 or (ownSide==-1 and (z< -2 or z>length*.5+2)) or (ownSide==1 and (z<length*.5-2 or z>length+2)) then continue end
+            local range=flatten(target-root.Position).Magnitude
+            if range>math.min(32,math.max(12,width)) or range>=distance then continue end
+            if range<3 then target=p end
+            best,distance=target,range
+        end
+        return best
+    end
+    function vb:stepSpikeCamera(blocked)
+        local function idle(reason)
+            play.cameraPhase=nil;play.cameraPoint=nil;play.cameraTargetAt=0;play.cameraStatus=reason
+        end
+        if not play.spike or play.cameraAim=="Off" or app.stopping or not gui.Parent or app.mode~="Game" then idle("Off");return end
+        if blocked or UserInputService:GetFocusedTextBox() or game:GetService("GuiService").MenuIsOpen then idle("Paused | menu");return end
+        local m=api
+        if not m or not m.states.IsPlaying() or m.states.IsStunned() or m.states.IsServing() then idle("Waiting for rally");return end
+        local char=player.Character
+        local root=char and char:FindFirstChild("HumanoidRootPart")
+        local hum=char and char:FindFirstChildOfClass("Humanoid")
+        local cam=workspace.CurrentCamera
+        if not root or not hum or hum.Health<=0 or not cam or cam.CameraType~=Enum.CameraType.Custom or cam.CameraSubject~=hum then idle("Waiting for player camera");return end
+        local air=m.states.IsJumping()==true
+        if not air then
+            play.groundY=root.Position.Y-(hum.HipHeight+root.Size.Y*.5)
+            if hum.RigType==Enum.HumanoidRigType.R6 then
+                local leg=char:FindFirstChild("Left Leg")
+                if leg and leg:IsA("BasePart") then play.groundY-=leg.Size.Y end
+            end
+        end
+        if not air and not play.groundPredict then idle("Manual ground camera");return end
+        local phase=if air then "Air" else "Ground"
+        local now=os.clock()
+        if phase~=play.cameraPhase or now>=play.cameraTargetAt then
+            play.cameraPhase=phase;play.cameraTargetAt=now+.12
+            play.cameraPoint=if air then courtAim(root) else incomingAim(m,root)
+        end
+        local target=play.cameraPoint
+        if not target then play.cameraStatus=if air then "Waiting for court" else "Waiting for incoming prediction";return end
+        local focus=cam.Focus.Position
+        local direction=target-focus
+        if direction.Magnitude<.1 or flatten(direction).Magnitude<.15 then return end
+        -- Rotate around the existing camera focus, keeping zoom and shoulder offset.
+        local relative=cam.CFrame:PointToObjectSpace(focus)
+        local orientation=CFrame.lookAt(Vector3.zero,direction)
+        local offset=-orientation:VectorToWorldSpace(relative)
+        local pos=focus+offset
+        if offset.Magnitude>.2 then
+            cameraRay.FilterDescendantsInstances={char,cam}
+            local hit=workspace:Raycast(focus,offset,cameraRay)
+            if hit then pos=focus+offset.Unit*math.max(.15,hit.Distance-.25) end
+        end
+        if (target-pos).Magnitude<.1 then return end
+        cam.CFrame=CFrame.lookAt(pos,target)
+        play.cameraStatus=if air then "Air | "..play.cameraAim else "Ground | predicted contact"
+    end
     local function stopPlay(reason)
         play.set=false;play.spike=false;play.dive=false;play.generation+=1;table.clear(play.locks)
         if play.ownsTilt and vb.auto then vb:toggleAuto() end
@@ -8461,7 +8576,8 @@ do
             if math.abs(pz-half)>1 then vb.side=if pz<half then -1 else 1 end
             local side=vb.side or (if pz<half then -1 else 1)
             local depth=if side==-1 then length*.75 else length*.25
-            local open=if vb.tiltAim=="Free zone" or (vb.play and vb.play.spike) then freeZone(a,u,v,width,length,side,root) else nil
+            local aimPoint=if vb.play and vb.play.spike and vb.play.cameraPhase=="Air" then vb.play.cameraPoint else nil
+            local open=if aimPoint then Vector2.new((flatten(aimPoint)-a):Dot(u),(flatten(aimPoint)-a):Dot(v)) elseif vb.tiltAim=="Free zone" or (vb.play and vb.play.spike) then freeZone(a,u,v,width,length,side,root) else nil
             if open then depth=open.Y end
             local look=flatten(root.CFrame.LookVector)
             local dv=look:Dot(v)
@@ -9547,6 +9663,10 @@ local function frame(dt, now)
     if peers.statusLabel and peers.statusLabel.Parent and peers.statusLabel.Text~=peers.status then peers.statusLabel.Text=peers.status end
     world:apply(styled)
     view:step(styled, if app.mode=="Game" then humanoid else nil, ui.opened or app.editingHUD==true, dt, now)
+    if app.volleyball then
+        local ok,err=pcall(app.volleyball.stepSpikeCamera,app.volleyball,ui.opened or app.editingHUD==true)
+        if not ok then app.volleyball.play.cameraAim="Off";app.volleyball.play.cameraStatus="Camera error: "..tostring(err);app:log("Spike camera",err) end
+    end
     if app.preview then
         if app.preview.hud then app.preview.hud:step(styled, result, dt) end
         if app.preview.pose then app.preview.pose(styled, dt) end
