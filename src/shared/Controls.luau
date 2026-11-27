@@ -613,7 +613,7 @@ function UI.new(app,gui,scope)
   self.stylePreviewName.Text=d[2]:upper()
   local c,t,e,et,w=U.appearanceSample(s,d)
   self.stylePreviewInfo.Text=string.format("#%s · %d%% transparent  /  EDGE %.1f px · %d%% transparent",c:ToHex():upper(),math.round(t*100),w,math.round(et*100))
-  local parts={id,s.font,s.fontAsset,s.weight,s.uiFontColor,s.uiMutedColor,s.uiPanelColor,s.uiGlassOpacity,s.uiStrokeColor,s.uiSpecularColor,s.uiReflection,s.rim,s.uiButtonColor,s.uiHoverColor,s.uiRowColor,s.clockGlass,s.fpsGlass,s.clockText,s.fpsText,s.glassColor,s.glass,s.moduleTextColor,s.moduleMutedColor,s.modulePanelColor,s.moduleRowColor,s.moduleToggleOnColor,s.moduleToggleOffColor,s.moduleStrokeColor,s.moduleBackgroundOpacity,s.afkBgA,s.afkBgB,s.afkBackground,s.afkGradientAngle,s.afkTitleColor,s.afkBrandColor,s.afkDetailColor,s.afkButtonColor,s.afkButtonText,s.afkButtonEdge,s.afkPatternColor,s.afkPatternOpacity,s.afkImageAsset,s.afkImageOpacity,s.afkImageTint,s.inputColor}
+  local parts={id,s.secondary,s.moduleAccentColor,s.fontGradient,s.fontA,s.fontB,s.font,s.fontAsset,s.weight,s.uiFontColor,s.uiMutedColor,s.uiPanelColor,s.uiGlassOpacity,s.uiStrokeColor,s.uiSpecularColor,s.uiReflection,s.rim,s.uiButtonColor,s.uiHoverColor,s.uiRowColor,s.clockGlass,s.fpsGlass,s.clockText,s.fpsText,s.glassColor,s.glass,s.moduleTextColor,s.moduleMutedColor,s.modulePanelColor,s.moduleRowColor,s.moduleToggleOnColor,s.moduleToggleOffColor,s.moduleStrokeColor,s.moduleBackgroundOpacity,s.afkBgA,s.afkBgB,s.afkBackground,s.afkGradientAngle,s.afkTitleColor,s.afkBrandColor,s.afkDetailColor,s.afkButtonColor,s.afkButtonText,s.afkButtonEdge,s.afkPatternColor,s.afkPatternOpacity,s.afkImageAsset,s.afkImageOpacity,s.afkImageTint,s.inputColor}
   for _,role in S.appearance do
    local p="appearance"..role[1]
    for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do parts[#parts+1]=tostring(s[p..suffix]) end
@@ -647,14 +647,21 @@ function UI.new(app,gui,scope)
     local f=centerBox(id,190,86)
     label(f,if id=="Clock" then "12:00" else "120 FPS",12,9,166,39,27,if id=="Clock" then "clockText" else "fpsText")
     label(f,if id=="Clock" then "AETHER · TIME" else "PERFORMANCE",10,51,170,22,12,if id=="Clock" then "clockText" else "fpsText")
+    if id=="FPS" then
+     local dot=U.frame(f,"StatusDot",UDim2.fromOffset(14,16),UDim2.fromOffset(8,8),U.hex(s.secondary),0);dot.ZIndex=f.ZIndex+1;U.corner(dot,8);dot.Interactable=false
+     table.insert(self.stylePreviewPaint,{tintFrame=dot,colorKey="secondary"})
+    end
    elseif id=="Input" then
     local f=U.frame(host,"Keyboard",UDim2.fromScale(.5,.5),UDim2.fromOffset(230,156),nil,1);f.AnchorPoint=Vector2.new(.5,.5);f.ZIndex=8
     for _,v in {{"W",83,4,58},{"SHIFT",146,4,76},{"A",20,55,58},{"S",83,55,58},{"D",146,55,58},{"SPACE",20,106,184}} do
      local k=block(f,"Input","Key",v[2],v[3],v[4],44,8);label(k,v[1],0,0,v[4],44,13)
+     if v[1]=="W" then table.insert(self.stylePreviewPaint,{tintFrame=k,colorKey="inputColor"}) end
     end
    elseif id=="Quick" or id=="QuickRow" or id=="QuickOn" or id=="QuickOff" then
     local f=centerBox("Quick",300,184)
     label(f,"MODULES / PREVIEW",8,4,284,24,12,"moduleTextColor")
+    local accentMark=U.frame(f,"Accent",UDim2.fromOffset(12,27),UDim2.fromOffset(276,2),U.hex(s.moduleAccentColor),0);accentMark.ZIndex=f.ZIndex+1;accentMark.Interactable=false
+    table.insert(self.stylePreviewPaint,{tintFrame=accentMark,colorKey="moduleAccentColor"})
     for i,name in {"Example module","Visual setting","Sample toggle"} do
      local row=block(f,"QuickRow","ModuleRow",10,31+(i-1)*46,280,39,8)
      label(row,name,6,0,174,39,12,"moduleTextColor")
@@ -666,7 +673,17 @@ function UI.new(app,gui,scope)
     local pattern=U.frame(f,"Pattern",nil,nil,nil,1);pattern.ZIndex=f.ZIndex+1;pattern.Interactable=false
     local pic=U.new("ImageLabel",{Name="Picture",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,ScaleType=Enum.ScaleType.Crop,ZIndex=pattern.ZIndex,Interactable=false},pattern)
     self.stylePreviewAFKPicture=pic
-    self.stylePreviewAFKStars={}
+    self.stylePreviewAFKStars={};self.stylePreviewAFKGrid={};self.stylePreviewAFKOrbits={}
+    for i=1,9 do
+     local v=U.frame(pattern,"Grid",UDim2.fromScale(i/10,0),UDim2.new(0,1,1,0),nil,1);v.ZIndex=pattern.ZIndex;v.Interactable=false;table.insert(self.stylePreviewAFKGrid,v)
+    end
+    for i=1,5 do
+     local v=U.frame(pattern,"Grid",UDim2.fromScale(0,i/6),UDim2.new(1,0,0,1),nil,1);v.ZIndex=pattern.ZIndex;v.Interactable=false;table.insert(self.stylePreviewAFKGrid,v)
+    end
+    for i=1,4 do
+     local v=U.frame(pattern,"Orbit",UDim2.fromScale(.5,.5),UDim2.fromOffset(38+i*50,38+i*50),nil,1);v.AnchorPoint=Vector2.new(.5,.5);v.ZIndex=pattern.ZIndex;v.Interactable=false;U.new("UICorner",{CornerRadius=UDim.new(.5,0)},v)
+     table.insert(self.stylePreviewAFKOrbits,{frame=v,stroke=U.stroke(v,Color3.new(1,1,1),1,1)})
+    end
     for i=1,24 do
      local dot=U.frame(pattern,"Star",UDim2.fromScale((i*.618)%1,(i*.413)%1),UDim2.fromOffset(2,2),Color3.new(1,1,1),0);dot.ZIndex=pattern.ZIndex;U.corner(dot,2);self.stylePreviewAFKStars[i]=dot
     end
@@ -701,8 +718,15 @@ function UI.new(app,gui,scope)
   end
   local glassRoles={Root=true,Appearance=true,Preview=true,Main=true,Visuals=true,Utility=true,Interface=true,Page=true,Header=true,Modes=true,Catalog=true,Top=true,Keybind=true}
   for _,p in self.stylePreviewPaint do
-   if p.label then
+   if p.tintFrame then p.tintFrame.BackgroundColor3=U.hex(s[p.colorKey])
+   elseif p.label then
     p.label.TextColor3=U.appearanceText(s,p.role,p.muted,U.hex(s[p.colorKey]));p.label.FontFace=U.font(s)
+    if p.role=="Clock" or p.role=="FPS" then
+     local flag="appearance"..p.role..(if p.muted then "Muted" else "Text").."Custom"
+     local gradient=p.label:FindFirstChildOfClass("UIGradient") or U.gradient(p.label,U.hex(s.fontA),U.hex(s.fontB),0)
+     gradient.Color=ColorSequence.new(U.hex(s.fontA),U.hex(s.fontB));gradient.Enabled=s.fontGradient and not s[flag]
+     if gradient.Enabled then p.label.TextColor3=Color3.new(1,1,1) end
+    end
    else
     local role=p.role;local spec=S.appearanceById[role]
     local fill,alpha,edge,edgeAlpha,width=U.appearanceSample(s,spec)
@@ -729,6 +753,8 @@ function UI.new(app,gui,scope)
    pic.Image=if pic.Visible then "rbxassetid://"..s.afkImageAsset else ""
    pic.ImageColor3=U.hex(s.afkImageTint);pic.ImageTransparency=1-s.afkImageOpacity/100
    for _,dot in self.stylePreviewAFKStars do dot.Visible=s.afkBackground=="Stars";dot.BackgroundColor3=U.hex(s.afkPatternColor);dot.BackgroundTransparency=1-s.afkPatternOpacity/100 end
+   for _,line in self.stylePreviewAFKGrid do line.Visible=s.afkBackground=="Grid";line.BackgroundColor3=U.hex(s.afkPatternColor);line.BackgroundTransparency=1-.35*s.afkPatternOpacity/100 end
+   for _,ring in self.stylePreviewAFKOrbits do ring.frame.Visible=s.afkBackground=="Orbits";ring.stroke.Color=U.hex(s.afkPatternColor);ring.stroke.Transparency=1-.55*s.afkPatternOpacity/100 end
   end
   self.stylePreviewKey=key
  end
