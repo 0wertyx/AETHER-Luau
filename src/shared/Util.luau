@@ -19,7 +19,7 @@ function U.button(p,text) local b=U.new("TextButton",{Text=text,Font=Enum.Font.G
 -- movement handles to the same components without executing game actions.
 function U.topPanel(parent)
  local panel=U.frame(parent,"TopCapsule",nil,UDim2.fromOffset(136,38),Color3.fromRGB(19,16,32),.12)
- panel.AnchorPoint=Vector2.new(.5,0);U.corner(panel,18)
+ panel.AnchorPoint=Vector2.new(.5,0);panel.Position=UDim2.new(.5,0,0,12);U.corner(panel,18)
  local rim=U.stroke(panel,Color3.fromRGB(166,138,255),.42)
  panel.BackgroundTransparency=1;rim.Enabled=false
  local label=U.label(panel,"A E T H E R",14,UDim2.fromOffset(4,4),UDim2.new(1,-8,1,-8))

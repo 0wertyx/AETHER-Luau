@@ -1171,7 +1171,8 @@ function UI.new(app,gui,scope)
  scope:on(self.search:GetPropertyChangedSignal("Text"),function() self:refreshSearch() end)
  function self:layout()
   local sz=self.stage.AbsoluteSize
-  if sz.X<2 or sz.Y<2 then return end
+  if sz.X<2 or sz.Y<2 then self.layoutPending=true;return end
+  self.layoutPending=false;self.layoutViewport=sz
   local s=self.app.s;local draft=self.menuDraft
   local side=if draft then draft.side else s.menuDock
   local narrow=sz.X<740
@@ -1210,7 +1211,7 @@ function UI.new(app,gui,scope)
   self.top.Position=UDim2.new(.5,0,0,if narrow then 48 else 12)
   for _,spec in {{self.top,"top"}} do
    local panel,key=spec[1],spec[2]
-   if s[key.."Custom"] then
+   if s[key.."Custom"] and not (s[key.."X"]==0 and s[key.."Y"]==0) then
     panel.AnchorPoint=Vector2.zero
     panel.Position=UDim2.fromOffset(math.max(0,sz.X-panel.Size.X.Offset)*s[key.."X"]/100,math.max(0,sz.Y-panel.Size.Y.Offset)*s[key.."Y"]/100)
    else
@@ -1293,6 +1294,7 @@ function UI.new(app,gui,scope)
  scope:on(Input.WindowFocusReleased,function() self.drag=nil;if self.menuDraft then self.menuDraft=nil;self:layout() end end);scope:add(function() if self.page then self.page:clear() end;Icons.clear() end);return self
 end
 function UI:animateBackground(t)
+ if self.layoutPending or self.layoutViewport~=self.stage.AbsoluteSize then self:layout() end
  local s=self.app.s
  local dt=math.clamp(t-(self.motionAt or t-1/60),0,.1)
  self.motionAt=t
@@ -2036,6 +2038,12 @@ function H.new(scope,parent,preview,go,drag,close,showPanels)
   local rim=U.stroke(p,Color3.fromRGB(189,156,255),.4,1.15)
   local scale=U.new("UIScale",{},p)
   self.widgets[k]={p=p,g=g,background=background,rim=rim,scale=scale}
+  -- Safe startup placement before the first style/render pass.
+  if k=="dock" then p.AnchorPoint=Vector2.new(.5,1);p.Position=UDim2.new(.5,0,1,-14)
+  elseif k=="hp" then p.AnchorPoint=Vector2.new(1,0);p.Position=UDim2.new(1,-14,0,12)
+  elseif k=="clock" then p.AnchorPoint=Vector2.new(0,1);p.Position=UDim2.new(0,14,1,-14)
+  elseif k=="profile" then p.AnchorPoint=Vector2.new(0,1);p.Position=UDim2.new(0,138,1,-14)
+  else p.AnchorPoint=Vector2.new(.5,.5);p.Position=UDim2.fromScale(.5,.5) end
   if drag then
    p.Active=true
    scope:on(p.InputBegan,function(i) drag(i,k,p,parent) end)
@@ -2162,7 +2170,7 @@ function H:layoutPreview(s)
   local w,height=originalW*factor,originalH*factor
   item.scale.Scale=factor
   local x,y
-  if s[key.."Custom"] then
+  if s[key.."Custom"] and not (s[key.."X"]==0 and s[key.."Y"]==0) then
    x=math.max(0,vp.X-w)*s[key.."X"]/100;y=math.max(0,vp.Y-height)*s[key.."Y"]/100
   elseif key=="top" then x=(vp.X-w)*.5;y=6
   else x=6;y=vp.Y*.46-height*.5 end
@@ -2193,7 +2201,7 @@ end
 function H:clearMarkers() for _,m in self.markers do m.root:Destroy() end;table.clear(self.markers) end
 function H:placement(s,k)
  local x,y=s[k.."X"]/100,s[k.."Y"]/100
- if s.layoutMode~="Sketch" then return x,y,0,0 end
+ if s.layoutMode~="Sketch" and not (k=="dock" and x==0 and y==0) then return x,y,0,0 end
  local factor=self.factor or 1
  local pad=if self.preview then 5 else 14
  if k=="hp" then return 1,0,-pad,if self.preview then 5 else 12 end
@@ -6465,7 +6473,7 @@ function U.button(p,text) local b=U.new("TextButton",{Text=text,Font=Enum.Font.G
 -- movement handles to the same components without executing game actions.
 function U.topPanel(parent)
  local panel=U.frame(parent,"TopCapsule",nil,UDim2.fromOffset(136,38),Color3.fromRGB(19,16,32),.12)
- panel.AnchorPoint=Vector2.new(.5,0);U.corner(panel,18)
+ panel.AnchorPoint=Vector2.new(.5,0);panel.Position=UDim2.new(.5,0,0,12);U.corner(panel,18)
  local rim=U.stroke(panel,Color3.fromRGB(166,138,255),.42)
  panel.BackgroundTransparency=1;rim.Enabled=false
  local label=U.label(panel,"A E T H E R",14,UDim2.fromOffset(4,4),UDim2.new(1,-8,1,-8))
@@ -10824,8 +10832,11 @@ local function frame(dt, now)
     end
     result.editingHUD=app.editingHUD==true
     result.shiftLock=view.shiftReticleActive==true and not ui.opened and not app.editingHUD and app.mode=="Game"
-    ui:animateBackground(now)
-    hud:step(styled, result, dt)
+    -- A menu animation fault must not prevent the HUD from laying out.
+    local hudOK,hudError=pcall(hud.step,hud,styled,result,dt)
+    if not hudOK and app.hudLayoutError~=hudError then app.hudLayoutError=hudError;app:log("HUD",hudError) elseif hudOK then app.hudLayoutError=nil end
+    local uiOK,uiError=pcall(ui.animateBackground,ui,now)
+    if not uiOK and app.menuLayoutError~=uiError then app.menuLayoutError=uiError;app:log("Menu",uiError) elseif uiOK then app.menuLayoutError=nil end
     avatar:step(if app.mode == "Game" then character else nil, styled, workspace:GetServerTimeNow())
     peers:step(styled, app.mode=="Game", walkMotion, dt)
     if peers.statusLabel and peers.statusLabel.Parent and peers.statusLabel.Text~=peers.status then peers.statusLabel.Text=peers.status end

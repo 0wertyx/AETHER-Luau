@@ -72,6 +72,12 @@ function H.new(scope,parent,preview,go,drag,close,showPanels)
   local rim=U.stroke(p,Color3.fromRGB(189,156,255),.4,1.15)
   local scale=U.new("UIScale",{},p)
   self.widgets[k]={p=p,g=g,background=background,rim=rim,scale=scale}
+  -- Safe startup placement before the first style/render pass.
+  if k=="dock" then p.AnchorPoint=Vector2.new(.5,1);p.Position=UDim2.new(.5,0,1,-14)
+  elseif k=="hp" then p.AnchorPoint=Vector2.new(1,0);p.Position=UDim2.new(1,-14,0,12)
+  elseif k=="clock" then p.AnchorPoint=Vector2.new(0,1);p.Position=UDim2.new(0,14,1,-14)
+  elseif k=="profile" then p.AnchorPoint=Vector2.new(0,1);p.Position=UDim2.new(0,138,1,-14)
+  else p.AnchorPoint=Vector2.new(.5,.5);p.Position=UDim2.fromScale(.5,.5) end
   if drag then
    p.Active=true
    scope:on(p.InputBegan,function(i) drag(i,k,p,parent) end)
@@ -198,7 +204,7 @@ function H:layoutPreview(s)
   local w,height=originalW*factor,originalH*factor
   item.scale.Scale=factor
   local x,y
-  if s[key.."Custom"] then
+  if s[key.."Custom"] and not (s[key.."X"]==0 and s[key.."Y"]==0) then
    x=math.max(0,vp.X-w)*s[key.."X"]/100;y=math.max(0,vp.Y-height)*s[key.."Y"]/100
   elseif key=="top" then x=(vp.X-w)*.5;y=6
   else x=6;y=vp.Y*.46-height*.5 end
@@ -229,7 +235,7 @@ end
 function H:clearMarkers() for _,m in self.markers do m.root:Destroy() end;table.clear(self.markers) end
 function H:placement(s,k)
  local x,y=s[k.."X"]/100,s[k.."Y"]/100
- if s.layoutMode~="Sketch" then return x,y,0,0 end
+ if s.layoutMode~="Sketch" and not (k=="dock" and x==0 and y==0) then return x,y,0,0 end
  local factor=self.factor or 1
  local pad=if self.preview then 5 else 14
  if k=="hp" then return 1,0,-pad,if self.preview then 5 else 12 end

@@ -308,7 +308,8 @@ function UI.new(app,gui,scope)
  scope:on(self.search:GetPropertyChangedSignal("Text"),function() self:refreshSearch() end)
  function self:layout()
   local sz=self.stage.AbsoluteSize
-  if sz.X<2 or sz.Y<2 then return end
+  if sz.X<2 or sz.Y<2 then self.layoutPending=true;return end
+  self.layoutPending=false;self.layoutViewport=sz
   local s=self.app.s;local draft=self.menuDraft
   local side=if draft then draft.side else s.menuDock
   local narrow=sz.X<740
@@ -347,7 +348,7 @@ function UI.new(app,gui,scope)
   self.top.Position=UDim2.new(.5,0,0,if narrow then 48 else 12)
   for _,spec in {{self.top,"top"}} do
    local panel,key=spec[1],spec[2]
-   if s[key.."Custom"] then
+   if s[key.."Custom"] and not (s[key.."X"]==0 and s[key.."Y"]==0) then
     panel.AnchorPoint=Vector2.zero
     panel.Position=UDim2.fromOffset(math.max(0,sz.X-panel.Size.X.Offset)*s[key.."X"]/100,math.max(0,sz.Y-panel.Size.Y.Offset)*s[key.."Y"]/100)
    else
@@ -430,6 +431,7 @@ function UI.new(app,gui,scope)
  scope:on(Input.WindowFocusReleased,function() self.drag=nil;if self.menuDraft then self.menuDraft=nil;self:layout() end end);scope:add(function() if self.page then self.page:clear() end;Icons.clear() end);return self
 end
 function UI:animateBackground(t)
+ if self.layoutPending or self.layoutViewport~=self.stage.AbsoluteSize then self:layout() end
  local s=self.app.s
  local dt=math.clamp(t-(self.motionAt or t-1/60),0,.1)
  self.motionAt=t

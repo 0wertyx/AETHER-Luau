@@ -2890,8 +2890,11 @@ local function frame(dt, now)
     end
     result.editingHUD=app.editingHUD==true
     result.shiftLock=view.shiftReticleActive==true and not ui.opened and not app.editingHUD and app.mode=="Game"
-    ui:animateBackground(now)
-    hud:step(styled, result, dt)
+    -- A menu animation fault must not prevent the HUD from laying out.
+    local hudOK,hudError=pcall(hud.step,hud,styled,result,dt)
+    if not hudOK and app.hudLayoutError~=hudError then app.hudLayoutError=hudError;app:log("HUD",hudError) elseif hudOK then app.hudLayoutError=nil end
+    local uiOK,uiError=pcall(ui.animateBackground,ui,now)
+    if not uiOK and app.menuLayoutError~=uiError then app.menuLayoutError=uiError;app:log("Menu",uiError) elseif uiOK then app.menuLayoutError=nil end
     avatar:step(if app.mode == "Game" then character else nil, styled, workspace:GetServerTimeNow())
     peers:step(styled, app.mode=="Game", walkMotion, dt)
     if peers.statusLabel and peers.statusLabel.Parent and peers.statusLabel.Text~=peers.status then peers.statusLabel.Text=peers.status end
