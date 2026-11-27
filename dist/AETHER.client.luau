@@ -1486,7 +1486,9 @@ function UI:handleQuickKey(input,processed)
  local now=os.clock()
  if self.lastBindKey==key and now-(self.lastBindAt or 0)<.18 then return true end
  self.lastBindKey=key;self.lastBindAt=now
+ local before,generation=self.app:moduleSnapshot(),self.app.moduleGeneration
  local ok,err=pcall(action.invoke)
+ self.app:recordModuleChanges(before,generation)
  if not ok then self.app:log("Keybind",err);self.quickStatus.Text=tostring(err):sub(-100) end
  self:refreshBindPanel()
  return true
@@ -1798,7 +1800,12 @@ function UI:sync()
   end
  end
 end
-function UI:action(fn) local ok,err=pcall(fn);if not ok then self.app:log("Error",tostring(err));self:message(tostring(err):sub(-150)) end end
+function UI:action(fn)
+ local before,generation=self.app:moduleSnapshot(),self.app.moduleGeneration
+ local ok,err=pcall(fn)
+ self.app:recordModuleChanges(before,generation)
+ if not ok then self.app:log("Error",tostring(err));self:message(tostring(err):sub(-150)) end
+end
 function UI:chips(items,fn,cols,selected)
  cols=cols or 3;for start=1,#items,cols do local row=self:row(33,"Actions");row.BackgroundTransparency=1;for j=0,math.min(cols-1,#items-start) do local item=items[start+j];local b=U.button(row,item);b.Name=item;b.Size=UDim2.new(1/cols,-4,1,0);b.Position=UDim2.fromScale(j/cols,0);self.page:on(b.Activated,function() self:action(function() fn(item) end) end);if selected then self:watch(function() b.BackgroundColor3=if selected()==item then Color3.fromRGB(98,68,150) else soft end) end end end
 end
@@ -4950,7 +4957,7 @@ local function configs(ui,a)
  local status=ui:note("",38)
  ui:watch(function() status.Text=a.store.status end)
  ui:title("CONFIG MANAGER")
- ui:note("Save your entire setup: HUD, wings, halos, animations, colors and all settings. No JSON editing required.",46)
+ ui:note("Save HUD, cosmetics, and Volleyball module switches and modes together in each profile.",46)
  local list=names(current)
  if #list==0 then ui:note("No configurations yet. Enter a name and save.",28)
  else ui:chips(list,function(n) a.configSelection=n;a.configName=n;a.confirmDelete=nil;ui:open("Profiles") end,2,function() return selected or "" end) end
@@ -4991,7 +4998,7 @@ local function configs(ui,a)
   end
  end,3)
  ui:title("STORAGE")
- ui:note(if a.store.device then "Device storage: two alternating, validated JSON slots. Auto-save and restore on restart. Cosmetic profiles only." elseif a.store.remote then "Server storage available. Durable saving depends on the game's DataStore configuration." else "No device file API. Session only; use JSON backup to keep configs after exit.",62)
+ ui:note(if a.store.device then "Device storage: two alternating, validated JSON slots. Auto-save and restore on restart. Module preferences included." elseif a.store.remote then "Server storage available. Durable saving depends on the game's DataStore configuration." else "No device file API. Session only; use JSON backup to keep configs after exit.",62)
  ui:chips({"Save now","Reload bank"},function(op) if op=="Save now" then a.store:save() else a.store:read(true) end;ui:message(a.store.status);if not ui.page.dead then ui:sync() end end,2)
  ui:chips({if a.showConfigJSON then "Hide JSON tools" else "Advanced / JSON backup"},function() a.showConfigJSON=not a.showConfigJSON;ui:open("Profiles") end,1)
  if a.showConfigJSON then
@@ -5926,6 +5933,17 @@ choice("Fonts","font","Typeface","Gotham",S.fonts);choice("Fonts","weight","Weig
 S.example='hud.widget("status", "Ready", 8, 38)\nfunction onHealthChanged(hp, maxHP)\n  hud.widget("status", hud.join("HP: ", hp), 8, 38)\n  if hp > 0 and hp <= maxHP * 0.3 then\n    hud.animate("status", "pulse")\n  else\n    hud.animate("status", "none")\n  end\nend'
 text("Scripts","cue","HUD script",S.example,8192);text("Scripts","luau","Luau draft",'-- ModuleScript for your own place\nreturn function(humanoid: Humanoid)\n  return humanoid.HealthChanged:Connect(function(hp)\n    print(hp, humanoid.MaxHealth)\n  end)\nend',8192)
 S.defs.players={group="Indicators",kind="players",default={}};table.insert(S.order,"players")
+-- Session module preferences are private configuration fields, never peer cosmetics.
+for _,key in {"vbBallRadius","vbBallTouchInfo","vbShotArc","vbTrajectory","vbDirection","vbStyle","vbCurve","vbRepeatTouch","vbAutoTilt","vbAutoSet","vbAutoSpike","vbAutoDive","vbAutoServe"} do
+ toggle("VolleyballState",key,key,false)
+end
+toggle("VolleyballState","vbBallGuide","Ball guide",true)
+toggle("VolleyballState","vbGroundPredict","Ground prediction",true)
+toggle("VolleyballState","vbAutoJump","Auto jump",true)
+toggle("VolleyballState","vbEdgeGuard","Edge guard",true)
+choice("VolleyballState","vbShotMode","Shot mode","Auto",{"Auto","Spike","Set","Serve"})
+choice("VolleyballState","vbCameraAim","Camera aim","Free zone",{"Free zone","Court center","Off"})
+choice("VolleyballState","vbTiltAim","Tilt aim","Correct edges",{"Correct edges","Aim center","Aim left","Aim right","Free zone"})
 function S.copy(v) if type(v)~="table" then return v end;local r={};for k,x in v do r[k]=S.copy(x) end;return r end
 local function str(s,n) return type(s)=="string" and #s<=n and utf8.len(s)~=nil end
 local function name(s) return str(s,48) and s:match("%S") and not s:find("%c") end
@@ -8356,6 +8374,7 @@ end
 function app:replace(settings)
     self.s = S.settings(settings)
     self.bank.settings = self.s
+    self.moduleGeneration=(self.moduleGeneration or 0)+1;self.moduleRestoreRequested=true
     self:stopCue()
     self:dirty()
     if self.ui then self.ui:sync() end
@@ -8363,6 +8382,7 @@ end
 function app:restore(bank)
     self.bank = S.bank(bank)
     self.s = self.bank.settings
+    self.moduleGeneration=(self.moduleGeneration or 0)+1;self.moduleRestoreRequested=true
     self:stopCue()
     if self.ui and self.ui.tab then
         if self.ui.opened then self.ui:open(self.ui.tab) else self.ui:sync() end
@@ -8373,7 +8393,7 @@ function app:library(bank)
     self.s = self.bank.settings
     self:dirty()
 end
--- Volleyball controls are session-local and never serialized into cosmetic presets.
+-- Runtime Volleyball objects are session-local; private module preferences are saved separately.
 do
     local ReplicatedStorage=game:GetService("ReplicatedStorage")
     local vb={originals={},multiplierRequests={},corners={},auto=false,status="Waiting for compatible game",target=nil,tiltAim="Correct edges",tiltScale=1,tiltWrites=0,tiltOverrides=0}
@@ -10738,8 +10758,96 @@ do
     scope:add(stop)
 end
 
+-- Save only deliberate UI changes, not transient runtime cleanup or match resets.
+local moduleSwitches={
+    {"vbBallRadius",function(v) return v.ballRadius.enabled end,function(v) v:toggleBallRadius() end},
+    {"vbBallTouchInfo",function(v) return v.ballTouchInfo.enabled end,function(v) v:toggleBallTouchInfo() end},
+    {"vbShotArc",function(v) return v.shotArc.enabled end,function(v) v:toggleShotArc() end},
+    {"vbTrajectory",function(v) return v.trajectory.enabled end,function(v) v:toggleTrajectory() end},
+    {"vbDirection",function(v) return v.jinkoDirection.enabled end,function(v) v:toggleJinkoDirection() end},
+    {"vbStyle",function(v) return v.styleEnabled end,function(v) v:toggleStyle() end},
+    {"vbCurve",function(v) return v.curveEnabled end,function(v) v:toggleCurve() end},
+    {"vbRepeatTouch",function(v) return v.repeatTouch.enabled end,function(v) v:toggleRepeatTouch() end},
+    {"vbAutoSet",function(v) return v.play.set end,function(v) v:togglePlay("Set") end},
+    {"vbAutoSpike",function(v) return v.play.spike end,function(v) v:togglePlay("Spike") end},
+    {"vbAutoDive",function(v) return v.play.dive end,function(v) v:togglePlay("Dive") end},
+    {"vbAutoServe",function(v) return v.play.serve end,function(v) v:togglePlay("Serve") end},
+    {"vbAutoTilt",function(v) return v.auto end,function(v) v:toggleAuto() end},
+}
+local moduleOptions={
+    {"vbBallGuide",function(v) return v.ballRadius.show end,function(v,x) v.ballRadius.show=x end},
+    {"vbGroundPredict",function(v) return v.play.groundPredict end,function(v,x) v.play.groundPredict=x;v.play.cameraTargetAt=0 end},
+    {"vbAutoJump",function(v) return v.play.autoJump end,function(v,x) v.play.autoJump=x;v.play.jumpPendingUntil=0 end},
+    {"vbEdgeGuard",function(v) return v.edgeGuard end,function(v,x) v.edgeGuard=x end},
+    {"vbShotMode",function(v) return v.shotArc.mode end,function(v,x) v.shotArc.mode=x end},
+    {"vbCameraAim",function(v) return v.play.cameraAim end,function(v,x) v.play.cameraAim=x;v.play.cameraTargetAt=0;v.play.cameraPoint=nil end},
+    {"vbTiltAim",function(v) return v.tiltAim end,function(v,x) v.tiltAim=x;v.requestedTilt=nil end},
+}
+function app:moduleSnapshot()
+    local result={};local vb=self.volleyball
+    if not vb then return result end
+    for _,spec in moduleSwitches do result[spec[1]]=spec[2](vb)==true end
+    for _,spec in moduleOptions do result[spec[1]]=spec[2](vb) end
+    return result
+end
+function app:recordModuleChanges(before,generation)
+    if not self.store or self.moduleApplying or generation~=self.moduleGeneration then return end
+    local after=self:moduleSnapshot()
+    local changed=false;local settings=table.clone(self.s)
+    for key,value in after do
+        if before[key]~=value and before[key]~=nil then
+            settings[key]=S.value(key,value)
+            if self.modulePending then self.modulePending[key]=nil end
+            changed=true
+        end
+    end
+    if changed then self.s=settings;self.bank.settings=settings;self:dirty() end
+end
+local function syncModuleUI()
+    if not app.ui then return end
+    if app.ui.quickAdapter then app.ui.quickAdapter:sync() else app.ui:sync() end
+end
+local function restoreModuleTick()
+    if app.stopping or not gui.Parent or app.moduleApplying then return end
+    local vb=app.volleyball
+    if app.moduleRestoreRequested then
+        app.moduleRestoreRequested=false
+        app.modulePending={}
+        for _,spec in moduleSwitches do app.modulePending[spec[1]]={attempts=0} end
+        for _,spec in moduleOptions do spec[3](vb,app.s[spec[1]]) end
+        syncModuleUI()
+    end
+    local pending=app.modulePending
+    if not pending or not next(pending) or app.mode~="Game" then return end
+    local generation=app.moduleGeneration
+    app.moduleApplying=true
+    local changed=false
+    local ok,err=pcall(function()
+        -- Turn saved-OFF modules off first, then restore ON modules.
+        for _,want in {false,true} do
+            for _,spec in moduleSwitches do
+                local key=spec[1];local item=pending[key]
+                if not item or app.s[key]~=want then continue end
+                local current=spec[2](vb)==true
+                if current==want then pending[key]=nil;continue end
+                -- Game-changing modules require a compatible game and active match.
+                if want and (key=="vbBallRadius" or key=="vbStyle" or key=="vbCurve" or key=="vbRepeatTouch" or key=="vbAutoTilt" or key=="vbAutoSet" or key=="vbAutoSpike" or key=="vbAutoDive" or key=="vbAutoServe") and (not vb:available() or player:GetAttribute("Gameplay_InGame")~=true) then continue end
+                item.attempts+=1
+                local good,why=pcall(spec[3],vb)
+                if app.moduleGeneration~=generation then return end
+                local now=spec[2](vb)==true
+                if now==want then pending[key]=nil;changed=true
+                elseif item.attempts>=8 then pending[key]=nil;app:log("Config",key.." could not be restored"..(if good then "" else ": "..tostring(why))) end
+            end
+        end
+    end)
+    app.moduleApplying=false
+    if not ok then app:log("Config",err);app.modulePending=nil end
+    if changed then syncModuleUI() end
+end
 function app:modeSet(mode)
     assert(mode == "Game" or mode == "Simulator", "Invalid AETHER mode")
+    if mode=="Game" and self.mode~=mode then self.moduleRestoreRequested=true end
     self.mode = mode
     if self.ui then self.ui:sync() end
 end
@@ -10945,6 +11053,14 @@ do
 end
 local store = Storage.new(app, scope)
 app.store = store
+app.moduleRestoreRequested=true
+local moduleRestoreElapsed=0
+scope:on(RunService.Heartbeat,function(dt)
+    moduleRestoreElapsed+=dt
+    if moduleRestoreElapsed<.5 then return end
+    moduleRestoreElapsed=0
+    restoreModuleTick()
+end)
 
 -- Observe the first-party replicated manifest. A revision that arrives
 -- during validation remains queued; rollback is not immediately undone.
