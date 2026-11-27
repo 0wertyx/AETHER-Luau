@@ -345,6 +345,7 @@ do
     end
     function vb:reset()
         self.auto=false;detachTilt()
+        if self.repeatTouch and self.repeatTouch.enabled then self:toggleRepeatTouch() end
         if self.play then self.play.set=false;self.play.spike=false;self.play.dive=false;self.play.serve=false;self.play.serveActive=false;self.play.ownsTilt=false;self.play.generation+=1;table.clear(self.play.locks);table.clear(self.play.jumpLocks);self.play.jumpPendingUntil=0;self.play.status="Off | reset" end
         stopCurve()
         stopStyle()
@@ -353,6 +354,68 @@ do
         self.target=nil
         self.status="Original values restored where unchanged"
     end
+    -- Consecutive-touch experiment for the locally saved training place.
+    -- Preserve public-match rules, serve checks and every ordinary hit cooldown.
+    vb.repeatTouch={enabled=false,status="Off | training only",checks=0}
+    local repeatRules,repeatOriginal,repeatWrapped
+    local function stopRepeatTouch(reason)
+        if repeatRules and repeatRules.isHitboxSkipped==repeatWrapped then
+            repeatRules.isHitboxSkipped=repeatOriginal
+        end
+        repeatRules=nil;repeatOriginal=nil;repeatWrapped=nil
+        vb.repeatTouch.enabled=false
+        vb.repeatTouch.status=reason or "Off"
+    end
+    local function repeatTrainingAllowed()
+        return RunService:IsStudio()
+    end
+    function vb:toggleRepeatTouch()
+        if self.repeatTouch.enabled then stopRepeatTouch();return end
+        if app.mode~="Game" or not repeatTrainingAllowed() then
+            self.repeatTouch.status="Open your local training place in Studio"
+            return
+        end
+        local ok,err=pcall(function()
+            local controllers=rf:FindFirstChild("Controllers")
+            local g=controllers and controllers:FindFirstChild("GameController")
+            local actions=g and g:FindFirstChild("Actions")
+            local move=actions and actions:FindFirstChild("Move")
+            local dm=move and move:FindFirstChild("DoMove")
+            local module=dm and dm:FindFirstChild("Game")
+            assert(module and module:IsA("ModuleScript"),"DoMove.Game unavailable")
+            local rules=require(module)
+            assert(type(rules.isHitboxSkipped)=="function" and not table.isfrozen(rules),"Rule module unavailable or read-only")
+            local original=rules.isHitboxSkipped
+            local wrapped=function(action,...)
+                local skipped=original(action,...)
+                if skipped and vb.repeatTouch.enabled and repeatTrainingAllowed() and app.mode=="Game" and not app.stopping and gui.Parent and ReplicatedStorage:GetAttribute("LastHitter")==player.Name
+                    and (action=="Set" or action=="Spike" or action=="Bump" or action=="JumpSet" or action=="Dive") then
+                    vb.repeatTouch.checks+=1
+                    vb.repeatTouch.status="Training | consecutive check allowed"
+                    return false
+                end
+                return skipped
+            end
+            rules.isHitboxSkipped=wrapped
+            repeatRules=rules;repeatOriginal=original;repeatWrapped=wrapped
+            self.repeatTouch.checks=0;self.repeatTouch.enabled=true
+            self.repeatTouch.status="Training | waiting for consecutive touch"
+        end)
+        if not ok then stopRepeatTouch("Error: "..tostring(err)) end
+    end
+    local repeatElapsed=0
+    scope:on(RunService.Heartbeat,function(dt)
+        if not vb.repeatTouch.enabled then return end
+        repeatElapsed+=dt
+        if repeatElapsed<.2 then return end
+        repeatElapsed=0
+        if app.stopping or not gui.Parent or app.mode~="Game" or not repeatTrainingAllowed() then
+            stopRepeatTouch("Off | left training")
+        elseif not repeatRules or repeatRules.isHitboxSkipped~=repeatWrapped then
+            stopRepeatTouch("Off | rule module changed")
+        end
+    end)
+    scope:add(function() stopRepeatTouch("Off | unload") end)
     local function flatten(p) return Vector3.new(p.X,0,p.Z) end
     function vb:clearCourt()
         self.auto=false;detachTilt();restore(tiltKey)

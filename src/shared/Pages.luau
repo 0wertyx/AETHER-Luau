@@ -855,6 +855,18 @@ function E.render(a,tab,ui)
    ui:chips({"Auto Spike"},function() vb:togglePlay("Spike");ui:sync() end,1,function() return if vb.play.spike then "Auto Spike" else "" end)
    ui:chips({"Auto Dive"},function() vb:togglePlay("Dive");ui:sync() end,1,function() return if vb.play.dive then "Auto Dive" else "" end)
    ui:chips({"Auto Serve"},function() vb:togglePlay("Serve");ui:sync() end,1,function() return if vb.play.serve then "Auto Serve" else "" end)
+   ui:title("CONSECUTIVE TOUCH / BETA")
+   ui:chips({"Repeat touch test"},function() vb:toggleRepeatTouch();ui:sync() end,1,function() return if vb.repeatTouch.enabled then "Repeat touch test" else "" end)
+   local touchStatus=ui:note("",70)
+   local function refreshTouch()
+    touchStatus.Text=vb.repeatTouch.status.."\nLocal checks allowed: "..tostring(vb.repeatTouch.checks).." | Server/team limit unchanged"
+   end
+   ui:watch(refreshTouch)
+   local touchRefresh=0
+   ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
+    touchRefresh+=dt
+    if touchRefresh>=.25 then touchRefresh=0;if ui.opened then refreshTouch() end end
+   end)
    ui:title("SPIKE CAMERA")
    ui:chips({"Free zone","Court center","Off"},function(n) vb.play.cameraAim=n;vb.play.cameraTargetAt=0;vb.play.cameraPoint=nil;ui:sync() end,3,function() return vb.play.cameraAim end)
    ui:chips({"Ground prediction"},function() vb.play.groundPredict=not vb.play.groundPredict;vb.play.cameraTargetAt=0;ui:sync() end,1,function() return if vb.play.groundPredict then "Ground prediction" else "" end)
