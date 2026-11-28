@@ -978,8 +978,6 @@ local searchSections={
  {"Volleyball","SHOT ARC / BETA"},
  {"Volleyball","TRAJECTORY ESP / BETA"},
  {"Volleyball","DIRECTION ESP / BETA"},
- {"Volleyball","JINKO STYLE / LOCAL PREVIEW"},
- {"Volleyball","CURVE SPECIAL / EXPERIMENT"},
  {"Volleyball","AUTO PLAY / BETA"},
  {"Volleyball","CONSECUTIVE TOUCH / BETA"},
  {"Volleyball","SPIKE CAMERA"},
@@ -996,8 +994,6 @@ local searchSections={
  {"Volleyball","Serve"},
  {"Volleyball","Toggle Trajectory ESP"},
  {"Volleyball","Toggle Direction ESP"},
- {"Volleyball","Toggle Jinko preview"},
- {"Volleyball","Toggle local Curve test"},
  {"Volleyball","Auto Set"},
  {"Volleyball","Auto Spike"},
  {"Volleyball","Auto Dive"},
@@ -2471,8 +2467,6 @@ local quickSwitches={
  ["SHOT ARC / BETA"]={function(v) return v.shotArc.enabled end,function(v) v:toggleShotArc() end,"Shot Arc"},
  ["TRAJECTORY ESP / BETA"]={function(v) return v.trajectory.enabled end,function(v) v:toggleTrajectory() end,"Toggle Trajectory ESP"},
  ["DIRECTION ESP / BETA"]={function(v) return v.jinkoDirection.enabled end,function(v) v:toggleJinkoDirection() end,"Toggle Direction ESP"},
- ["JINKO STYLE / LOCAL PREVIEW"]={function(v) return v.styleEnabled end,function(v) v:toggleStyle() end,"Toggle Jinko preview"},
- ["CURVE SPECIAL / EXPERIMENT"]={function(v) return v.curveEnabled end,function(v) v:toggleCurve() end,"Toggle local Curve test"},
  ["CONSECUTIVE TOUCH / BETA"]={function(v) return v.repeatTouch.enabled end,function(v) v:toggleRepeatTouch() end,"Repeat touch test"},
  ["AUTO TILT / BETA"]={function(v) return v.auto end,function(v) v:toggleAuto() end},
 }
@@ -6611,32 +6605,6 @@ function E.render(a,tab,ui)
     jinkoElapsed+=dt
     if jinkoElapsed>=.25 then jinkoElapsed=0;if ui.opened then refreshJinko() end end
    end)
-   ui:title("JINKO STYLE / LOCAL PREVIEW")
-   ui:note("Uses the game's local style observer, including its animation and special refresh. No account slot or server multiplier is changed. Turn off to restore the original selection.",84)
-   ui:chips({"Toggle Jinko preview"},function() vb:toggleStyle();ui:sync() end,1,function() return if vb.styleEnabled then "Toggle Jinko preview" else "" end)
-   local styleStatus=ui:note("",72)
-   local function refreshStyle()
-    styleStatus.Text=(if vb.styleEnabled then "ON | " else "OFF | ")..vb.styleStatus
-   end
-   ui:watch(refreshStyle)
-   local styleElapsed=0
-   ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
-    styleElapsed+=dt
-    if styleElapsed>=.25 then styleElapsed=0;if ui.opened then refreshStyle() end end
-   end)
-   ui:title("CURVE SPECIAL / EXPERIMENT")
-   ui:note("Attempts a local Jinko special selection only. The server may ignore it. Stops on match exit or style change and restores the previous local special where unchanged.",84)
-   ui:chips({"Toggle local Curve test"},function() vb:toggleCurve();ui:sync() end,1,function() return if vb.curveEnabled then "Toggle local Curve test" else "" end)
-   local curveStatus=ui:note("",72)
-   local function refreshCurve()
-    curveStatus.Text=(if vb.curveEnabled then "ON | " else "OFF | ")..vb.curveStatus
-   end
-   ui:watch(refreshCurve)
-   local curveElapsed=0
-   ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
-    curveElapsed+=dt
-    if curveElapsed>=.25 then curveElapsed=0;if ui.opened then refreshCurve() end end
-   end)
    ui:title("AUTO PLAY / BETA")
    ui:note("Ground = Set; airborne = Spike; low distant ball = Dive. One attempt per ball approach; normal game rules remain active.",64)
    ui:chips({"Auto Set"},function() vb:togglePlay("Set");ui:sync() end,1,function() return if vb.play.set then "Auto Set" else "" end)
@@ -7155,7 +7123,7 @@ S.example='hud.widget("status", "Ready", 8, 38)\nfunction onHealthChanged(hp, ma
 text("Scripts","cue","HUD script",S.example,8192);text("Scripts","luau","Luau draft",'-- ModuleScript for your own place\nreturn function(humanoid: Humanoid)\n  return humanoid.HealthChanged:Connect(function(hp)\n    print(hp, humanoid.MaxHealth)\n  end)\nend',8192)
 S.defs.players={group="Indicators",kind="players",default={}};table.insert(S.order,"players")
 -- Session module preferences are private configuration fields, never peer cosmetics.
-for _,key in {"vbBallRadius","vbBallTouchInfo","vbShotArc","vbTrajectory","vbDirection","vbStyle","vbCurve","vbRepeatTouch","vbAutoTilt","vbAutoSet","vbAutoSpike","vbAutoDive","vbAutoServe"} do
+for _,key in {"vbBallRadius","vbBallTouchInfo","vbShotArc","vbTrajectory","vbDirection","vbRepeatTouch","vbAutoTilt","vbAutoSet","vbAutoSpike","vbAutoDive","vbAutoServe"} do
  toggle("VolleyballState",key,key,false)
 end
 toggle("VolleyballState","vbBallGuide","Ball guide",true)
@@ -10329,112 +10297,6 @@ do
     local vb={originals={},multiplierRequests={},corners={},auto=false,status="Waiting for compatible game",target=nil,tiltAim="Correct edges",tiltScale=1,tiltWrites=0,tiltOverrides=0}
     app.volleyball=vb
     vb.edgeGuard=true;vb.guardStatus="Anti-out | waiting"
-    vb.curveEnabled=false
-    vb.curveStatus="Off | local special experiment"
-    local curveController,curveOriginal,curveApplied
-    local function stopCurve(reason)
-        local c,old,applied=curveController,curveOriginal,curveApplied
-        vb.curveEnabled=false
-        curveController=nil;curveOriginal=nil;curveApplied=nil
-        if c and applied then
-            local ok,err=pcall(function()
-                -- Do not overwrite a real style change made during the test.
-                if c.Special()==applied then
-                    c:SetSpecialFromStyle(if old then {Metadata={Special=old}} else nil)
-                end
-            end)
-            if not ok then
-                vb.curveStatus="Restore failed: "..tostring(err)
-                return
-            end
-        end
-        vb.curveStatus=reason or "Off | original local special restored"
-    end
-    function vb:toggleCurve()
-        if self.curveEnabled then stopCurve();return end
-        if self.styleEnabled then self.curveStatus="Turn off local style preview first";return end
-        if app.mode~="Game" or player:GetAttribute("Gameplay_InGame")~=true then
-            self.curveStatus="Enter a match in Game mode first";return
-        end
-        local ok,err=pcall(function()
-            local packages=ReplicatedStorage:FindFirstChild("Packages")
-            local knit=packages and packages:FindFirstChild("Knit")
-            local content=ReplicatedStorage:FindFirstChild("Content")
-            local styles=content and content:FindFirstChild("Style")
-            local jester=styles and styles:FindFirstChild("Jester")
-            assert(knit and jester and jester:IsA("ModuleScript"),"Jester style or Knit unavailable")
-            local style=require(jester)
-            local special=type(style)=="table" and style.Metadata and style.Metadata.Special
-            assert(type(special)=="table" and type(special.PostAction)=="function","Jester PostAction unavailable")
-            local c=require(knit).GetController("SpecialController")
-            assert(type(c)=="table" and type(c.SetSpecialFromStyle)=="function","SpecialController unavailable")
-            local old=c.Special()
-            if old==special then
-                self.curveStatus="Jinko special already selected locally"
-                return
-            end
-            curveController,curveOriginal,curveApplied=c,old,special
-            c:SetSpecialFromStyle(style)
-            assert(c.Special()==special,"Local special selection not confirmed")
-            self.curveEnabled=true
-            self.curveStatus="Local Jester selected | server response unverified"
-        end)
-        if not ok then stopCurve("Test failed: "..tostring(err)) end
-    end
-    vb.styleEnabled=false
-    vb.styleStatus="Off | local style preview"
-    local styleController,styleOriginal,styleApplied,styleSlot,styleOwned,styleStarted
-    local function stopStyle(reason)
-        local c,old,applied=styleController,styleOriginal,styleApplied
-        vb.styleEnabled=false
-        styleController=nil;styleOriginal=nil;styleApplied=nil
-        styleSlot=nil;styleOwned=nil;styleStarted=nil
-        if c and applied then
-            local ok,err=pcall(function()
-                if c.ForcedStyle()==applied then
-                    local authoritative=player:GetAttribute("Gameplay_ForcedStyle")
-                    c.ForcedStyle(if authoritative~=nil then authoritative else old)
-                end
-            end)
-            if not ok then
-                vb.styleStatus="Restore failed: "..tostring(err)
-                return
-            end
-        end
-        vb.styleStatus=reason or "Off | local style restored"
-    end
-    function vb:toggleStyle()
-        if self.styleEnabled then stopStyle();return end
-        if app.mode~="Game" then self.styleStatus="Switch to Game mode";return end
-        if self.curveEnabled then stopCurve() end
-        local ok,err=pcall(function()
-            local packages=ReplicatedStorage:FindFirstChild("Packages")
-            local knit=packages and packages:FindFirstChild("Knit")
-            local content=ReplicatedStorage:FindFirstChild("Content")
-            local styles=content and content:FindFirstChild("Style")
-            assert(knit and styles and styles:IsA("ModuleScript"),"Style registry unavailable")
-            local registry=require(styles)
-            local c=require(knit).GetController("StyleController")
-            assert(type(c)=="table","StyleController unavailable")
-            local desired=registry:Get("Jester")
-            assert(type(desired)=="table" and type(desired.Metadata)=="table","Jester not found in registry")
-            local current=c.Style()
-            if current==desired or (type(current)=="table" and current.Id=="Jester") then
-                self.styleStatus="Jinko already selected locally";return
-            end
-            local original=c.ForcedStyle()
-            assert(original==nil and player:GetAttribute("Gameplay_ForcedStyle")==nil,"Game has a forced style; preview unavailable")
-            local slot=c.CurrentStyleSlot()
-            local owned=c.Styles()[slot or 1]
-            styleController,styleOriginal,styleApplied=c,original,"Jester"
-            styleSlot,styleOwned,styleStarted=slot,owned,os.clock()
-            c.ForcedStyle(styleApplied)
-            assert(c.ForcedStyle()==styleApplied,"Local preview selection not confirmed")
-            self.styleEnabled=true
-            self.styleStatus="Waiting for local style observer"
-        end)
-        if not ok then stopStyle("Preview failed: "..tostring(err)) end
-    end
     local attrs={
         BlockPower=true,BumpPower=true,DashPower=true,DiveSpeed=true,
         DrawPower=true,JumpPower=true,ServePower=true,SetPower=true,Speed=true
@@ -10559,8 +10421,6 @@ do
         self.auto=false;detachTilt()
         if self.repeatTouch and self.repeatTouch.enabled then self:toggleRepeatTouch() end
         if self.play then self.play.set=false;self.play.spike=false;self.play.dive=false;self.play.serve=false;self.play.serveActive=false;self.play.ownsTilt=false;self.play.generation+=1;table.clear(self.play.locks);table.clear(self.play.receiverTouches);self.play.receiverActive=nil;table.clear(self.play.jumpLocks);self.play.jumpPendingUntil=0;self.play.status="Off | reset" end
-        stopCurve()
-        stopStyle()
         table.clear(self.multiplierRequests)
         for key in table.clone(self.originals) do restore(key) end
         self.target=nil
@@ -11706,42 +11566,10 @@ do
         elapsed+=dt
         if elapsed<.1 then return end
         elapsed=0
-        if app.stopping or not gui.Parent then
-            if vb.curveEnabled then stopCurve() end
-            if vb.styleEnabled then stopStyle() end
-            return
-        end
+        if app.stopping or not gui.Parent then return end
         if app.mode~="Game" then
-            if next(vb.originals) or vb.auto or vb.curveEnabled or vb.styleEnabled then vb:reset() end
+            if next(vb.originals) or vb.auto then vb:reset() end
             return
-        end
-        if vb.styleEnabled then
-            local ok,err=pcall(function()
-                local c=styleController
-                local slot=c.CurrentStyleSlot()
-                if player:GetAttribute("Gameplay_ForcedStyle")~=nil or c.ForcedStyle()~=styleApplied
-                    or slot~=styleSlot or c.Styles()[slot or 1]~=styleOwned then
-                    stopStyle("Off | game style or slot changed")
-                    return
-                end
-                local current=c.Style()
-                if type(current)=="table" and current.Id==styleApplied then
-                    vb.styleStatus="Local Jinko active | server ownership unchanged"
-                elseif os.clock()-styleStarted>2 then
-                    stopStyle("Local style observer did not confirm Jinko")
-                end
-            end)
-            if not ok then stopStyle("Preview error: "..tostring(err)) end
-        end
-        if vb.curveEnabled then
-            if player:GetAttribute("Gameplay_InGame")~=true then
-                stopCurve("Off | match ended")
-            else
-                local ok,current=pcall(function() return curveController.Special() end)
-                if not ok or current~=curveApplied then
-                    stopCurve("Off | local style changed or controller unavailable")
-                end
-            end
         end
         if not vb.auto then return end
         if not available() or not physics or physics._handleTilt~=wrappedTilt then
@@ -12888,8 +12716,6 @@ local moduleSwitches={
     {"vbShotArc",function(v) return v.shotArc.enabled end,function(v) v:toggleShotArc() end},
     {"vbTrajectory",function(v) return v.trajectory.enabled end,function(v) v:toggleTrajectory() end},
     {"vbDirection",function(v) return v.jinkoDirection.enabled end,function(v) v:toggleJinkoDirection() end},
-    {"vbStyle",function(v) return v.styleEnabled end,function(v) v:toggleStyle() end},
-    {"vbCurve",function(v) return v.curveEnabled end,function(v) v:toggleCurve() end},
     {"vbRepeatTouch",function(v) return v.repeatTouch.enabled end,function(v) v:toggleRepeatTouch() end},
     {"vbAutoSet",function(v) return v.play.set end,function(v) v:togglePlay("Set") end},
     {"vbAutoSpike",function(v) return v.play.spike end,function(v) v:togglePlay("Spike") end},
@@ -12989,7 +12815,7 @@ local function restoreModuleTick()
                 local current=spec[2](vb)==true
                 if current==want then pending[key]=nil;continue end
                 -- Game-changing modules require a compatible game and active match.
-                if want and (key=="vbBallRadius" or key=="vbStyle" or key=="vbCurve" or key=="vbRepeatTouch" or key=="vbAutoTilt" or key=="vbAutoSet" or key=="vbAutoSpike" or key=="vbAutoDive" or key=="vbAutoServe") and (not vb:available() or player:GetAttribute("Gameplay_InGame")~=true) then continue end
+                if want and (key=="vbBallRadius" or key=="vbRepeatTouch" or key=="vbAutoTilt" or key=="vbAutoSet" or key=="vbAutoSpike" or key=="vbAutoDive" or key=="vbAutoServe") and (not vb:available() or player:GetAttribute("Gameplay_InGame")~=true) then continue end
                 item.attempts+=1
                 local good,why=pcall(spec[3],vb)
                 if app.moduleGeneration~=generation then return end
