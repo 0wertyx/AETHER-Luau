@@ -64,7 +64,7 @@ S.example='hud.widget("status", "Ready", 8, 38)\nfunction onHealthChanged(hp, ma
 text("Scripts","cue","HUD script",S.example,8192);text("Scripts","luau","Luau draft",'-- ModuleScript for your own place\nreturn function(humanoid: Humanoid)\n  return humanoid.HealthChanged:Connect(function(hp)\n    print(hp, humanoid.MaxHealth)\n  end)\nend',8192)
 S.defs.players={group="Indicators",kind="players",default={}};table.insert(S.order,"players")
 -- Session module preferences are private configuration fields, never peer cosmetics.
-for _,key in {"vbBallRadius","vbBallTouchInfo","vbShotArc","vbTrajectory","vbDirection","vbStyle","vbCurve","vbRepeatTouch","vbAutoTilt","vbAutoSet","vbAutoSpike","vbAutoDive","vbAutoServe"} do
+for _,key in {"vbBallRadius","vbBallTouchInfo","vbShotArc","vbTrajectory","vbDirection","vbRepeatTouch","vbAutoTilt","vbAutoSet","vbAutoSpike","vbAutoDive","vbAutoServe"} do
  toggle("VolleyballState",key,key,false)
 end
 toggle("VolleyballState","vbBallGuide","Ball guide",true)
