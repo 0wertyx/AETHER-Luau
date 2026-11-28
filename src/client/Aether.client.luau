@@ -2829,14 +2829,27 @@ do
     pathLabel.TextTruncate=Enum.TextTruncate.AtEnd
     local list=U.new("ScrollingFrame",{Position=UDim2.fromOffset(10,92),Size=UDim2.new(1,-20,.48,-50),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.new(),ZIndex=11},panel)
     U.new("UIListLayout",{Padding=UDim.new(0,3),SortOrder=Enum.SortOrder.LayoutOrder},list)
-    local detail=label("Details",UDim2.new(0,10,.48,48),UDim2.new(1,-20,.52,-58))
-    detail.TextWrapped=true;detail.TextYAlignment=Enum.TextYAlignment.Top
+    local tabs=U.new("Frame",{Position=UDim2.new(0,10,.48,48),Size=UDim2.new(1,-20,0,29),BackgroundTransparency=1,ZIndex=12},panel)
+    local detailScroll=U.new("ScrollingFrame",{Position=UDim2.new(0,10,.48,81),Size=UDim2.new(1,-20,.52,-92),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.new(),ZIndex=11},panel)
+    local detail=U.new("TextLabel",{Size=UDim2.new(1,-8,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,Text="",TextSize=12,Font=Enum.Font.Gotham,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,TextWrapped=true,ZIndex=12},detailScroll)
+    local mode="Properties"
+    local tabButtons={}
+    local collapsed=false
+    local lastValues={}
+    local changes={}
+    local lastSelected=nil
+    local function addTab(name,i)
+        local button=U.new("TextButton",{Text=name,TextSize=11,Size=UDim2.new(1/3,-4,1,0),Position=UDim2.fromScale((i-1)/3,0),BackgroundTransparency=.15,ZIndex=13},tabs)
+        U.corner(button,6);tabButtons[name]=button
+        scope:on(button.Activated,function() mode=name;detailScroll.CanvasPosition=Vector2.zero end)
+    end
+    addTab("Properties",1);addTab("Tags",2);addTab("Changes",3)
     local selected=workspace
     local rows={}
     local lastKey=""
     local lastObjects={}
     local drag=nil
-    local expanded={[workspace]=true}
+    local expanded=setmetatable({[workspace]=true},{__mode="k"})
     local livePosition=nil
     local savedX,savedY=nil,nil
     header.Active=true
@@ -2918,16 +2931,46 @@ do
         panel.BackgroundTransparency=math.clamp(1-st.uiGlassOpacity/100,.05,.28)
         for _,obj in {header,pathLabel,detail,search,back,close} do obj.TextColor3=U.hex(st.uiFontColor) end
         pathLabel.Text=selected:GetFullName()
+        for name,button in tabButtons do
+            button.TextColor3=U.hex(st.uiFontColor)
+            button.BackgroundColor3=U.hex(if name==mode then st.uiHoverColor else st.uiRowColor)
+        end
+        local values={Name=selected.Name,Class=selected.ClassName,Children=tostring(#selected:GetChildren())}
         local lines={selected.ClassName.." | "..selected.Name}
         if selected:IsA("BasePart") then
             table.insert(lines,"Position: "..tostring(selected.Position))
             table.insert(lines,"Size: "..tostring(selected.Size))
             table.insert(lines,"Velocity: "..tostring(selected.AssemblyLinearVelocity))
+            table.insert(lines,"Transparency: "..tostring(selected.Transparency))
+            table.insert(lines,"Material: "..selected.Material.Name)
+            table.insert(lines,"Color: "..tostring(selected.Color))
+            values.Position=tostring(selected.Position)
+            values.Size=tostring(selected.Size)
+            values.Transparency=tostring(selected.Transparency)
         end
         if selected:IsA("Model") then table.insert(lines,"Position: "..tostring(selected:GetPivot().Position)) end
         local active=game:GetService("ReplicatedStorage"):GetAttribute("ActiveBall")
         table.insert(lines,"Active ball: "..tostring(active))
         table.insert(lines,"Children: "..tostring(#selected:GetChildren()))
+        if lastSelected~=selected then table.clear(lastValues);table.clear(changes);lastSelected=selected end
+        for k,v in values do
+            if lastValues[k]~=nil and lastValues[k]~=v then
+                table.insert(changes,1,os.date("%H:%M:%S").."  "..k.." changed")
+            end
+            lastValues[k]=v
+        end
+        while #changes>30 do table.remove(changes) end
+        if mode=="Tags" then
+            lines={"COLLECTION TAGS"}
+            local tags=game:GetService("CollectionService"):GetTags(selected)
+            table.sort(tags)
+            for _,tag in tags do table.insert(lines,tag) end
+            if #tags==0 then table.insert(lines,"No tags") end
+        elseif mode=="Changes" then
+            lines={"RECENT PROPERTY CHANGES"}
+            for _,change in changes do table.insert(lines,change) end
+            if #changes==0 then table.insert(lines,"No observed changes") end
+        end
         detail.Text=table.concat(lines,"\n")
         local children={}
         local query=search.Text:lower()
@@ -2940,7 +2983,7 @@ do
                 if allowedObject(child) then table.insert(kids,child) end
             end
             table.sort(kids,function(a,b) return a.Name<b.Name end)
-            if query=="" or obj.Name:lower():find(query,1,true) then
+            if query=="" or obj.Name:lower():find(query,1,true) or obj.ClassName:lower():find(query,1,true) then
                 table.insert(children,{obj=obj,depth=depth,has=#kids>0})
             end
             if expanded[obj] or query~="" then
