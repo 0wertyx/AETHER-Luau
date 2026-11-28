@@ -13036,12 +13036,12 @@ do
         return U.new("TextLabel",{Name=name,Position=pos,Size=size,BackgroundTransparency=1,Text="",TextSize=12,Font=Enum.Font.Gotham,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=11},panel)
     end
     local header=label("Title",UDim2.fromOffset(12,4),UDim2.new(1,-95,0,29))
-    header.Text="GAME EXPLORER / READ ONLY"
+    header.Text="EXPLORER  ·  DRAG"
     local close=U.new("TextButton",{Text="×",TextSize=21,Position=UDim2.new(1,-32,0,5),Size=UDim2.fromOffset(26,26),BackgroundTransparency=.7,ZIndex=12},panel)
     U.corner(close,6)
     local back=U.new("TextButton",{Text="UP",TextSize=11,Position=UDim2.new(1,-77,0,5),Size=UDim2.fromOffset(40,26),BackgroundTransparency=.7,ZIndex=12},panel)
     U.corner(back,6)
-    local search=U.new("TextBox",{PlaceholderText="Filter child objects",Text="",ClearTextOnFocus=false,Position=UDim2.fromOffset(10,37),Size=UDim2.new(1,-20,0,27),TextSize=12,BackgroundTransparency=.4,ZIndex=11},panel)
+    local search=U.new("TextBox",{PlaceholderText="Search scene tree",Text="",ClearTextOnFocus=false,Position=UDim2.fromOffset(10,37),Size=UDim2.new(1,-20,0,27),TextSize=12,BackgroundTransparency=.4,ZIndex=11},panel)
     U.corner(search,6)
     local pathLabel=label("Path",UDim2.fromOffset(10,67),UDim2.new(1,-20,0,22))
     pathLabel.TextTruncate=Enum.TextTruncate.AtEnd
@@ -13054,13 +13054,18 @@ do
     local lastKey=""
     local lastObjects={}
     local drag=nil
+    local expanded={[workspace]=true}
+    local livePosition=nil
+    local savedX,savedY=nil,nil
     header.Active=true
     panel.Active=true
     local function place()
         if drag then return end
         local size=overlay.AbsoluteSize-panel.AbsoluteSize
         panel.AnchorPoint=Vector2.zero
-        panel.Position=UDim2.fromOffset(math.max(0,size.X)*app.s.gameExplorerX/100,math.max(0,size.Y)*app.s.gameExplorerY/100)
+        local x,y=app.s.gameExplorerX,app.s.gameExplorerY
+        if not livePosition or x~=savedX or y~=savedY then livePosition=Vector2.new(x/100,y/100);savedX=x;savedY=y end
+        panel.Position=UDim2.fromOffset(math.max(0,size.X)*livePosition.X,math.max(0,size.Y)*livePosition.Y)
     end
     scope:on(header.InputBegan,function(input)
         if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
@@ -13070,14 +13075,20 @@ do
         if not drag or (input~=drag.input and not (drag.input.UserInputType==Enum.UserInputType.MouseButton1 and input.UserInputType==Enum.UserInputType.MouseMovement)) then return end
         local size=overlay.AbsoluteSize-panel.AbsoluteSize
         local target=drag.origin+Vector2.new(input.Position.X,input.Position.Y)-drag.start
-        panel.Position=UDim2.fromOffset(math.clamp(target.X,0,math.max(0,size.X)),math.clamp(target.Y,0,math.max(0,size.Y)))
+        local x,y=math.clamp(target.X,0,math.max(0,size.X)),math.clamp(target.Y,0,math.max(0,size.Y))
+        drag.target=Vector2.new(x,y)
+        panel.Position=UDim2.fromOffset(x,y)
     end)
     scope:on(UserInputService.InputEnded,function(input)
-        if not drag or input~=drag.input then return end
+        if not drag or (input~=drag.input and not (drag.input.UserInputType==Enum.UserInputType.MouseButton1 and input.UserInputType==Enum.UserInputType.MouseButton1)) then return end
+        local pos=drag.target or drag.origin
         drag=nil
         local size=overlay.AbsoluteSize-panel.AbsoluteSize
-        local pos=panel.AbsolutePosition-overlay.AbsolutePosition
-        app:patch({gameExplorerX=math.clamp(pos.X/math.max(1,size.X)*100,0,100),gameExplorerY=math.clamp(pos.Y/math.max(1,size.Y)*100,0,100)})
+        local x,y=math.clamp(pos.X/math.max(1,size.X),0,1),math.clamp(pos.Y/math.max(1,size.Y),0,1)
+        livePosition=Vector2.new(x,y)
+        app:patch({gameExplorerX=x*100,gameExplorerY=y*100})
+        savedX,savedY=app.s.gameExplorerX,app.s.gameExplorerY
+        place()
     end)
     local function allowedObject(obj)
         return obj:IsA("Folder") or obj:IsA("Model") or obj:IsA("BasePart") or obj:IsA("Camera") or obj:IsA("Attachment") or obj:IsA("Terrain")
@@ -13086,7 +13097,7 @@ do
         if not selected:IsDescendantOf(workspace) and selected~=workspace then selected=workspace end
         local st=app.s
         panel.BackgroundColor3=U.hex(st.uiPanelColor);stroke.Color=U.hex(st.uiStrokeColor)
-        panel.BackgroundTransparency=1-st.uiGlassOpacity/100
+        panel.BackgroundTransparency=math.clamp(1-st.uiGlassOpacity/100,.05,.28)
         for _,obj in {header,pathLabel,detail,search,back,close} do obj.TextColor3=U.hex(st.uiFontColor) end
         pathLabel.Text=selected:GetFullName()
         local lines={selected.ClassName.." | "..selected.Name}
@@ -13102,27 +13113,47 @@ do
         detail.Text=table.concat(lines,"\n")
         local children={}
         local query=search.Text:lower()
-        for _,obj in selected:GetChildren() do
-            if allowedObject(obj) and obj.Name:lower():find(query,1,true) then table.insert(children,obj) end
+        local visited=0
+        local function walk(obj,depth)
+            if #children>=180 or visited>=1000 or depth>16 then return end
+            visited+=1
+            local kids={}
+            for _,child in obj:GetChildren() do
+                if allowedObject(child) then table.insert(kids,child) end
+            end
+            table.sort(kids,function(a,b) return a.Name<b.Name end)
+            if query=="" or obj.Name:lower():find(query,1,true) then
+                table.insert(children,{obj=obj,depth=depth,has=#kids>0})
+            end
+            if expanded[obj] or query~="" then
+                for _,child in kids do walk(child,depth+1) end
+            end
         end
-        table.sort(children,function(a,b) return a.Name<b.Name end)
+        walk(workspace,0)
         local keys={tostring(selected),query,st.uiFontColor,st.uiRowColor}
-        for i=1,math.min(#children,100) do table.insert(keys,children[i].Name..":"..children[i].ClassName) end
+        for _,item in children do table.insert(keys,item.obj.Name..":"..item.obj.ClassName..":"..item.depth..":"..tostring(expanded[item.obj])..":"..tostring(item.has)) end
         local key=table.concat(keys,"|")
-        local same=key==lastKey and #lastObjects==math.min(#children,100)
-        if same then for i,obj in lastObjects do if obj~=children[i] then same=false;break end end end
+        local same=key==lastKey and #lastObjects==#children
+        if same then for i,obj in lastObjects do if obj~=children[i].obj then same=false;break end end end
         if not force and same then return end
         table.clear(lastObjects)
-        for i=1,math.min(#children,100) do lastObjects[i]=children[i] end
         lastKey=key
         for _,row in rows do row:Destroy() end
         table.clear(rows)
-        for i=1,math.min(#children,100) do
-            local obj=children[i]
-            local row=U.new("TextButton",{Text="  "..obj.Name.."  ["..obj.ClassName.."]",TextTruncate=Enum.TextTruncate.AtEnd,TextXAlignment=Enum.TextXAlignment.Left,TextSize=12,TextColor3=U.hex(st.uiFontColor),BackgroundColor3=U.hex(st.uiRowColor),BackgroundTransparency=.2,Size=UDim2.new(1,-5,0,24),LayoutOrder=i,ZIndex=12},list)
-            U.corner(row,5);table.insert(rows,row)
-            row.Activated:Connect(function()
-                if obj.Parent==selected then selected=obj;search.Text="";list.CanvasPosition=Vector2.zero;refresh(true) end
+        for i,item in children do
+            local obj=item.obj
+            lastObjects[i]=obj
+            local row=U.new("Frame",{BackgroundColor3=U.hex(st.uiRowColor),BackgroundTransparency=if obj==selected then .1 else .8,Size=UDim2.new(1,-5,0,24),LayoutOrder=i,ZIndex=12},list)
+            U.corner(row,4);table.insert(rows,row)
+            local indent=math.min(item.depth,12)*13
+            local arrow=U.new("TextButton",{Text=if item.has then (if expanded[obj] then "▼" else "▶") else "·",TextSize=11,TextColor3=U.hex(st.uiMutedColor),BackgroundTransparency=1,Position=UDim2.fromOffset(indent,0),Size=UDim2.fromOffset(18,24),ZIndex=13},row)
+            local icon=if obj:IsA("Folder") then "▰" elseif obj:IsA("Model") then "◇" elseif obj:IsA("BasePart") then "□" else "◦"
+            local name=U.new("TextButton",{Text=icon.."  "..obj.Name,TextTruncate=Enum.TextTruncate.AtEnd,TextXAlignment=Enum.TextXAlignment.Left,TextSize=12,TextColor3=U.hex(st.uiFontColor),BackgroundTransparency=1,Position=UDim2.fromOffset(indent+19,0),Size=UDim2.new(1,-indent-19,1,0),ZIndex=13},row)
+            arrow.Activated:Connect(function()
+                if item.has then expanded[obj]=not expanded[obj];refresh(true) end
+            end)
+            name.Activated:Connect(function()
+                selected=obj;refresh(true)
             end)
         end
     end
