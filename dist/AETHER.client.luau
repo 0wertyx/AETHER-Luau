@@ -6401,6 +6401,7 @@ function E.render(a,tab,ui)
   ui:control("moduleFadeMs");ui:control("moduleBackgroundOpacity")
   for _,k in {"modulePanelColor","moduleRowColor","moduleAccentColor","moduleStrokeColor","moduleTextColor","moduleMutedColor","moduleToggleOnColor","moduleToggleOffColor"} do ui:colorPicker(k) end
   ui:title("LAYOUT & WIDGETS")
+  ui:control("gameExplorer")
   ui:control("layoutMode");ui:control("locked");ui:control("movePanels")
   ui:title("WIDGET TRANSITIONS");ui:control("hudMotion");ui:control("hudSmoothness")
   ui:note("Enabled styles use fade only. Off disables transitions. No idle floating or pulsing.",38)
@@ -7101,6 +7102,7 @@ toggle("Theme","menuGeometry","Animated geometric background",true);choice("Them
 range("Theme","constellationLinks","Maximum connections",100,0,100);range("Theme","constellationDistance","Connection distance (px)",115,25,220);range("Theme","constellationThickness","Line width (tenths of px)",7,3,20);range("Theme","constellationSize","Figure size (px)",5,2,14);range("Theme","constellationAngle","Background gradient angle",45,0,360);color("Theme","constellationBgA","Background start","10091C");color("Theme","constellationBgB","Background end","35204D");color("Theme","constellationLineA","Line start","ECE0FF");color("Theme","constellationLineB","Line end","A66AFF");color("Theme","constellationNodeA","Figure start","FFFFFF");color("Theme","constellationNodeB","Figure end","BE8AFF");toggle("Theme","screenParticles","Menu screen particles",true);choice("Theme","screenParticleStyle","Screen particle style","Mixed",{"Mixed","Stars","Dust","Diamonds"});range("Theme","screenParticleCount","Screen particle count",24,8,48);range("Theme","screenParticleOpacity","Screen particle intensity %",55,0,100);toggle("Theme","robloxRail","Roblox shortcuts rail",true);toggle("Theme","topCapsule","Top AETHER title",true)
 choice("Theme","menuDock","Menu docking side","Left",{"Left","Right","Top","Bottom","Floating"});range("Theme","menuWidth","Menu width (px)",438,280,1600);range("Theme","menuHeight","Menu height (px)",600,260,1200);toggle("Theme","menuDrag","Drag / snap menu",true);toggle("Theme","menuResize","Resize with corner grip",true);range("Theme","menuFloatX","Floating horizontal %",35,0,100);range("Theme","menuFloatY","Floating vertical %",40,0,100)
 toggle("HUD","locked","Lock widget positions",true);toggle("HUD","movePanels","Allow moving top and left panels",false);toggle("HUD","topCustom","Custom top panel position",false);range("HUD","topX","Top panel X %",50,0,100);range("HUD","topY","Top panel Y %",2,0,100);toggle("HUD","railCustom","Custom left panel position",false);range("HUD","railX","Left panel X %",1,0,100);range("HUD","railY","Left panel Y %",46,0,100);toggle("HUD","keybindWidget","Show keybind widget",true);toggle("HUD","keybindCustom","Custom keybind position",false);range("HUD","keybindX","Keybind widget X %",2,0,100);range("HUD","keybindY","Keybind widget Y %",12,0,100);toggle("HUD","quickCustom","Custom quick menu position",false);range("HUD","quickX","Quick menu X %",50,0,100);range("HUD","quickY","Quick menu Y %",12,0,100);toggle("HUD","compact","Compact health panel",true);choice("HUD","layoutMode","HUD layout","Sketch",{"Sketch","Custom"});choice("HUD","hudMotion","Widget transition","Glass",{"Glass","Float","Pulse","Off"});range("HUD","hudMotionStrength","Widget motion intensity %",65,0,100);toggle("HUD","hudShine","Health bar shimmer",true);toggle("HUD","hudReaction","Damage and healing glow",true);range("HUD","hudSmoothness","HUD smoothing (ms)",320,100,900)
+toggle("HUD","gameExplorer","Game Explorer HUD",false)
 choice("HUD","heartPalette","Heart gradient","Adaptive",{"Adaptive","Aurora","Amethyst","Ocean","Sakura","Sunset","Ember","Mint","Ice","Galaxy","Rainbow","Custom"});choice("HUD","heartDirection","Heart gradient direction","Vertical",{"Vertical","Horizontal","Diagonal","Reverse","Orbit"});range("HUD","heartGradientSpeed","Heart gradient speed %",60,0,150);color("HUD","heartA","Heart custom start","BA99FF");color("HUD","heartMid","Heart custom middle","F8CCFF");color("HUD","heartB","Heart custom end","69D9FA");range("HUD","heartGlow","Heart glow %",65,0,100)
 for _,row in {{"hp","Health",3,9},{"clock","Clock",3,96},{"profile","Player card",97,9},{"dock","AETHER menu button",50,96},{"cross","Reticle",50,50}} do
  local k,t=row[1],row[2];toggle("HUD",k,t,true); range("HUD",k.."X",t.." · horizontal %",row[3],0,100);range("HUD",k.."Y",t.." · vertical %",row[4],0,100)
@@ -13022,6 +13024,89 @@ app.store = store
 if app.pendingStoreEdit then app.pendingStoreEdit=nil;store:edit() end
 local ui = Controls.new(app, studioLayer, scope)
 app.ui = ui
+
+-- Read-only HUD explorer for visible scene objects. No source or remote access.
+do
+    local panel=U.new("Frame",{Name="GameExplorer",AnchorPoint=Vector2.new(1,.5),Position=UDim2.new(.98,0,.5,0),Size=UDim2.new(.36,0,.65,0),BackgroundTransparency=.12,Visible=false,ZIndex=10},overlay)
+    U.new("UISizeConstraint",{MinSize=Vector2.new(230,260),MaxSize=Vector2.new(410,560)},panel)
+    U.corner(panel,12)
+    local stroke=U.stroke(panel,Color3.new(1,1,1),.5)
+    local function label(name,pos,size)
+        return U.new("TextLabel",{Name=name,Position=pos,Size=size,BackgroundTransparency=1,Text="",TextSize=12,Font=Enum.Font.Gotham,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=11},panel)
+    end
+    local header=label("Title",UDim2.fromOffset(12,4),UDim2.new(1,-95,0,29))
+    header.Text="GAME EXPLORER / READ ONLY"
+    local close=U.new("TextButton",{Text="×",TextSize=21,Position=UDim2.new(1,-32,0,5),Size=UDim2.fromOffset(26,26),BackgroundTransparency=.7,ZIndex=12},panel)
+    U.corner(close,6)
+    local back=U.new("TextButton",{Text="UP",TextSize=11,Position=UDim2.new(1,-77,0,5),Size=UDim2.fromOffset(40,26),BackgroundTransparency=.7,ZIndex=12},panel)
+    U.corner(back,6)
+    local search=U.new("TextBox",{PlaceholderText="Filter child objects",Text="",ClearTextOnFocus=false,Position=UDim2.fromOffset(10,37),Size=UDim2.new(1,-20,0,27),TextSize=12,BackgroundTransparency=.4,ZIndex=11},panel)
+    U.corner(search,6)
+    local pathLabel=label("Path",UDim2.fromOffset(10,67),UDim2.new(1,-20,0,22))
+    pathLabel.TextTruncate=Enum.TextTruncate.AtEnd
+    local list=U.new("ScrollingFrame",{Position=UDim2.fromOffset(10,92),Size=UDim2.new(1,-20,.48,-50),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.new(),ZIndex=11},panel)
+    U.new("UIListLayout",{Padding=UDim.new(0,3),SortOrder=Enum.SortOrder.LayoutOrder},list)
+    local detail=label("Details",UDim2.new(0,10,.48,48),UDim2.new(1,-20,.52,-58))
+    detail.TextWrapped=true;detail.TextYAlignment=Enum.TextYAlignment.Top
+    local selected=workspace
+    local rows={}
+    local lastKey=""
+    local function allowedObject(obj)
+        return obj:IsA("Folder") or obj:IsA("Model") or obj:IsA("BasePart") or obj:IsA("Camera") or obj:IsA("Attachment") or obj:IsA("Terrain")
+    end
+    local function refresh(force)
+        if not selected:IsDescendantOf(workspace) and selected~=workspace then selected=workspace end
+        local st=app.s
+        panel.BackgroundColor3=U.hex(st.uiPanelColor);stroke.Color=U.hex(st.uiStrokeColor)
+        panel.BackgroundTransparency=1-st.uiGlassOpacity/100
+        for _,obj in {header,pathLabel,detail,search,back,close} do obj.TextColor3=U.hex(st.uiFontColor) end
+        pathLabel.Text=selected:GetFullName()
+        local lines={selected.ClassName.." | "..selected.Name}
+        if selected:IsA("BasePart") then
+            table.insert(lines,"Position: "..tostring(selected.Position))
+            table.insert(lines,"Size: "..tostring(selected.Size))
+            table.insert(lines,"Velocity: "..tostring(selected.AssemblyLinearVelocity))
+        end
+        if selected:IsA("Model") then table.insert(lines,"Position: "..tostring(selected:GetPivot().Position)) end
+        local active=ReplicatedStorage:GetAttribute("ActiveBall")
+        table.insert(lines,"Active ball: "..tostring(active))
+        detail.Text=table.concat(lines,"\n")
+        local children={}
+        local query=search.Text:lower()
+        for _,obj in selected:GetChildren() do
+            if allowedObject(obj) and obj.Name:lower():find(query,1,true) then table.insert(children,obj) end
+        end
+        table.sort(children,function(a,b) return a.Name<b.Name end)
+        local keys={tostring(selected),query,st.uiFontColor,st.uiRowColor}
+        for i=1,math.min(#children,100) do table.insert(keys,children[i].Name..":"..children[i].ClassName) end
+        local key=table.concat(keys,"|")
+        if not force and key==lastKey then return end
+        lastKey=key
+        for _,row in rows do row:Destroy() end
+        table.clear(rows)
+        for i=1,math.min(#children,100) do
+            local obj=children[i]
+            local row=U.new("TextButton",{Text="  "..obj.Name.."  ["..obj.ClassName.."]",TextTruncate=Enum.TextTruncate.AtEnd,TextXAlignment=Enum.TextXAlignment.Left,TextSize=12,TextColor3=U.hex(st.uiFontColor),BackgroundColor3=U.hex(st.uiRowColor),BackgroundTransparency=.2,Size=UDim2.new(1,-5,0,24),LayoutOrder=i,ZIndex=12},list)
+            U.corner(row,5);table.insert(rows,row)
+            row.Activated:Connect(function()
+                if obj.Parent==selected then selected=obj;search.Text="";list.CanvasPosition=Vector2.zero;refresh(true) end
+            end)
+        end
+    end
+    scope:on(close.Activated,function() app:set("gameExplorer",false);panel.Visible=false end)
+    scope:on(back.Activated,function()
+        if selected~=workspace and selected.Parent then selected=selected.Parent;search.Text="";refresh(true) end
+    end)
+    scope:on(search:GetPropertyChangedSignal("Text"),function() if panel.Visible then refresh(true) end end)
+    local elapsed=0
+    scope:on(RunService.Heartbeat,function(dt)
+        local show=app.s.gameExplorer and not app.stopping
+        if show~=panel.Visible then panel.Visible=show;if show then refresh(true) end end
+        if not show then return end
+        elapsed+=dt
+        if elapsed>=.5 then elapsed=0;refresh(false) end
+    end)
+end
 -- The high-order cursor is decorative. HUD and Studio buttons retain their
 -- normal input behavior, including when the main menu is closed.
 do
