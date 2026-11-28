@@ -231,7 +231,7 @@ function V:step(s,hum,menu,dt,t,aimStep)
   local lock=requested and thirdPerson and not hum.Sit and not menu and not Gui.MenuIsOpen and Input:GetFocusedTextBox()==nil and Input.MouseEnabled and Input:GetLastInputType()~=Enum.UserInputType.Touch
   -- Yield to a game-owned centered mouse rather than acquiring another lock.
   if lock and not self.mouse and (Input.MouseBehavior~=Enum.MouseBehavior.Default or draggingCamera() or self.releaseFrames~=nil) then lock=false end
-  local first=s.cameraMode=="First Person" and not menu;local mode=if first then Enum.CameraMode.LockFirstPerson else Enum.CameraMode.Classic;if self.player.CameraMode~=mode then self.player.CameraMode=mode end
+  if self.player.CameraMode~=Enum.CameraMode.Classic then self.player.CameraMode=Enum.CameraMode.Classic end
   local k=if s.reduce or s.follow==0 then 1 else 1-math.exp(-dt*1000/s.follow)
   if s.camera then camera.FieldOfView+=(s.fov-camera.FieldOfView)*k end
   local dest=self.offset+Vector3.new(if lock then s.shoulder/10 else 0,if s.camera then s.cameraHeight/10 else 0,0)
