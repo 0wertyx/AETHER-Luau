@@ -303,7 +303,11 @@ function S.menuKey(s) return if s.lockKey=="F8" then "F7" else "F8" end
 function S.defaults() local r={};for k,d in S.defs do r[k]=S.copy(d.default) end;r.dock=false;r.topCapsule=true;return r end
 function S.settings(v,group)
  assert(type(v)=="table","Expected settings");local r=if group then {} else S.defaults();local count=0
- for k,x in v do local d=S.defs[k];assert(d and (not group or d.group==group),"Unexpected setting");r[k]=S.value(k,x);count+=1 end
+ for k,x in v do
+  -- Retired options from version 1 banks must not invalidate the remaining settings.
+  if k=="vbStyle" or k=="vbCurve" then continue end
+  local d=S.defs[k];assert(d and (not group or d.group==group),"Unexpected setting");r[k]=S.value(k,x);count+=1
+ end
  if group then assert(count>0,"Empty asset") end;return r
 end
 function S.capture(settings,group) local r={};for k,d in S.defs do if d.group==group then r[k]=S.copy(settings[k]) end end;return r end
