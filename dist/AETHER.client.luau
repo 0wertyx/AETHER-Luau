@@ -13096,7 +13096,7 @@ do
             table.insert(lines,"Velocity: "..tostring(selected.AssemblyLinearVelocity))
         end
         if selected:IsA("Model") then table.insert(lines,"Position: "..tostring(selected:GetPivot().Position)) end
-        local active=ReplicatedStorage:GetAttribute("ActiveBall")
+        local active=game:GetService("ReplicatedStorage"):GetAttribute("ActiveBall")
         table.insert(lines,"Active ball: "..tostring(active))
         table.insert(lines,"Children: "..tostring(#selected:GetChildren()))
         detail.Text=table.concat(lines,"\n")
