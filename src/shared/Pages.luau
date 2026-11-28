@@ -982,6 +982,7 @@ function E.render(a,tab,ui)
   ui:control("moduleFadeMs");ui:control("moduleBackgroundOpacity")
   for _,k in {"modulePanelColor","moduleRowColor","moduleAccentColor","moduleStrokeColor","moduleTextColor","moduleMutedColor","moduleToggleOnColor","moduleToggleOffColor"} do ui:colorPicker(k) end
   ui:title("LAYOUT & WIDGETS")
+  ui:control("gameExplorer")
   ui:control("layoutMode");ui:control("locked");ui:control("movePanels")
   ui:title("WIDGET TRANSITIONS");ui:control("hudMotion");ui:control("hudSmoothness")
   ui:note("Enabled styles use fade only. Off disables transitions. No idle floating or pulsing.",38)
