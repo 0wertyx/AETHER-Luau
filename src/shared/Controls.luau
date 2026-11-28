@@ -561,6 +561,33 @@ function UI.new(app,gui,scope)
  end
  self.rootDrag=integratedHeader("AETHER / MOVE")
  self.pageDrag=integratedHeader("MOVE PANEL")
+ -- Standalone workspace node: interface only, no gameplay hooks.
+ self.explorerPanel=U.frame(self.workspace,"PhysicsExplorerNode",UDim2.fromOffset(-480,-160),UDim2.fromOffset(224,112),Color3.fromRGB(39,32,54),.15)
+ self.explorerPanel.ZIndex=4;self.explorerPanel.Active=true;U.corner(self.explorerPanel,16)
+ U.stroke(self.explorerPanel,Color3.fromRGB(184,155,236),1)
+ self.explorerDrag=U.label(self.explorerPanel,"PHYSICS EXPLORER / MOVE",11,UDim2.fromOffset(8,4),UDim2.new(1,-16,0,26))
+ self.explorerDrag.ZIndex=6;self.explorerDrag.Active=true;self.explorerDrag.TextXAlignment=Enum.TextXAlignment.Center
+ local explorerToggle=U.button(self.explorerPanel,"SETTINGS")
+ explorerToggle.Position=UDim2.fromOffset(8,36);explorerToggle.Size=UDim2.new(1,-16,0,28);explorerToggle.ZIndex=5
+ local explorerInfo=U.label(self.explorerPanel,"Inspector not connected",11,UDim2.fromOffset(8,70),UDim2.new(1,-16,0,32))
+ explorerInfo.ZIndex=5;explorerInfo.Visible=false
+ self.explorerPanel.Size=UDim2.fromOffset(224,72)
+ scope:on(explorerToggle.Activated,function()
+  explorerInfo.Visible=not explorerInfo.Visible
+  self.explorerPanel.Size=UDim2.fromOffset(224,if explorerInfo.Visible then 112 else 72)
+ end)
+ scope:on(self.explorerDrag.InputBegan,function(input)
+  if not self.opened or self.afkScreen.Visible or self.drag or self.workspacePan then return end
+  if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
+  local origin=Vector2.new(input.Position.X,input.Position.Y)
+  local old=Vector2.new(self.explorerPanel.Position.X.Offset,self.explorerPanel.Position.Y.Offset)
+  local zoom=math.max(.01,self.workspaceScale.Scale)
+  self:begin(input,function(pos)
+   local next=old+(pos-origin)/zoom
+   self.explorerPanel.Position=UDim2.fromOffset(next.X,next.Y)
+  end)
+ end)
+
  -- Independent glass node with its own saved position in both workspaces.
  self.appearancePanel=U.frame(self.branchStack,"AppearanceSamples",nil,UDim2.new(1,0,0,0),nil,1)
  self.appearancePanel.ZIndex=4;self.appearancePanel.Visible=false
