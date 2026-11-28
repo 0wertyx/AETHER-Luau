@@ -68,11 +68,11 @@ for _,key in {"vbBallRadius","vbBallTouchInfo","vbShotArc","vbTrajectory","vbDir
  toggle("VolleyballState",key,key,false)
 end
 toggle("VolleyballState","vbBallGuide","Ball guide",true)
-toggle("VolleyballState","vbGroundPredict","Ground prediction",true)
+toggle("VolleyballState","vbGroundPredict","Ground prediction",false)
 toggle("VolleyballState","vbAutoJump","Auto jump",true)
 toggle("VolleyballState","vbEdgeGuard","Edge guard",true)
 choice("VolleyballState","vbShotMode","Shot mode","Auto",{"Auto","Spike","Set","Serve"})
-choice("VolleyballState","vbCameraAim","Camera aim","Free zone",{"Free zone","Court center","Off"})
+choice("VolleyballState","vbCameraAim","Camera aim","Off",{"Free zone","Court center","Off"})
 choice("VolleyballState","vbTiltAim","Tilt aim","Correct edges",{"Correct edges","Aim center","Aim left","Aim right","Free zone"})
 -- Decimal module options use the same JSON/profile pipeline as toggles.
 def("VolleyballState","vbBallFactor","Ball size factor","real",2,1,math.huge)
