@@ -6570,11 +6570,11 @@ function E.render(a,tab,ui)
    end)
    ui:title("PING COMPENSATION")
    ui:control("vbPingMode");ui:control("vbPingMs")
-   ui:note("Visual timing estimate only. Auto uses a conservative fraction of measured one-way delay. Manual sets the visual offset directly.",64)
+   ui:note("Visual estimate only. Adaptive smooths delay changes and accounts for jitter. Manual sets the visual offset directly.",64)
    local pingStatus=ui:note("",44)
    local function refreshPing()
-    local delay,rtt=vb:visualDelay()
-    pingStatus.Text=string.format("Ping ~%.0f ms | Visual offset %.0f ms",rtt,delay*1000)
+    local delay,rtt,jitter=vb:visualDelay()
+    pingStatus.Text=if rtt<0 then "Ping unavailable | Visual offset "..string.format("%.0f ms",delay*1000) else string.format("Ping ~%.0f ms | Jitter %.0f ms | Offset %.0f ms",rtt,jitter,delay*1000)
    end
    ui:watch(refreshPing)
    local pingElapsed=0
@@ -7145,7 +7145,7 @@ toggle("VolleyballState","vbGroundPredict","Ground prediction",false)
 toggle("VolleyballState","vbAutoJump","Auto jump",true)
 toggle("VolleyballState","vbEdgeGuard","Edge guard",true)
 choice("VolleyballState","vbShotMode","Shot mode","Auto",{"Auto","Spike","Set","Serve"})
-choice("VolleyballState","vbPingMode","Ping compensation","Auto",{"Off","Auto","Manual"})
+choice("VolleyballState","vbPingMode","Ping compensation","Auto",{"Off","Auto","Adaptive","Manual"})
 range("VolleyballState","vbPingMs","Manual visual delay (ms)",80,0,500)
 choice("VolleyballState","vbCameraAim","Camera aim","Off",{"Free zone","Court center","Off"})
 choice("VolleyballState","vbTiltAim","Tilt aim","Correct edges",{"Correct edges","Aim center","Aim left","Aim right","Free zone"})
@@ -10340,19 +10340,32 @@ do
     local vb={originals={},multiplierRequests={},corners={},auto=false,status="Waiting for compatible game",target=nil,tiltAim="Correct edges",tiltScale=1,tiltWrites=0,tiltOverrides=0}
     app.volleyball=vb
     local pingSmooth,pingAt=0,-100
+    local pingJitter,pingTry,lastPing=0,-100,nil
+    local adaptiveOffset,adaptiveAt,previousMode=0,os.clock(),nil
     function vb:visualDelay()
         local now=os.clock()
-        if now-pingAt>=.25 then
+        if now-pingTry>=.25 then
+            pingTry=now
             local ok,value=pcall(function() return player:GetNetworkPing() end)
             if ok and type(value)=="number" and value==value and value>=0 and value<=5 then
-                pingSmooth=if pingAt<0 then value else pingSmooth*.75+value*.25
+                pingSmooth=if lastPing==nil then value else pingSmooth*.75+value*.25
+                if lastPing~=nil then pingJitter=pingJitter*.8+math.abs(value-lastPing)*.2 end
+                lastPing=value
                 pingAt=now
             end
         end
         local mode=app.s.vbPingMode
+        local fresh=now-pingAt<2
+        local dt=math.clamp(now-adaptiveAt,0,.5)
+        adaptiveAt=now
+        local target=if fresh then math.clamp(pingSmooth*.5+math.min(pingJitter*.25,.025),0,.125) else 0
+        if previousMode~=mode then adaptiveOffset=if mode=="Adaptive" then target else 0 end
+        previousMode=mode
+        adaptiveOffset+=(target-adaptiveOffset)*(1-math.exp(-dt*5))
         local delay=if mode=="Manual" then math.clamp(app.s.vbPingMs/1000,0,.5)
-            elseif mode=="Auto" and now-pingAt<2 then math.clamp(pingSmooth*.5,0,.125) else 0
-        return delay,pingSmooth*2000
+            elseif mode=="Adaptive" then adaptiveOffset
+            elseif mode=="Auto" and fresh then math.clamp(pingSmooth*.5,0,.125) else 0
+        return delay,if fresh then pingSmooth*2000 else -1,pingJitter*2000
     end
     vb.edgeGuard=true;vb.guardStatus="Anti-out | waiting"
     local attrs={
