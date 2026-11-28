@@ -7385,9 +7385,11 @@ function S.settings(v,group)
  for k,x in v do
   -- Retired options from version 1 banks must not invalidate the remaining settings.
   if k=="vbStyle" or k=="vbCurve" then continue end
-  local d=S.defs[k];assert(d and (not group or d.group==group),"Unexpected setting");r[k]=S.value(k,x);count+=1
+  local d=S.defs[k];if not d or (group and d.group~=group) then continue end
+  local ok,value=pcall(S.value,k,x)
+  if ok then r[k]=value;count+=1 end
  end
- if group then assert(count>0,"Empty asset") end;return r
+ return r
 end
 function S.capture(settings,group) local r={};for k,d in S.defs do if d.group==group then r[k]=S.copy(settings[k]) end end;return r end
 function S.asset(v) assert(type(v)=="table" and v.version==1 and name(v.name) and table.find(S.kinds,v.kind),"Invalid AETHER asset");return {version=1,name=v.name,kind=v.kind,data=S.settings(v.data,v.kind)} end
