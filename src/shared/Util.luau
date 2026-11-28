@@ -599,6 +599,33 @@ function U.airRedirect(horizontal,input,cap,strength,dt)
  local nextSpeed=speed+(targetSpeed-speed)*(1-math.exp(-24*response*dt))
  return Vector3.new(math.cos(angle)*nextSpeed,0,math.sin(angle)*nextSpeed)
 end
+-- Swept sphere on an analytic curve. Subdivide high-curvature chords to
+-- bound the geometric approximation independently of visual segment density.
+function U.ballSweep(origin,v,a,j,t0,t1,radius,params)
+ local function at(t)
+  return origin+v*t+a*(.5*t*t)+j*(t*t*t/6)
+ end
+ local dt=t1-t0
+ local curvature=math.max((a+j*t0).Magnitude,(a+j*t1).Magnitude)
+ local tolerance=math.clamp(radius*.025,.008,.035)
+ local steps=math.clamp(math.ceil(math.sqrt(curvature*dt*dt/(8*tolerance))),1,8)
+ local prev=at(t0)
+ for i=1,steps do
+  local time=t0+dt*i/steps
+  local nextPos=at(time)
+  local delta=nextPos-prev
+  local length=delta.Magnitude
+  if length>.0001 then
+   local hit=workspace:Spherecast(prev,radius,delta,params)
+   if hit then
+    local fraction=math.clamp(hit.Distance/length,0,1)
+    return prev+delta*fraction,hit,time-dt/steps*(1-fraction)
+   end
+  end
+  prev=nextPos
+ end
+ return prev,nil,t1
+end
 function U.keys(t) local a={};for k in t do table.insert(a,k) end;table.sort(a);return a end
 function U.count(t) local n=0;for _ in t do n+=1 end;return n end
 return U

@@ -8750,6 +8750,33 @@ function U.airRedirect(horizontal,input,cap,strength,dt)
  local nextSpeed=speed+(targetSpeed-speed)*(1-math.exp(-24*response*dt))
  return Vector3.new(math.cos(angle)*nextSpeed,0,math.sin(angle)*nextSpeed)
 end
+-- Swept sphere on an analytic curve. Subdivide high-curvature chords to
+-- bound the geometric approximation independently of visual segment density.
+function U.ballSweep(origin,v,a,j,t0,t1,radius,params)
+ local function at(t)
+  return origin+v*t+a*(.5*t*t)+j*(t*t*t/6)
+ end
+ local dt=t1-t0
+ local curvature=math.max((a+j*t0).Magnitude,(a+j*t1).Magnitude)
+ local tolerance=math.clamp(radius*.025,.008,.035)
+ local steps=math.clamp(math.ceil(math.sqrt(curvature*dt*dt/(8*tolerance))),1,8)
+ local prev=at(t0)
+ for i=1,steps do
+  local time=t0+dt*i/steps
+  local nextPos=at(time)
+  local delta=nextPos-prev
+  local length=delta.Magnitude
+  if length>.0001 then
+   local hit=workspace:Spherecast(prev,radius,delta,params)
+   if hit then
+    local fraction=math.clamp(hit.Distance/length,0,1)
+    return prev+delta*fraction,hit,time-dt/steps*(1-fraction)
+   end
+  end
+  prev=nextPos
+ end
+ return prev,nil,t1
+end
 function U.keys(t) local a={};for k in t do table.insert(a,k) end;table.sort(a);return a end
 function U.count(t) local n=0;for _ in t do n+=1 end;return n end
 return U
@@ -11835,7 +11862,7 @@ do
             return
         end
         local active=rs:GetAttribute("ActiveBall")
-        if active~=lastActive then lastActive=active;searchAt=0 end
+        if active~=lastActive then clear();lastActive=active;searchAt=0 end
         if entry and (not entry.part:IsDescendantOf(workspace) or not entry.part.CanQuery or not folder or not folder.Parent or entry.copy.Parent~=folder or entry.guide.Parent~=folder or entry.outline.Parent~=folder) then
             clear();searchAt=0
         end
@@ -11850,7 +11877,15 @@ do
         if not entry then exp.status="Waiting for active ball | auto reconnect";return end
         local e=entry
         local p=e.part
-        if p.Size~=e.applied then e.base=p.Size end
+        -- A game-side change to just one axis must not rebase the other,
+        -- already-expanded axes. Compare against the actual engine readback.
+        local observed=p.Size
+        if observed~=e.applied then
+            e.base=Vector3.new(
+                if math.abs(observed.X-e.applied.X)>.0001 then observed.X else e.base.X,
+                if math.abs(observed.Y-e.applied.Y)>.0001 then observed.Y else e.base.Y,
+                if math.abs(observed.Z-e.applied.Z)>.0001 then observed.Z else e.base.Z)
+        end
         if p.LocalTransparencyModifier~=1 then e.ltm=p.LocalTransparencyModifier end
         phase="Compute requested dimensions"
         local target=e.base*exp.factor
@@ -11867,7 +11902,7 @@ do
         local round=math.abs(size.X-size.Y)<.01 and math.abs(size.X-size.Z)<.01
         phase="Update guide"
         local ok,err=pcall(function()
-            e.guide.Radius=size.X*.5
+            e.guide.Radius=math.min(size.X,size.Y,size.Z)*.5
             e.guide.Visible=exp.show and round
             e.outline.Visible=exp.show
         end)
@@ -11878,7 +11913,7 @@ do
         end
         local mismatch=(size-target).Magnitude>math.max(.01,target.Magnitude*1e-5)
         if mismatch then detail=detail.." | Size limited by engine" end
-        exp.status=string.format("Requested %.5gx | actual %.5gx | bounds %.2f x %.2f x %.2f studs",exp.factor,size.X/e.base.X,size.X,size.Y,size.Z)..detail
+        exp.status=string.format("Requested %.5gx | actual XYZ %.4g / %.4g / %.4gx | bounds %.3f x %.3f x %.3f studs",exp.factor,size.X/e.base.X,size.Y/e.base.Y,size.Z/e.base.Z,size.X,size.Y,size.Z)..detail
     end
     scope:on(RunService.RenderStepped,function()
         local ok,err=pcall(tick)
@@ -12122,6 +12157,9 @@ do
     vb.trajectory=esp
     local folder,marker,billboard,caption
     local controller=nil
+    local controllerAt=0
+    local physicsRadius=nil
+    local physicsGravity=nil
     local function resolveController()
         local packages=rs:FindFirstChild("Packages")
         local knit=packages and packages:FindFirstChild("Knit")
@@ -12134,8 +12172,9 @@ do
         if not controller or not obj then return nil end
         local id=obj:GetAttribute("ServerId")
         if id==nil then return nil end
-        local state=controller.ActiveBalls[id]
+        local state=controller.ActiveBalls[id] or controller.ActiveBalls[tostring(id)] or controller.ActiveBalls[tonumber(id) or id]
         if type(state)=="table" and state.Ball==obj then return state end
+        for _,candidate in pairs(controller.ActiveBalls) do if type(candidate)=="table" and candidate.Ball==obj then return candidate end end
         return nil
     end
     local function hide()
@@ -12177,6 +12216,7 @@ do
             if obj:IsA("BasePart") and obj.Parent and obj.Parent:IsA("Model") and obj.Parent.Name:match("^CLIENT_BALL_") then obj=obj.Parent end
             if not seen[obj] and ballPosition(obj) then seen[obj]=true;table.insert(candidates,obj) end
         end
+        if controller then for _,state in pairs(controller.ActiveBalls) do if type(state)=="table" and typeof(state.Ball)=="Instance" then add(state.Ball) end end end
         for _,obj in tags:GetTagged("Ball") do add(obj) end
         for _,obj in workspace:GetDescendants() do
             if obj.Name:match("^CLIENT_BALL_") then add(obj) end
@@ -12187,6 +12227,7 @@ do
                 local serverId=obj:GetAttribute("ServerId")
                 if obj.Name=="CLIENT_BALL_"..tostring(active) or (serverId~=nil and tostring(serverId)==tostring(active)) then return obj end
             end
+            return nil -- Never substitute a stale ball for an explicit active ID.
         end
         local client={}
         for _,obj in candidates do if obj.Name:match("^CLIENT_BALL_") then table.insert(client,obj) end end
@@ -12196,22 +12237,26 @@ do
         return nil
     end
     local function courtColor(p,radius)
+        local found=false
         for _,line in tags:GetTagged("Courtlines") do
             if line:IsA("BasePart") and line:IsDescendantOf(workspace) then
-                local d=p-line.Position
-                local dx=math.max(0,math.abs(d.X)-line.Size.X*.5)
-                local dz=math.max(0,math.abs(d.Z)-line.Size.Z*.5)
-                local inside=math.abs(d.Y)<=10 and dx*dx+dz*dz<=radius*radius
-                return if inside then Color3.fromRGB(75,255,145) else Color3.fromRGB(255,80,100),if inside then "IN" else "OUT"
+                local d=line.CFrame:PointToObjectSpace(p)
+                if math.abs(d.Y)<=10+line.Size.Y*.5 then
+                    found=true
+                    local dx=math.max(0,math.abs(d.X)-line.Size.X*.5)
+                    local dz=math.max(0,math.abs(d.Z)-line.Size.Z*.5)
+                    if dx*dx+dz*dz<=radius*radius then return Color3.fromRGB(75,255,145),"IN" end
+                end
             end
         end
+        if found then return Color3.fromRGB(255,80,100),"OUT" end
         return Color3.fromRGB(255,205,100),"UNKNOWN COURT"
     end
     local function radiusOf(obj)
         if obj.Name:match("^CLIENT_BALL_") or liveState(obj) then
             local m=rs:GetAttribute("Modifier_BallSizeMultiplier")
             if type(m)~="number" or m~=m or m<=0 then m=1 end
-            return math.clamp(1.2835*m,.05,50)
+            return math.clamp((physicsRadius or 1.2835)*m,.05,50)
         end
         local p=if obj:IsA("Model") then obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart",true) else obj
         if p and p:IsA("BasePart") then return math.clamp(math.min(p.Size.X,p.Size.Y,p.Size.Z)*.5,.25,12) end
@@ -12279,15 +12324,9 @@ do
         local points={pos};local hit,hitTime
         for i=1,72 do
             local t=i*.05
-            local nextPos=pos+vel*t+acc*(.5*t*t)+jerk*(t*t*t/6)
-            local prev=points[#points];local step=nextPos-prev
-            if step.Magnitude<.001 then break end
-            local result=workspace:Spherecast(prev,radius,step,params)
-            if result then
-                table.insert(points,prev+step.Unit*result.Distance)
-                hit=result;hitTime=t-.05+.05*math.clamp(result.Distance/step.Magnitude,0,1);break
-            end
+            local nextPos,result,contactTime=U.ballSweep(pos,vel,acc,jerk,t-.05,t,radius,params)
             table.insert(points,nextPos)
+            if result then hit=result;hitTime=contactTime;break end
         end
         if #points<2 then hide();esp.status="Waiting for movement";return end
         local color,label=Color3.fromRGB(175,155,255),"NO CONTACT"
@@ -12313,7 +12352,7 @@ do
     end
     function vb:toggleTrajectory()
         esp.enabled=not esp.enabled;clearSamples();hide()
-        controller=if esp.enabled then resolveController() else nil
+        controller=nil;controllerAt=0;esp.lastActive=nil
         esp.status=if esp.enabled then "Waiting for moving ball" else "Off"
     end
     local function tick(dt)
@@ -12327,6 +12366,16 @@ do
         local map=workspace:FindFirstChild("Map")
         if map~=esp.map then esp.map=map;clearSamples();hide();filterAt=0 end
         if not map then esp.status="Waiting for map";return end
+        local active=rs:GetAttribute("ActiveBall")
+        if esp.lastActive~=active then esp.lastActive=active;clearSamples();hide() end
+        if not controller and esp.clock>=controllerAt then
+            controllerAt=esp.clock+2;controller=resolveController()
+            local ok,cfg=pcall(function() return require(rs.Configuration.Game).Physics end)
+            if ok and type(cfg)=="table" then
+                if type(cfg.Radius)=="number" and cfg.Radius>0 and cfg.Radius<50 then physicsRadius=cfg.Radius end
+                if type(cfg.Gravity)=="number" and cfg.Gravity>0 and cfg.Gravity<1000 then physicsGravity=cfg.Gravity end
+            end
+        end
         if not ballPosition(esp.ball) and esp.clock>=esp.searchAt then
             clearSamples();esp.ball=findBall();esp.searchAt=esp.clock+.6
         end
@@ -12353,7 +12402,7 @@ do
         if direct then
             vel=direct
             local g=rs:GetAttribute("Modifier_BallGravity")
-            if type(g)~="number" or g~=g or math.abs(g)>1000 then g=17 end
+            if type(g)~="number" or g~=g or math.abs(g)>1000 then g=physicsGravity or 17 end
             local gm=state.GravityMultiplier
             if type(gm)~="number" or gm~=gm or math.abs(gm)>100 then gm=1 end
             local gravity=Vector3.new(0,-g*gm,0)
@@ -12393,7 +12442,7 @@ do
     local segments={}
     local nextAt,retryAt,filterAt,errorUntil=0,0,0,0
     local lastDraw,visibleCount=nil,0
-    local SEGMENTS,STEP,INTERVAL=32,.125,1/30
+    local SEGMENTS,STEP,INTERVAL=64,.0625,1/30
     local map
     local params=RaycastParams.new()
     params.FilterType=Enum.RaycastFilterType.Include
@@ -12531,7 +12580,7 @@ do
         if elapsed>.4 or not st then pending=nil;return end
         local v=st.Velocity
         if elapsed<.035 or not validVec(v,1800) or v.Magnitude<2 then return end
-        if validVec(p.before,1800) and (v-p.before).Magnitude<2 and elapsed<.16 then return end
+        if validVec(p.before,1800) and (v-p.before).Magnitude<2 then return end
         local scale=rs:GetAttribute("GlobalTimeScale")
         if type(scale)~="number" or scale~=scale or scale<=0 or scale>20 then scale=1 end
         local gm=st.GravityMultiplier
@@ -12553,20 +12602,40 @@ do
         local acceleration=extra-Vector3.yAxis*(g*gm)
         local launch=v-acceleration*simTime+jerk*(.5*simTime*simTime)
         if not validVec(launch,1800) or flat(launch):Dot(p.forward)<1 then pending=nil;return end
-        local previous=learned[p.key]
         local record={velocity=localVec(launch,p.forward,p.right)/p.power,
             acceleration=localVec(extra,p.forward,p.right),jerk=localVec(jerk,p.forward,p.right),
-            gm=gm,tilt=p.tilt*p.tiltPower,back=p.back*p.tiltPower,count=1}
-        if previous then
-            record.count=previous.count+1
-            record.velocity=previous.velocity:Lerp(record.velocity,.6)
-            record.acceleration=previous.acceleration:Lerp(record.acceleration,.6)
-            record.jerk=previous.jerk:Lerp(record.jerk,.6)
-            record.gm=previous.gm*.4+record.gm*.6
-            record.tilt=previous.tilt*.4+record.tilt*.6
-            record.back=previous.back*.4+record.back*.6
+            gm=gm,tilt=p.tilt*p.tiltPower,back=p.back*p.tiltPower}
+        local history=learned[p.key]
+        if not history then history={};learned[p.key]=history end
+        table.insert(history,record)
+        if #history>12 then table.remove(history,1) end
+        pending=nil;lastDraw=nil
+    end
+    -- Retain recent observations rather than replacing a calibration with the
+    -- last hit. Prefer nearby tilt values within the same style/action bin.
+    local function calibration(key,t,back)
+        local history=learned[key]
+        if not history or #history==0 then return nil end
+        local weightSum=0
+        local m={velocity=Vector3.zero,acceleration=Vector3.zero,jerk=Vector3.zero,gm=0,tilt=0,back=0,count=#history}
+        local candidates={}
+        for _,r in history do
+            local distance=(r.tilt-t)^2+(r.back-back)^2
+            table.insert(candidates,{r=r,w=1/(.06+distance)})
         end
-        learned[p.key]=record;pending=nil;lastDraw=nil
+        table.sort(candidates,function(a,b) return a.w>b.w end)
+        local anchor=candidates[1].r.velocity
+        for _,item in candidates do
+            local r=item.r
+            local residual=(r.velocity-anchor).Magnitude/math.max(10,anchor.Magnitude)
+            local w=item.w/(1+4*residual*residual)
+            weightSum+=w
+            m.velocity+=r.velocity*w;m.acceleration+=r.acceleration*w;m.jerk+=r.jerk*w
+            m.gm+=r.gm*w;m.tilt+=r.tilt*w;m.back+=r.back*w
+        end
+        m.velocity/=weightSum;m.acceleration/=weightSum;m.jerk/=weightSum
+        m.gm/=weightSum;m.tilt/=weightSum;m.back/=weightSum
+        return m
     end
     local function makePart(name)
         local p=Instance.new("Part");p.Name=name;p.Anchored=true;p.CanCollide=false;p.CanTouch=false;p.CanQuery=false;p.CastShadow=false
@@ -12612,7 +12681,7 @@ do
         local right=rv.Unit
         local t,back=tilt(root)
         local tp=stat("TiltPower")
-        local m=learned[keyFor(style,k,t,back)]
+        local m=calibration(keyFor(style,k,t,back),t*tp,back*tp)
         local strength=power(k)
         local v,source
         local extra,jerk,gm=Vector3.zero,Vector3.zero,1
@@ -12654,8 +12723,10 @@ do
         local g=gravity()
         local acceleration=extra-Vector3.yAxis*(g*gm)
         local radius=config.Physics.Radius
-        if type(radius)~="number" then radius=1.2835 end
-        radius*=math.clamp(tonumber(rs:GetAttribute("Modifier_BallSizeMultiplier")) or 1,.05,10)
+        if type(radius)~="number" or radius~=radius or radius<=0 then radius=1.2835 end
+        local multiplier=tonumber(rs:GetAttribute("Modifier_BallSizeMultiplier")) or 1
+        if multiplier~=multiplier or multiplier<=0 then multiplier=1 end
+        radius=math.clamp(radius*multiplier,.05,50)
         visual()
         local ld=lastDraw
         if ld and now-ld.at<.15 and (ld.origin-origin).Magnitude<.025 and (ld.v-v).Magnitude<.06 and (ld.a-acceleration).Magnitude<.1 and (ld.j-jerk).Magnitude<.1 and ld.radius==radius then return end
@@ -12664,11 +12735,8 @@ do
         local count=0
         for i=1,SEGMENTS do
             local time=i*STEP
-            local target=origin+v*time+acceleration*(.5*time*time)+jerk*(time*time*time/6)
-            local delta=target-prev
-            if delta.Magnitude<.001 then break end
-            hit=workspace:Spherecast(prev,radius,delta,params)
-            if hit then target=prev+delta.Unit*hit.Distance end
+            local target,result=U.ballSweep(origin,v,acceleration,jerk,time-STEP,time,radius,params)
+            hit=result
             if (target-prev).Magnitude>.001 then
                 local part=segments[i]
                 part.Size=Vector3.new(.15,.15,(target-prev).Magnitude);part.CFrame=CFrame.lookAt((prev+target)*.5,target)
