@@ -13093,6 +13093,42 @@ do
     local function allowedObject(obj)
         return obj:IsA("Folder") or obj:IsA("Model") or obj:IsA("BasePart") or obj:IsA("Camera") or obj:IsA("Attachment") or obj:IsA("Terrain")
     end
+    -- Small native GUI pictograms: no font glyph or external asset dependency.
+    local function sceneIcon(parent,obj,x)
+        local holder=U.new("Frame",{Name="ClassIcon",Position=UDim2.fromOffset(x,4),Size=UDim2.fromOffset(16,16),BackgroundTransparency=1,ZIndex=13},parent)
+        local function rect(x,y,w,h,color,angle,round)
+            local f=U.new("Frame",{Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),BackgroundColor3=color,BorderSizePixel=0,Rotation=angle or 0,ZIndex=14},holder)
+            if round then U.corner(f,round) end
+            return f
+        end
+        local gold=Color3.fromRGB(239,187,83)
+        local blue=Color3.fromRGB(104,177,246)
+        local green=Color3.fromRGB(111,204,143)
+        local gray=Color3.fromRGB(174,186,201)
+        if obj==workspace then
+            local globe=rect(1,1,14,14,blue,0,7)
+            U.stroke(globe,Color3.fromRGB(214,239,255),.15,1)
+            rect(4,4,6,4,green,25,2);rect(8,9,4,4,green,-20,1)
+        elseif obj:IsA("Folder") then
+            rect(1,3,7,5,gold,0,1);rect(1,6,14,9,Color3.fromRGB(255,207,104),0,2)
+        elseif obj:IsA("Model") then
+            rect(1,1,6,6,blue,0,1);rect(9,1,6,6,green,0,1)
+            rect(1,9,6,6,gold,0,1);rect(9,9,6,6,gray,0,1)
+        elseif obj:IsA("Terrain") then
+            rect(1,8,14,7,green,0,1);rect(2,5,6,6,green,45,1);rect(8,3,6,9,Color3.fromRGB(86,163,113),30,1)
+        elseif obj:IsA("Camera") then
+            rect(1,4,11,9,blue,0,2);rect(11,5,4,7,gray,0,1);rect(3,6,5,5,Color3.fromRGB(38,67,100),0,3)
+        elseif obj:IsA("Attachment") then
+            rect(7,1,2,14,green);rect(1,7,14,2,blue);rect(5,5,6,6,gold,0,3)
+        elseif obj:IsA("BasePart") then
+            local face=rect(3,5,10,10,if obj:IsA("MeshPart") then blue else gray,0,1)
+            U.stroke(face,Color3.fromRGB(218,230,245),.2,1)
+            rect(4,2,9,4,Color3.fromRGB(199,222,246),-17,1)
+            rect(12,4,3,10,Color3.fromRGB(87,119,153),0,1)
+        else
+            rect(3,3,10,10,gray,0,3)
+        end
+    end
     local function refresh(force)
         if not selected:IsDescendantOf(workspace) and selected~=workspace then selected=workspace end
         local st=app.s
@@ -13147,8 +13183,8 @@ do
             U.corner(row,4);table.insert(rows,row)
             local indent=math.min(item.depth,12)*13
             local arrow=U.new("TextButton",{Text=if item.has then (if expanded[obj] then "▼" else "▶") else "·",TextSize=11,TextColor3=U.hex(st.uiMutedColor),BackgroundTransparency=1,Position=UDim2.fromOffset(indent,0),Size=UDim2.fromOffset(18,24),ZIndex=13},row)
-            local icon=if obj:IsA("Folder") then "▰" elseif obj:IsA("Model") then "◇" elseif obj:IsA("BasePart") then "□" else "◦"
-            local name=U.new("TextButton",{Text=icon.."  "..obj.Name,TextTruncate=Enum.TextTruncate.AtEnd,TextXAlignment=Enum.TextXAlignment.Left,TextSize=12,TextColor3=U.hex(st.uiFontColor),BackgroundTransparency=1,Position=UDim2.fromOffset(indent+19,0),Size=UDim2.new(1,-indent-19,1,0),ZIndex=13},row)
+            sceneIcon(row,obj,indent+20)
+            local name=U.new("TextButton",{Text=obj.Name,TextTruncate=Enum.TextTruncate.AtEnd,TextXAlignment=Enum.TextXAlignment.Left,TextSize=12,TextColor3=U.hex(st.uiFontColor),BackgroundTransparency=1,Position=UDim2.fromOffset(indent+41,0),Size=UDim2.new(1,-indent-41,1,0),ZIndex=13},row)
             arrow.Activated:Connect(function()
                 if item.has then expanded[obj]=not expanded[obj];refresh(true) end
             end)
