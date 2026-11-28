@@ -7103,6 +7103,7 @@ range("Theme","constellationLinks","Maximum connections",100,0,100);range("Theme
 choice("Theme","menuDock","Menu docking side","Left",{"Left","Right","Top","Bottom","Floating"});range("Theme","menuWidth","Menu width (px)",438,280,1600);range("Theme","menuHeight","Menu height (px)",600,260,1200);toggle("Theme","menuDrag","Drag / snap menu",true);toggle("Theme","menuResize","Resize with corner grip",true);range("Theme","menuFloatX","Floating horizontal %",35,0,100);range("Theme","menuFloatY","Floating vertical %",40,0,100)
 toggle("HUD","locked","Lock widget positions",true);toggle("HUD","movePanels","Allow moving top and left panels",false);toggle("HUD","topCustom","Custom top panel position",false);range("HUD","topX","Top panel X %",50,0,100);range("HUD","topY","Top panel Y %",2,0,100);toggle("HUD","railCustom","Custom left panel position",false);range("HUD","railX","Left panel X %",1,0,100);range("HUD","railY","Left panel Y %",46,0,100);toggle("HUD","keybindWidget","Show keybind widget",true);toggle("HUD","keybindCustom","Custom keybind position",false);range("HUD","keybindX","Keybind widget X %",2,0,100);range("HUD","keybindY","Keybind widget Y %",12,0,100);toggle("HUD","quickCustom","Custom quick menu position",false);range("HUD","quickX","Quick menu X %",50,0,100);range("HUD","quickY","Quick menu Y %",12,0,100);toggle("HUD","compact","Compact health panel",true);choice("HUD","layoutMode","HUD layout","Sketch",{"Sketch","Custom"});choice("HUD","hudMotion","Widget transition","Glass",{"Glass","Float","Pulse","Off"});range("HUD","hudMotionStrength","Widget motion intensity %",65,0,100);toggle("HUD","hudShine","Health bar shimmer",true);toggle("HUD","hudReaction","Damage and healing glow",true);range("HUD","hudSmoothness","HUD smoothing (ms)",320,100,900)
 toggle("HUD","gameExplorer","Game Explorer HUD",false)
+range("HUD","gameExplorerX","Explorer X %",98,0,100);range("HUD","gameExplorerY","Explorer Y %",50,0,100)
 choice("HUD","heartPalette","Heart gradient","Adaptive",{"Adaptive","Aurora","Amethyst","Ocean","Sakura","Sunset","Ember","Mint","Ice","Galaxy","Rainbow","Custom"});choice("HUD","heartDirection","Heart gradient direction","Vertical",{"Vertical","Horizontal","Diagonal","Reverse","Orbit"});range("HUD","heartGradientSpeed","Heart gradient speed %",60,0,150);color("HUD","heartA","Heart custom start","BA99FF");color("HUD","heartMid","Heart custom middle","F8CCFF");color("HUD","heartB","Heart custom end","69D9FA");range("HUD","heartGlow","Heart glow %",65,0,100)
 for _,row in {{"hp","Health",3,9},{"clock","Clock",3,96},{"profile","Player card",97,9},{"dock","AETHER menu button",50,96},{"cross","Reticle",50,50}} do
  local k,t=row[1],row[2];toggle("HUD",k,t,true); range("HUD",k.."X",t.." · horizontal %",row[3],0,100);range("HUD",k.."Y",t.." · vertical %",row[4],0,100)
@@ -13051,6 +13052,33 @@ do
     local selected=workspace
     local rows={}
     local lastKey=""
+    local lastObjects={}
+    local drag=nil
+    header.Active=true
+    panel.Active=true
+    local function place()
+        if drag then return end
+        local size=overlay.AbsoluteSize-panel.AbsoluteSize
+        panel.AnchorPoint=Vector2.zero
+        panel.Position=UDim2.fromOffset(math.max(0,size.X)*app.s.gameExplorerX/100,math.max(0,size.Y)*app.s.gameExplorerY/100)
+    end
+    scope:on(header.InputBegan,function(input)
+        if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
+        drag={input=input,start=Vector2.new(input.Position.X,input.Position.Y),origin=panel.AbsolutePosition-overlay.AbsolutePosition}
+    end)
+    scope:on(UserInputService.InputChanged,function(input)
+        if not drag or (input~=drag.input and not (drag.input.UserInputType==Enum.UserInputType.MouseButton1 and input.UserInputType==Enum.UserInputType.MouseMovement)) then return end
+        local size=overlay.AbsoluteSize-panel.AbsoluteSize
+        local target=drag.origin+Vector2.new(input.Position.X,input.Position.Y)-drag.start
+        panel.Position=UDim2.fromOffset(math.clamp(target.X,0,math.max(0,size.X)),math.clamp(target.Y,0,math.max(0,size.Y)))
+    end)
+    scope:on(UserInputService.InputEnded,function(input)
+        if not drag or input~=drag.input then return end
+        drag=nil
+        local size=overlay.AbsoluteSize-panel.AbsoluteSize
+        local pos=panel.AbsolutePosition-overlay.AbsolutePosition
+        app:patch({gameExplorerX=math.clamp(pos.X/math.max(1,size.X)*100,0,100),gameExplorerY=math.clamp(pos.Y/math.max(1,size.Y)*100,0,100)})
+    end)
     local function allowedObject(obj)
         return obj:IsA("Folder") or obj:IsA("Model") or obj:IsA("BasePart") or obj:IsA("Camera") or obj:IsA("Attachment") or obj:IsA("Terrain")
     end
@@ -13070,6 +13098,7 @@ do
         if selected:IsA("Model") then table.insert(lines,"Position: "..tostring(selected:GetPivot().Position)) end
         local active=ReplicatedStorage:GetAttribute("ActiveBall")
         table.insert(lines,"Active ball: "..tostring(active))
+        table.insert(lines,"Children: "..tostring(#selected:GetChildren()))
         detail.Text=table.concat(lines,"\n")
         local children={}
         local query=search.Text:lower()
@@ -13080,7 +13109,11 @@ do
         local keys={tostring(selected),query,st.uiFontColor,st.uiRowColor}
         for i=1,math.min(#children,100) do table.insert(keys,children[i].Name..":"..children[i].ClassName) end
         local key=table.concat(keys,"|")
-        if not force and key==lastKey then return end
+        local same=key==lastKey and #lastObjects==math.min(#children,100)
+        if same then for i,obj in lastObjects do if obj~=children[i] then same=false;break end end end
+        if not force and same then return end
+        table.clear(lastObjects)
+        for i=1,math.min(#children,100) do lastObjects[i]=children[i] end
         lastKey=key
         for _,row in rows do row:Destroy() end
         table.clear(rows)
@@ -13098,13 +13131,17 @@ do
         if selected~=workspace and selected.Parent then selected=selected.Parent;search.Text="";refresh(true) end
     end)
     scope:on(search:GetPropertyChangedSignal("Text"),function() if panel.Visible then refresh(true) end end)
+    local function safeRefresh(force)
+        local ok,err=pcall(refresh,force)
+        if not ok then detail.Text="Explorer error: "..tostring(err);lastKey="" end
+    end
     local elapsed=0
     scope:on(RunService.Heartbeat,function(dt)
         local show=app.s.gameExplorer and not app.stopping
-        if show~=panel.Visible then panel.Visible=show;if show then refresh(true) end end
+        if show~=panel.Visible then panel.Visible=show;if show then place();safeRefresh(true) else drag=nil end end
         if not show then return end
         elapsed+=dt
-        if elapsed>=.5 then elapsed=0;refresh(false) end
+        if elapsed>=.5 then elapsed=0;place();safeRefresh(false) end
     end)
 end
 -- The high-order cursor is decorative. HUD and Studio buttons retain their
