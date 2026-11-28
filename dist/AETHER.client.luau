@@ -12546,11 +12546,13 @@ do
         if not extra then
             extra=if validVec(measured,1000) then measured+Vector3.yAxis*(g*gm) else Vector3.zero
         end
-        local simTime=elapsed*scale
+        -- Rewind only the interval between observed velocity samples.
+        -- Event receipt time is not the authoritative contact timestamp.
+        local simTime=math.max(0,(now-p.firstAt)*scale)
         local acceleration=extra-Vector3.yAxis*(g*gm)
         local launch=v-acceleration*simTime+jerk*(.5*simTime*simTime)
         if not validVec(launch,1800) or flat(launch):Dot(p.forward)<1 then pending=nil;return end
-        local record={velocity=localVec(launch,p.forward,p.right)/p.power,
+        local record={velocity=localVec(launch,p.forward,p.right),power=p.power,
             acceleration=localVec(extra,p.forward,p.right),jerk=localVec(jerk,p.forward,p.right),
             gm=gm,tilt=p.tilt*p.tiltPower,back=p.back*p.tiltPower}
         local history=learned[p.key]
@@ -12561,26 +12563,33 @@ do
     end
     -- Retain recent observations rather than replacing a calibration with the
     -- last hit. Prefer nearby tilt values within the same style/action bin.
-    local function calibration(key,t,back)
+    local function calibration(key,t,back,strength)
         local history=learned[key]
         if not history or #history==0 then return nil end
         local weightSum=0
         local m={velocity=Vector3.zero,acceleration=Vector3.zero,jerk=Vector3.zero,gm=0,tilt=0,back=0,count=#history}
         local candidates={}
         for _,r in history do
-            local distance=(r.tilt-t)^2+(r.back-back)^2
-            table.insert(candidates,{r=r,w=1/(.06+distance)})
+            local powerDistance=math.abs(math.log(math.max(.001,r.power)/math.max(.001,strength)))
+            local distance=(r.tilt-t)^2+(r.back-back)^2+4*powerDistance^2
+            table.insert(candidates,{r=r,w=1/(.035+distance),powerDistance=powerDistance})
         end
         table.sort(candidates,function(a,b) return a.w>b.w end)
         local anchor=candidates[1].r.velocity
+        local nearest=candidates[1].powerDistance
+        if nearest>.18 then return nil end
+        local used=0
         for _,item in candidates do
+            if item.powerDistance>math.min(.18,nearest+.07) then continue end
             local r=item.r
             local residual=(r.velocity-anchor).Magnitude/math.max(10,anchor.Magnitude)
             local w=item.w/(1+4*residual*residual)
-            weightSum+=w
+            weightSum+=w;used+=1
             m.velocity+=r.velocity*w;m.acceleration+=r.acceleration*w;m.jerk+=r.jerk*w
             m.gm+=r.gm*w;m.tilt+=r.tilt*w;m.back+=r.back*w
         end
+        if weightSum<=0 then return nil end
+        m.count=used
         m.velocity/=weightSum;m.acceleration/=weightSum;m.jerk/=weightSum
         m.gm/=weightSum;m.tilt/=weightSum;m.back/=weightSum
         return m
@@ -12629,8 +12638,8 @@ do
         local right=rv.Unit
         local t,back=tilt(root)
         local tp=stat("TiltPower")
-        local m=calibration(keyFor(style,k,t,back),t*tp,back*tp)
         local strength=power(k)
+        local m=calibration(keyFor(style,k,t,back),t*tp,back*tp,strength)
         local v,source
         local extra,jerk,gm=Vector3.zero,Vector3.zero,1
         if m then
@@ -12638,12 +12647,12 @@ do
             if math.abs(m.tilt)>.08 and math.abs(t*tp)>.08 then factor=math.clamp((t*tp)/m.tilt,.25,2.5)
             elseif math.abs(m.back)>.08 and math.abs(back*tp)>.08 then factor=math.clamp((back*tp)/m.back,.25,2.5) end
             local vv=m.velocity
-            v=worldVec(Vector3.new(vv.X*factor,vv.Y,vv.Z),f,right)*strength
+            v=worldVec(Vector3.new(vv.X*factor,vv.Y,vv.Z),f,right)
             local av=m.acceleration;local jv=m.jerk
             extra=worldVec(Vector3.new(av.X*factor,av.Y,av.Z),f,right)
             jerk=worldVec(Vector3.new(jv.X*factor,jv.Y,jv.Z),f,right)
             gm=m.gm
-            source="Learned "..tostring(m.count).." hits"
+            source="Learned "..tostring(m.count).." hits | power "..string.format("%.2f",strength)
         elseif k=="Set" and bin(t)==0 and bin(back)==0 then
             local c=config.Ball.Set
             local range=c.VerticalVelocity
@@ -12651,7 +12660,7 @@ do
             v=(f*c.LookVectorHorizontalVelocity+(move and flat(move.MoveDirection) or Vector3.zero)*c.MoveHorizontalVelocity+Vector3.yAxis*((range.Min+range.Max)*.5))*strength
             source="Config estimate"
         else
-            invisible();arc.status=styleName.." | Make one "..k.." hit with this tilt to calibrate";return
+            invisible();arc.status=styleName.." | Make a "..k.." hit with this tilt and power to calibrate";return
         end
         if not validVec(v,1800) then invisible();arc.status="Invalid launch sample";return end
         local currentMap=workspace:FindFirstChild("Map")
