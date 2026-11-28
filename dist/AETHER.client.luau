@@ -1730,7 +1730,7 @@ function UI.new(app,gui,scope)
  U.corner(self.quick,13);self.quickRim=U.stroke(self.quick,Color3.fromRGB(166,138,255),.3)
  self.quickGradient=U.gradient(self.quick,Color3.new(1,1,1),Color3.new(1,1,1),90)
  self.quick.BackgroundColor3=Color3.new(1,1,1)
- local title=U.label(self.quick,"VOLLEYBALL / MODULES",12,UDim2.fromOffset(12,5),UDim2.new(1,-88,0,22));title.ZIndex=29
+ local title=U.label(self.quick,"QUICK MENU / MODULES",12,UDim2.fromOffset(12,5),UDim2.new(1,-88,0,22));title.ZIndex=29;self.quickTitle=title
  local edit=U.button(self.quick,"EDIT HUD");edit.Name="EditWidgetPositions";edit.Size=UDim2.fromOffset(68,23);edit.Position=UDim2.new(1,-76,0,5);edit.TextSize=10;edit.ZIndex=30
  scope:on(edit.Activated,function() if self.quickOpen and not self.app.editingHUD then self.app:editHUD(true,"Volleyball",true) end end)
  self.quickScroll=U.new("ScrollingFrame",{Name="QuickFunctions",Position=UDim2.fromOffset(8,32),Size=UDim2.new(1,-16,1,-60),BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3,ZIndex=29},self.quick)
@@ -2381,7 +2381,7 @@ function UI:animateBackground(t)
  local secondary=U.hex(s.secondary)
  local editingAux=self.app.editingHUD and self.app.hudEditMode=="Volleyball"
  self.top.Visible=(s.topCapsule and not self.panel.Visible) or editingAux
- self.quickArrow.Visible=self.app.volleyball~=nil and not self.app.editingHUD
+ self.quickArrow.Visible=not self.app.editingHUD
  self:stepQuick(dt,editingAux)
  self.bindPanel.Visible=editingAux or (not self.opened and not self.app.editingHUD and self.app.mode=="Game" and s.keybindWidget)
  if self.bindPanel.Visible and t>=(self.bindRefreshAt or 0) then self.bindRefreshAt=t+.3;self:refreshBindPanel() end
@@ -2630,15 +2630,17 @@ function UI:buildQuick()
   end)
   page:on(b.Activated,function() owner:startBind(id) end)
  end
- function q:title(str)
+ function q:title(str,setting)
   if self.fieldTitle then return UI.title(self,str) end
   sectionCount+=1
   local card=page:add(U.frame(owner.quickScroll,"Module_"..sectionCount,nil,UDim2.new(1,-5,0,34),soft,.35))
   card.LayoutOrder=sectionCount;card.ZIndex=30;card:SetAttribute("AETHERQuickRole","Card");U.corner(card,8)
   local header=U.button(card,"");header.Name="ExpandModule";header.Size=UDim2.new(1,0,0,34);header.ZIndex=31
   local spec=quickSwitches[str]
-  local title=U.label(header,str:gsub(" / BETA",""):gsub(" / EXPERIMENT",""):gsub(" / LOCAL PREVIEW",""),11,UDim2.fromOffset(9,0),UDim2.new(1,if spec then -91 else -32,1,0))
+  local rawTitle=str:gsub(" / BETA",""):gsub(" / EXPERIMENT",""):gsub(" / LOCAL PREVIEW","")
+  local title=U.label(header,U.tr(owner.app.s,rawTitle),11,UDim2.fromOffset(9,0),UDim2.new(1,if spec or setting then -91 else -32,1,0))
   title.ZIndex=32;title.Active=false;title.Interactable=false
+  self:watch(function() title.Text=U.tr(owner.app.s,rawTitle) end)
   local expander=U.frame(header,"ArrowHolder",UDim2.new(1,-28,.5,-10),UDim2.fromOffset(24,20),nil,1);expander.ZIndex=32;expander.Active=false;expander.Interactable=false
   local glyph=chevron(expander)
   local body=U.frame(card,"Settings",UDim2.fromOffset(6,39),UDim2.new(1,-12,0,0),nil,1);body.ZIndex=31
@@ -2652,20 +2654,22 @@ function UI:buildQuick()
   page:on(header.Activated,function()
    section.expanded=not section.expanded;owner.quickExpanded[str]=section.expanded;section.layout()
   end)
-  if spec then
+  if spec or setting then
    local switch=U.button(card,"OFF");switch:SetAttribute("AETHERQuickRole","Switch")
    switch.Size=UDim2.fromOffset(48,26);switch.Position=UDim2.new(1,-82,0,4);switch.ZIndex=34;switch.TextSize=11
    local function refresh()
-    local vb=owner.app.volleyball;local enabled=vb and spec[1](vb)==true
+    local vb=owner.app.volleyball;local enabled=if setting then owner.app.s[setting]==true else vb and spec[1](vb)==true
     switch.Text=if enabled then "ON" else "OFF"
     switch.BackgroundColor3=if enabled then Color3.fromRGB(98,68,150) else bg
    end
    self:watch(refresh)
-   page:on(switch.Activated,function() self:action(function() spec[2](owner.app.volleyball);self:sync() end) end)
+   page:on(switch.Activated,function() self:action(function() if setting then owner.app:set(setting,not owner.app.s[setting]) else spec[2](owner.app.volleyball) end;self:sync() end) end)
   end
   current=section;self.sc=body;section.layout()
-  if spec then
-   local label=title.Text
+  if setting then
+   self:addBind(str.."|"..rawTitle,rawTitle,function() owner.app:set(setting,not owner.app.s[setting]);self:sync() end,function() return owner.app.s[setting]==true end)
+  elseif spec then
+   local label=rawTitle
    self:addBind(str.."|"..label,label,function() spec[2](owner.app.volleyball);self:sync() end,function() return spec[1](owner.app.volleyball)==true end)
   end
   return title
@@ -2698,8 +2702,13 @@ function UI:buildQuick()
    self:addBind(id,label,function() fn(item);self:sync() end,read)
   end
  end
- -- Full Volleyball content, including all nested fields and status callbacks.
- self.app:page("Volleyball",q)
+ -- General camera and reticle settings share the same persisted values as Interface.
+ q:title("CAMERA","camera")
+ for _,k in {"cameraMode","fov","shoulder","cameraHeight","radius","orbitSpeed","follow"} do q:control(k) end
+ q:title("SHIFT LOCK","lock")
+ for _,k in {"lockKey","blockShift","lockReticle","cross","crossScale","crossAlpha","reticleSize","reticleStroke","reticleColor","reticleRainbow","reticleMotion","reticleSpeed","reticleNeon","reticleGlow","reticleGlowRadius","reticleGlowPulse"} do q:control(k) end
+ -- Existing game-specific sections remain unchanged.
+ if self.app.volleyball then self.app:page("Volleyball",q) end
  q:sync()
 end
 function UI:setQuick(on)
@@ -2859,6 +2868,7 @@ function UI:sync()
   self.appearanceDrag.Text=U.tr(st,"APPEARANCE / MOVE");self.stylePreviewDrag.Text=U.tr(st,"LIVE PREVIEW / MOVE")
   self.appearanceAll.Text=U.tr(st,"ALL SETTINGS");self.search.PlaceholderText=U.tr(st,"Search functions...")
   self.afkBack.Text=U.tr(st,"RETURN TO WORKSPACE");self.bindEmpty.Text=U.tr(st,"No keybinds assigned")
+  self.quickTitle.Text=U.tr(st,"QUICK MENU / MODULES")
   if self.searchEmpty then self.searchEmpty.Text=U.tr(st,"No functions found") end
   self:refreshAppearanceSamples()
   self.pageDrag.Text=U.tr(st,self.tab:upper()).." / "..U.tr(st,"MOVE PANEL")
@@ -8351,6 +8361,11 @@ local russian={
  ["session events"]="События сессии",
  ["unload"]="Выгрузить",
  ["camera"]="КАМЕРА",
+ ["shift lock"]="SHIFT LOCK / БЛОКИРОВКА",
+ ["quick menu / modules"]="БЫСТРОЕ МЕНЮ / МОДУЛИ",
+ ["follow"]="Слежение",
+ ["first person"]="От первого лица",
+ ["orbit"]="Орбита",
  ["custom lock / keybind"]="БЛОКИРОВКА КАМЕРЫ / КЛАВИША",
  ["shift-lock / reticle"]="SHIFT-LOCK / ПРИЦЕЛ",
  ["live input display"]="ВВОД В РЕАЛЬНОМ ВРЕМЕНИ",
