@@ -1186,32 +1186,6 @@ function E.render(a,tab,ui)
     jinkoElapsed+=dt
     if jinkoElapsed>=.25 then jinkoElapsed=0;if ui.opened then refreshJinko() end end
    end)
-   ui:title("JINKO STYLE / LOCAL PREVIEW")
-   ui:note("Uses the game's local style observer, including its animation and special refresh. No account slot or server multiplier is changed. Turn off to restore the original selection.",84)
-   ui:chips({"Toggle Jinko preview"},function() vb:toggleStyle();ui:sync() end,1,function() return if vb.styleEnabled then "Toggle Jinko preview" else "" end)
-   local styleStatus=ui:note("",72)
-   local function refreshStyle()
-    styleStatus.Text=(if vb.styleEnabled then "ON | " else "OFF | ")..vb.styleStatus
-   end
-   ui:watch(refreshStyle)
-   local styleElapsed=0
-   ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
-    styleElapsed+=dt
-    if styleElapsed>=.25 then styleElapsed=0;if ui.opened then refreshStyle() end end
-   end)
-   ui:title("CURVE SPECIAL / EXPERIMENT")
-   ui:note("Attempts a local Jinko special selection only. The server may ignore it. Stops on match exit or style change and restores the previous local special where unchanged.",84)
-   ui:chips({"Toggle local Curve test"},function() vb:toggleCurve();ui:sync() end,1,function() return if vb.curveEnabled then "Toggle local Curve test" else "" end)
-   local curveStatus=ui:note("",72)
-   local function refreshCurve()
-    curveStatus.Text=(if vb.curveEnabled then "ON | " else "OFF | ")..vb.curveStatus
-   end
-   ui:watch(refreshCurve)
-   local curveElapsed=0
-   ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
-    curveElapsed+=dt
-    if curveElapsed>=.25 then curveElapsed=0;if ui.opened then refreshCurve() end end
-   end)
    ui:title("AUTO PLAY / BETA")
    ui:note("Ground = Set; airborne = Spike; low distant ball = Dive. One attempt per ball approach; normal game rules remain active.",64)
    ui:chips({"Auto Set"},function() vb:togglePlay("Set");ui:sync() end,1,function() return if vb.play.set then "Auto Set" else "" end)
