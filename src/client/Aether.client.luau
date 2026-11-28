@@ -124,6 +124,21 @@ do
     local ReplicatedStorage=game:GetService("ReplicatedStorage")
     local vb={originals={},multiplierRequests={},corners={},auto=false,status="Waiting for compatible game",target=nil,tiltAim="Correct edges",tiltScale=1,tiltWrites=0,tiltOverrides=0}
     app.volleyball=vb
+    local pingSmooth,pingAt=0,-100
+    function vb:visualDelay()
+        local now=os.clock()
+        if now-pingAt>=.25 then
+            local ok,value=pcall(function() return player:GetNetworkPing() end)
+            if ok and type(value)=="number" and value==value and value>=0 and value<=5 then
+                pingSmooth=if pingAt<0 then value else pingSmooth*.75+value*.25
+                pingAt=now
+            end
+        end
+        local mode=app.s.vbPingMode
+        local delay=if mode=="Manual" then math.clamp(app.s.vbPingMs/1000,0,.5)
+            elseif mode=="Auto" and now-pingAt<2 then math.clamp(pingSmooth*.5,0,.125) else 0
+        return delay,pingSmooth*2000
+    end
     vb.edgeGuard=true;vb.guardStatus="Anti-out | waiting"
     local attrs={
         BlockPower=true,BumpPower=true,DashPower=true,DiveSpeed=true,
@@ -2123,7 +2138,7 @@ do
         end
         marker.Transparency=if hit then .12 else 1
         billboard.Enabled=hit~=nil
-        if hit then marker.Position=hit.Position+hit.Normal*.25;marker.Color=color;caption.Text=string.format("%s ~%.1fs",label,hitTime/timeScale);caption.TextColor3=color end
+        if hit then marker.Position=hit.Position+hit.Normal*.25;marker.Color=color;caption.Text=string.format("%s ~%.2fs",label,math.max(0,hitTime/timeScale-vb:visualDelay()));caption.TextColor3=color end
         esp.status=string.format("%s | %s | %.1f studs/s | %s",ball.Name,label,vel.Magnitude,source)
     end
     function vb:toggleTrajectory()
@@ -2512,6 +2527,17 @@ do
         local multiplier=tonumber(rs:GetAttribute("Modifier_BallSizeMultiplier")) or 1
         if multiplier~=multiplier or multiplier<=0 then multiplier=1 end
         radius=math.clamp(radius*multiplier,.05,50)
+        local delay=vb:visualDelay()
+        if delay>0 and validVec(st.Velocity,1800) then
+            local scale=rs:GetAttribute("GlobalTimeScale")
+            if type(scale)~="number" or scale~=scale or scale<=0 or scale>20 then scale=1 end
+            local incomingG=st.GravityMultiplier
+            if type(incomingG)~="number" or incomingG~=incomingG or math.abs(incomingG)>100 then incomingG=1 end
+            local incomingA=(if validVec(st.Acceleration,1000) then st.Acceleration else Vector3.zero)-Vector3.yAxis*(g*incomingG)
+            local incomingJ=if validVec(st.Jerk,600) then st.Jerk else Vector3.zero
+            local predicted,obstacle=U.ballSweep(origin,st.Velocity,incomingA,incomingJ,0,delay*scale,radius,params)
+            if not obstacle and (predicted-origin).Magnitude<=18 then origin=predicted end
+        end
         visual()
         local ld=lastDraw
         if ld and now-ld.at<.15 and (ld.origin-origin).Magnitude<.025 and (ld.v-v).Magnitude<.06 and (ld.a-acceleration).Magnitude<.1 and (ld.j-jerk).Magnitude<.1 and ld.radius==radius then return end
