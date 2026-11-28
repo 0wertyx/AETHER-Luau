@@ -10488,7 +10488,7 @@ do
                 desired=vb:guardTilt(manual,desired)
             else desired=nil end
             if typeof(desired)=="Vector3" then
-                lastManual=manual
+                if lastApplied==nil or manual~=lastApplied then lastManual=manual end
                 if manual~=desired then
                     ht.Values.TiltDirection=desired
                     vb.tiltWrites+=1
@@ -10496,7 +10496,7 @@ do
                 lastApplied=desired
                 vb.tiltHooks=(vb.tiltHooks or 0)+1
             else
-                lastManual=nil;lastApplied=nil
+                releaseLocalTilt()
             end
             return table.unpack(result,1,result.n)
         end
@@ -10986,6 +10986,7 @@ do
         return play.spike or (play.serve and play.serveActive)
     end
     local function contactAllowed(m,ball)
+        if not ball or not ball.PrimaryPart or not ball:IsDescendantOf(workspace) then return false,"Ball unavailable" end
         local vel=ballMotion(m,ball)
         if not vel then return false,"Waiting for measured ball velocity" end
         if vel.Y>=-.2 then return false,"Waiting for descending ball" end
@@ -11487,6 +11488,7 @@ do
     local function tryAutoServe(m,char,now)
         if not play.serve then return false end
         if not m.states.IsServing() then return false end
+        if play.serveActive and now<play.serveUntil then play.serveStatus="Waiting for toss transition";return true end
         play.serveActive=false
         if (app.ui and app.ui.opened) or app.editingHUD or game:GetService("GuiService").MenuIsOpen or m.input.GameplaySuppressed() then
             play.serveStatus="Paused | menu";return true
@@ -11528,7 +11530,7 @@ do
                     play.serveActive=true;play.serveShotAttempted=false;play.serveUntil=os.clock()+8
                 end
                 m.tossBinding.onTossRequest(Enum.UserInputState.Begin)
-                if visible and m.states.IsServing() then play.serveActive=false end
+                -- Wait for the serving state to replicate before clearing serveActive.
             end)
             play.busy=false
             if not ok then play.serveActive=false;play.serveStatus="Toss error: "..tostring(err)
@@ -11639,23 +11641,37 @@ do
         local gen=play.generation
         task.spawn(function()
             local ownedCharge=false
+            local dispatched=false
+            local lock=play.locks[key]
             local ok,err=pcall(function()
-                if gen~=play.generation or not allowed(m) then return end
+                if gen~=play.generation or player.Character~=char or not ball.PrimaryPart or not ball:IsDescendantOf(workspace) or not allowed(m) then return end
                 if action=="Set" or action=="Dive" then
                     if not receiveTeam(ball) or play.serveActive then play.locks[key]=nil;return end
                     if action=="Set" and not onOwnHalf(char,ball:GetPivot().Position,0) then play.locks[key]=nil;return end
                 end
                 if action=="Dive" then
                     m.controller:Dive({Target=dir})
+                    dispatched=true
                     return
                 end
+                if action=="Spike" then
+                    if not contactAllowed(m,ball) or not m.states.IsJumping() then return end
+                    local a,u,v,width,length=geometry()
+                    if not a or not char.PrimaryPart or vb.map~=ReplicatedStorage:GetAttribute("Map") then return end
+                    local root=char.PrimaryPart
+                    local z=(flatten(root.Position)-a):Dot(v)
+                    local dz=flatten(root.CFrame.LookVector):Dot(v)
+                    if math.abs(z-length*.5)<1 or (z<length*.5 and dz<=.15) or (z>length*.5 and dz>=-.15) then return end
+                    if vb.auto and (not vb.target or not vb.tiltFresh or os.clock()-vb.tiltFresh>=.25) then return end
+                end
                 if jumping and vb.auto then
-                    local desired=if vb.tiltFresh and os.clock()-vb.tiltFresh<.25 then vb.requestedTilt else nil
+                    local desired=if vb.tiltFresh and os.clock()-vb.tiltFresh<.25 then (vb.requestedTilt or Vector3.yAxis) else nil
                     desired=vb:guardTilt(m.values.TiltDirection,desired)
                     if typeof(desired)=="Vector3" then lastManual=m.values.TiltDirection;lastApplied=desired;m.values.TiltDirection=desired end
                 end
                 if action=="Spike" and play.serveActive then play.serveShotAttempted=true;play.serveStatus="Serve Spike dispatched" end
                 m.binding.onMoveRequest(request)
+                dispatched=true
                 ownedCharge=m.binding.AdvancedChargeAction==action and m.states.Charge()~=nil
                 if ownedCharge then
                     task.wait(.06)
@@ -11666,8 +11682,9 @@ do
                 end
             end)
             if ownedCharge and m.binding.AdvancedChargeAction==action then pcall(m.binding.releaseHeldInput) end
+            if not dispatched and lock and lock.pending and play.locks[key]==lock then play.locks[key]=nil end
             play.busy=false
-            if gen==play.generation then play.status=if ok then action.." returned | attempts "..play.attempts.." | observed hits "..play.hits else action.." error: "..tostring(err) end
+            if gen==play.generation then play.status=if not ok then action.." error: "..tostring(err) elseif not dispatched then action.." cancelled | state changed" else action.." returned | attempts "..play.attempts.." | observed hits "..play.hits end
         end)
     end
     local playElapsed=0
