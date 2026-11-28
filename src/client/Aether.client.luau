@@ -2798,10 +2798,11 @@ function app:editHUD(on,mode,returnQuick)
     if self.stopping then return end
     if on then
         self.hudEditMode=mode or "HUD"
+        if self.hudEditMode=="All" and not self.s.movePanels then self:set("movePanels",true) end
         self.hudEditReturnTab=ui.tab
         self.hudEditReturnQuick=returnQuick==true
         ui:show(false)
-        if self.hudEditMode=="Volleyball" and not ui.quickAdapter then ui:setQuick(true) end
+        if (self.hudEditMode=="Volleyball" or self.hudEditMode=="All") and not ui.quickAdapter then ui:setQuick(true) end
         ui:setQuick(false)
         self.editingHUD=true
         editorGui.Enabled=true
@@ -2842,7 +2843,7 @@ for _,key in positions do
         if ui.drag then return end
         local target=widgetFor(key)
         if not target.Visible or (key=="top" and not app.s.movePanels) then return end
-        if (app.hudEditMode=="Volleyball")~=isAux(key) then return end
+        if app.hudEditMode~="All" and (app.hudEditMode=="Volleyball")~=isAux(key) then return end
         local vp=overlay.AbsoluteSize
         local size=target.AbsoluteSize
         local original=target.AbsolutePosition-overlay.AbsolutePosition
@@ -2879,7 +2880,7 @@ function app:updateEditor()
     panelToggle.BackgroundColor3=if auxMode or self.s.movePanels then Color3.fromRGB(105,71,164) else Color3.fromRGB(52,40,77)
     for _,key in positions do
         local b,target=handles[key],widgetFor(key)
-        b.Visible=target.Visible and (auxMode==isAux(key)) and (if isAux(key) then true elseif key=="top" then self.s.topCapsule elseif key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
+        b.Visible=target.Visible and (self.hudEditMode=="All" or auxMode==isAux(key)) and (if isAux(key) then true elseif key=="top" then self.s.topCapsule elseif key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
         local locked=key=="top" and not self.s.movePanels
         b.Active=not locked;b.Interactable=not locked
         b.Text=(if key=="keybind" then "KEYBINDS" elseif key=="quick" then "QUICK MENU" else key:upper())..(if locked then " · LOCKED" else " · MOVE")

@@ -1732,7 +1732,7 @@ function UI.new(app,gui,scope)
  self.quick.BackgroundColor3=Color3.new(1,1,1)
  local title=U.label(self.quick,"QUICK MENU / MODULES",12,UDim2.fromOffset(12,5),UDim2.new(1,-88,0,22));title.ZIndex=29;self.quickTitle=title
  local edit=U.button(self.quick,"EDIT HUD");edit.Name="EditWidgetPositions";edit.Size=UDim2.fromOffset(68,23);edit.Position=UDim2.new(1,-76,0,5);edit.TextSize=10;edit.ZIndex=30
- scope:on(edit.Activated,function() if self.quickOpen and not self.app.editingHUD then self.app:editHUD(true,"Volleyball",true) end end)
+ scope:on(edit.Activated,function() if self.quickOpen and not self.app.editingHUD then self.app:editHUD(true,"All",true) end end)
  self.quickScroll=U.new("ScrollingFrame",{Name="QuickFunctions",Position=UDim2.fromOffset(8,32),Size=UDim2.new(1,-16,1,-60),BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3,ZIndex=29},self.quick)
  U.new("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder},self.quickScroll)
  self.quickStatus=U.label(self.quick,"Tap a module to expand",10,UDim2.new(0,10,1,-24),UDim2.new(1,-20,0,20))
@@ -2379,7 +2379,7 @@ function UI:animateBackground(t)
  end
  local accent=U.hex(s.accent)
  local secondary=U.hex(s.secondary)
- local editingAux=self.app.editingHUD and self.app.hudEditMode=="Volleyball"
+ local editingAux=self.app.editingHUD and (self.app.hudEditMode=="Volleyball" or self.app.hudEditMode=="All")
  self.top.Visible=(s.topCapsule and not self.panel.Visible) or editingAux
  self.quickArrow.Visible=not self.app.editingHUD
  self:stepQuick(dt,editingAux)
@@ -12975,10 +12975,11 @@ function app:editHUD(on,mode,returnQuick)
     if self.stopping then return end
     if on then
         self.hudEditMode=mode or "HUD"
+        if self.hudEditMode=="All" and not self.s.movePanels then self:set("movePanels",true) end
         self.hudEditReturnTab=ui.tab
         self.hudEditReturnQuick=returnQuick==true
         ui:show(false)
-        if self.hudEditMode=="Volleyball" and not ui.quickAdapter then ui:setQuick(true) end
+        if (self.hudEditMode=="Volleyball" or self.hudEditMode=="All") and not ui.quickAdapter then ui:setQuick(true) end
         ui:setQuick(false)
         self.editingHUD=true
         editorGui.Enabled=true
@@ -13019,7 +13020,7 @@ for _,key in positions do
         if ui.drag then return end
         local target=widgetFor(key)
         if not target.Visible or (key=="top" and not app.s.movePanels) then return end
-        if (app.hudEditMode=="Volleyball")~=isAux(key) then return end
+        if app.hudEditMode~="All" and (app.hudEditMode=="Volleyball")~=isAux(key) then return end
         local vp=overlay.AbsoluteSize
         local size=target.AbsoluteSize
         local original=target.AbsolutePosition-overlay.AbsolutePosition
@@ -13056,7 +13057,7 @@ function app:updateEditor()
     panelToggle.BackgroundColor3=if auxMode or self.s.movePanels then Color3.fromRGB(105,71,164) else Color3.fromRGB(52,40,77)
     for _,key in positions do
         local b,target=handles[key],widgetFor(key)
-        b.Visible=target.Visible and (auxMode==isAux(key)) and (if isAux(key) then true elseif key=="top" then self.s.topCapsule elseif key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
+        b.Visible=target.Visible and (self.hudEditMode=="All" or auxMode==isAux(key)) and (if isAux(key) then true elseif key=="top" then self.s.topCapsule elseif key=="input" then self.s.inputOverlay elseif key=="wallhop" then self.s.wallhopHelper else self.s[key])
         local locked=key=="top" and not self.s.movePanels
         b.Active=not locked;b.Interactable=not locked
         b.Text=(if key=="keybind" then "KEYBINDS" elseif key=="quick" then "QUICK MENU" else key:upper())..(if locked then " · LOCKED" else " · MOVE")

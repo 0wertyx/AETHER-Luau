@@ -869,7 +869,7 @@ function UI.new(app,gui,scope)
  self.quick.BackgroundColor3=Color3.new(1,1,1)
  local title=U.label(self.quick,"QUICK MENU / MODULES",12,UDim2.fromOffset(12,5),UDim2.new(1,-88,0,22));title.ZIndex=29;self.quickTitle=title
  local edit=U.button(self.quick,"EDIT HUD");edit.Name="EditWidgetPositions";edit.Size=UDim2.fromOffset(68,23);edit.Position=UDim2.new(1,-76,0,5);edit.TextSize=10;edit.ZIndex=30
- scope:on(edit.Activated,function() if self.quickOpen and not self.app.editingHUD then self.app:editHUD(true,"Volleyball",true) end end)
+ scope:on(edit.Activated,function() if self.quickOpen and not self.app.editingHUD then self.app:editHUD(true,"All",true) end end)
  self.quickScroll=U.new("ScrollingFrame",{Name="QuickFunctions",Position=UDim2.fromOffset(8,32),Size=UDim2.new(1,-16,1,-60),BackgroundTransparency=1,BorderSizePixel=0,CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,ScrollBarThickness=3,ZIndex=29},self.quick)
  U.new("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder},self.quickScroll)
  self.quickStatus=U.label(self.quick,"Tap a module to expand",10,UDim2.new(0,10,1,-24),UDim2.new(1,-20,0,20))
@@ -1516,7 +1516,7 @@ function UI:animateBackground(t)
  end
  local accent=U.hex(s.accent)
  local secondary=U.hex(s.secondary)
- local editingAux=self.app.editingHUD and self.app.hudEditMode=="Volleyball"
+ local editingAux=self.app.editingHUD and (self.app.hudEditMode=="Volleyball" or self.app.hudEditMode=="All")
  self.top.Visible=(s.topCapsule and not self.panel.Visible) or editingAux
  self.quickArrow.Visible=not self.app.editingHUD
  self:stepQuick(dt,editingAux)
