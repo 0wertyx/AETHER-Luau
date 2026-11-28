@@ -1149,6 +1149,20 @@ function E.render(a,tab,ui)
     ballInfoElapsed+=dt
     if ballInfoElapsed>=.25 then ballInfoElapsed=0;if ui.opened then refreshBallInfo() end end
    end)
+   ui:title("PING COMPENSATION")
+   ui:control("vbPingMode");ui:control("vbPingMs")
+   ui:note("Visual timing estimate only. Auto uses a conservative fraction of measured one-way delay. Manual sets the visual offset directly.",64)
+   local pingStatus=ui:note("",44)
+   local function refreshPing()
+    local delay,rtt=vb:visualDelay()
+    pingStatus.Text=string.format("Ping ~%.0f ms | Visual offset %.0f ms",rtt,delay*1000)
+   end
+   ui:watch(refreshPing)
+   local pingElapsed=0
+   ui.page:on(game:GetService("RunService").Heartbeat,function(dt)
+    pingElapsed+=dt
+    if pingElapsed>=.5 then pingElapsed=0;if ui.opened then refreshPing() end end
+   end)
    ui:title("SHOT ARC / BETA")
    ui:chips({"Shot Arc"},function() vb:toggleShotArc();ui:sync() end,1,function() return if vb.shotArc.enabled then "Shot Arc" else "" end)
    ui:chips({"Auto","Spike","Set","Serve"},function(n) vb.shotArc.mode=n;ui:sync() end,2,function() return vb.shotArc.mode end)
