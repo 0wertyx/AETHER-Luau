@@ -571,7 +571,7 @@ function UI.new(app,gui,scope)
  local rule=U.frame(self.appearancePanel,"HeaderDivider",UDim2.fromOffset(9,29),UDim2.new(1,-18,0,1),Color3.new(1,1,1),.82)
  rule.ZIndex=5;rule.Active=false;rule.Interactable=false
  self.appearanceSamples={}
- local all=U.button(self.appearancePanel,"ALL SETTINGS");all.Size=UDim2.new(1,-16,0,25);all.Position=UDim2.fromOffset(8,36);all.ZIndex=5;all.TextSize=10
+ local all=U.button(self.appearancePanel,"ALL SETTINGS");self.appearanceAll=all;all.Size=UDim2.new(1,-16,0,25);all.Position=UDim2.fromOffset(8,36);all.ZIndex=5;all.TextSize=10
  scope:on(all.Activated,function() self:open("Interface") end)
  for i,d in S.appearance do
   local b=U.button(self.appearancePanel,d[2]);b.Name="Style_"..d[1];b.ZIndex=5;b.TextSize=10;b.AutoButtonColor=false
@@ -619,10 +619,10 @@ function UI.new(app,gui,scope)
   local id=self.appearanceSelection or self.stylePreviewRole or "Root"
   local d=S.appearanceById[id] or S.appearanceById.Root
   self.stylePreviewRole=d[1];id=d[1]
-  self.stylePreviewName.Text=d[2]:upper()
+  self.stylePreviewName.Text=U.tr(s,d[2]:upper())
   local c,t,e,et,w=U.appearanceSample(s,d)
   self.stylePreviewInfo.Text=string.format("#%s · %d%% transparent  /  EDGE %.1f px · %d%% transparent",c:ToHex():upper(),math.round(t*100),w,math.round(et*100))
-  local parts={id,s.secondary,s.moduleAccentColor,s.fontGradient,s.fontA,s.fontB,s.font,s.fontAsset,s.weight,s.uiFontColor,s.uiMutedColor,s.uiPanelColor,s.uiGlassOpacity,s.uiStrokeColor,s.uiSpecularColor,s.uiReflection,s.rim,s.uiButtonColor,s.uiHoverColor,s.uiRowColor,s.clockGlass,s.fpsGlass,s.clockText,s.fpsText,s.glassColor,s.glass,s.moduleTextColor,s.moduleMutedColor,s.modulePanelColor,s.moduleRowColor,s.moduleToggleOnColor,s.moduleToggleOffColor,s.moduleStrokeColor,s.moduleBackgroundOpacity,s.afkBgA,s.afkBgB,s.afkBackground,s.afkGradientAngle,s.afkTitleColor,s.afkBrandColor,s.afkDetailColor,s.afkButtonColor,s.afkButtonText,s.afkButtonEdge,s.afkPatternColor,s.afkPatternOpacity,s.afkImageAsset,s.afkImageOpacity,s.afkImageTint,s.inputColor}
+  local parts={id,s.language,s.secondary,s.moduleAccentColor,s.fontGradient,s.fontA,s.fontB,s.font,s.fontAsset,s.weight,s.uiFontColor,s.uiMutedColor,s.uiPanelColor,s.uiGlassOpacity,s.uiStrokeColor,s.uiSpecularColor,s.uiReflection,s.rim,s.uiButtonColor,s.uiHoverColor,s.uiRowColor,s.clockGlass,s.fpsGlass,s.clockText,s.fpsText,s.glassColor,s.glass,s.moduleTextColor,s.moduleMutedColor,s.modulePanelColor,s.moduleRowColor,s.moduleToggleOnColor,s.moduleToggleOffColor,s.moduleStrokeColor,s.moduleBackgroundOpacity,s.afkBgA,s.afkBgB,s.afkBackground,s.afkGradientAngle,s.afkTitleColor,s.afkBrandColor,s.afkDetailColor,s.afkButtonColor,s.afkButtonText,s.afkButtonEdge,s.afkPatternColor,s.afkPatternOpacity,s.afkImageAsset,s.afkImageOpacity,s.afkImageTint,s.inputColor}
   for _,role in S.appearance do
    local p="appearance"..role[1]
    for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do parts[#parts+1]=tostring(s[p..suffix]) end
@@ -642,9 +642,9 @@ function UI.new(app,gui,scope)
     return f
    end
    local function label(parent,text,x,y,width,height,size,colorKey)
-    local l=U.label(parent,text,size,UDim2.fromOffset(x,y),UDim2.fromOffset(width,height))
+    local l=U.label(parent,U.tr(s,text),size,UDim2.fromOffset(x,y),UDim2.fromOffset(width,height))
     l.ZIndex=parent.ZIndex+1;l.Interactable=false;l.TextXAlignment=Enum.TextXAlignment.Center;l:SetAttribute("AETHERKeepFontColor",true)
-    table.insert(self.stylePreviewPaint,{label=l,colorKey=colorKey or "uiFontColor",role=parent:GetAttribute("AETHERAppearanceRole") or id,muted=colorKey=="uiMutedColor" or colorKey=="moduleMutedColor" or y>=40 and (id=="Clock" or id=="FPS")})
+    table.insert(self.stylePreviewPaint,{label=l,sourceText=text,colorKey=colorKey or "uiFontColor",role=parent:GetAttribute("AETHERAppearanceRole") or id,muted=colorKey=="uiMutedColor" or colorKey=="moduleMutedColor" or y>=40 and (id=="Clock" or id=="FPS")})
     return l
    end
    local function centerBox(role,width,height)
@@ -729,7 +729,7 @@ function UI.new(app,gui,scope)
   for _,p in self.stylePreviewPaint do
    if p.tintFrame then p.tintFrame.BackgroundColor3=U.hex(s[p.colorKey])
    elseif p.label then
-    p.label.TextColor3=U.appearanceText(s,p.role,p.muted,U.hex(s[p.colorKey]));p.label.FontFace=U.font(s)
+    p.label.Text=U.tr(s,p.sourceText);p.label.TextColor3=U.appearanceText(s,p.role,p.muted,U.hex(s[p.colorKey]));p.label.FontFace=U.font(s)
     if p.role=="Clock" or p.role=="FPS" then
      local flag="appearance"..p.role..(if p.muted then "Muted" else "Text").."Custom"
      local gradient=p.label:FindFirstChildOfClass("UIGradient") or U.gradient(p.label,U.hex(s.fontA),U.hex(s.fontB),0)
@@ -776,7 +776,7 @@ function UI.new(app,gui,scope)
    local rim=b:FindFirstChildOfClass("UIStroke")
    rim.Color=e;rim.Transparency=et;rim.Thickness=w;rim.Enabled=w>0 and et<1
    b.TextColor3=U.hex(if d[1]=="Quick" or d[1]:sub(1,5)=="Quick" then s.moduleTextColor elseif d[1]=="Clock" then s.clockText elseif d[1]=="FPS" then s.fpsText elseif d[1]=="AFK" then s.afkTitleColor elseif d[1]=="AFKButton" then s.afkButtonText else s.uiFontColor)
-   b.Text=(if self.appearanceSelection==d[1] then "› " else "")..d[2]
+   b.Text=(if self.appearanceSelection==d[1] then "› " else "")..U.tr(s,d[2])
   end
  end
  self.modeBar=U.frame(self.panel,"WorkspaceModes",nil,UDim2.fromOffset(320,30),nil,.5)
@@ -1264,7 +1264,7 @@ function UI.new(app,gui,scope)
   local pageOffset=workspaceOffset(self,"Page");local pageX,pageY=contentX+pageOffset.X,y+pageOffset.Y
   local inset=math.min(8,math.floor((bodyW-1)/2))
   local innerW=math.max(1,bodyW-2*inset)
-  self.pageDrag.Position=UDim2.fromOffset(pageX+inset,pageY-25);self.pageDrag.Size=UDim2.fromOffset(innerW,25);self.pageDrag.Text=self.tab:upper().." / MOVE PANEL"
+  self.pageDrag.Position=UDim2.fromOffset(pageX+inset,pageY-25);self.pageDrag.Size=UDim2.fromOffset(innerW,25);self.pageDrag.Text=U.tr(s,self.tab:upper()).." / "..U.tr(s,"MOVE PANEL")
   self.search.Position=UDim2.fromOffset(pageX+inset,pageY+4);self.search.Size=UDim2.fromOffset(innerW,30)
   self.search.BackgroundTransparency=if s.appearanceSearchCustom then s.appearanceSearchTransparency/100 else .53
   self.contentGlass.Position=UDim2.fromOffset(pageX,pageY-30);self.contentGlass.Size=UDim2.fromOffset(bodyW,bodyH+72)
@@ -1863,7 +1863,7 @@ local function searchMatch(text,words)
 end
 function UI:refreshSearch()
  if not self.search or not self.searchResults then return end
- local q=self.search.Text:lower():match("^%s*(.-)%s*$")
+ local q=U.lowerText(self.search.Text):match("^%s*(.-)%s*$")
  local words=string.split(q," ")
  local has=q~=""
  self.searchResults.Visible=has
@@ -1872,7 +1872,7 @@ function UI:refreshSearch()
  if not has then return end
  local matches,seen={},{}
  for _,item in self.searchIndex do
-  if self.buttons[item.tab] and searchMatch(item.term,words) then
+  if self.buttons[item.tab] and searchMatch(item.term.." "..U.lowerText(U.tr(self.app.s,item.label).." "..U.tr(self.app.s,item.tab)),words) then
    local id=item.tab.."|"..item.label:lower()
    if not seen[id] then
     seen[id]=true
@@ -1891,12 +1891,12 @@ function UI:refreshSearch()
    self.searchPool[i]=b
    self.scope:on(b.Activated,function() local item=self.searchTargets and self.searchTargets[i];if item then self:jumpTo(item) end end)
   end
-  b.Visible=true;b.LayoutOrder=i;b.Text=matches[i].item.label.."  ·  "..matches[i].item.tab
+  b.Visible=true;b.LayoutOrder=i;b.Text=U.tr(self.app.s,matches[i].item.label).."  ·  "..U.tr(self.app.s,matches[i].item.tab)
  end
  self.searchTargets={}
  for i=1,math.min(60,#matches) do self.searchTargets[i]=matches[i].item end
  if not self.searchEmpty then
-  self.searchEmpty=U.label(self.searchResults,"No functions found",12,nil,UDim2.new(1,-8,0,34));self.searchEmpty.LayoutOrder=999
+  self.searchEmpty=U.label(self.searchResults,U.tr(self.app.s,"No functions found"),12,nil,UDim2.new(1,-8,0,34));self.searchEmpty.LayoutOrder=999
  end
  self.searchEmpty.Visible=#matches==0
  for i=math.min(60,#matches)+1,#self.searchPool do self.searchPool[i].Visible=false end
@@ -1917,7 +1917,7 @@ function UI:jumpTo(item)
    if item.key and row.Name==item.key then return row end
    for _,obj in row:GetDescendants() do
     if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
-     if obj.Text:lower()==label or obj.Name:lower()==label then return row end
+     if obj.Text:lower()==label or obj.Name:lower()==label or obj:GetAttribute("AETHERSourceText")==item.label then return row end
     end
    end
   end
@@ -1979,13 +1979,27 @@ function UI:makeCatalogEditor()
  return editor
 end
 function UI:row(h,name) self.seq+=1;local f=U.frame(self.sc,name or "Row",nil,UDim2.new(1,-8,0,h),U.hex(self.app.s.uiRowColor),.62);f:SetAttribute("AETHERControlRow",true);f.LayoutOrder=self.seq;U.corner(f,8);return f end
-function UI:title(str) local f=self:row(26,"Heading");f.BackgroundTransparency=1;local n=U.label(f,str,13);n.TextColor3=U.hex(self.app.s.accent);self.titleLabel=n;return n end
-function UI:note(str,h) local f=self:row(h or 36,"Note");f.BackgroundTransparency=1;local l=U.label(f,str,12);l.TextWrapped=true;l.TextTruncate=Enum.TextTruncate.None;l.TextColor3=dim;l:SetAttribute("AETHERMuted",true);return l end
+function UI:title(str) local f=self:row(26,"Heading");f.BackgroundTransparency=1;local n=U.label(f,U.tr(self.app.s,str),13);n:SetAttribute("AETHERSourceText",str);n.TextColor3=U.hex(self.app.s.accent);self.titleLabel=n;return n end
+function UI:note(str,h) local f=self:row(h or 36,"Note");f.BackgroundTransparency=1;local l=U.label(f,U.tr(self.app.s,str),12);l.TextWrapped=true;l.TextTruncate=Enum.TextTruncate.None;l.TextColor3=dim;l:SetAttribute("AETHERMuted",true);return l end
 function UI:watch(fn) table.insert(self.syncs,fn);fn() end
 function UI:sync()
  if not self.panel.Parent then return end
  self:applyAFKTheme();self:applyQuickTheme()
  local st=self.app.s
+ if self.displayLanguage~=st.language then
+  self.displayLanguage=st.language;self.themeDirty=true
+  for name,r in self.branchButtons do r.button.Text=U.tr(st,name) end
+  for name,r in self.branchCards do r.title.Text=U.tr(st,name:upper()) end
+  for tab,b in self.buttons do b.Text=U.tr(st,tab) end
+  for mode,b in self.modeButtons do b.Text=U.tr(st,if mode=="GUI" then "GUI VIEW" else "NODE VIEW") end
+  self.homeButton.Text=U.tr(st,"HOME");self.rootDrag.Text=U.tr(st,"AETHER / MOVE")
+  self.appearanceDrag.Text=U.tr(st,"APPEARANCE / MOVE");self.stylePreviewDrag.Text=U.tr(st,"LIVE PREVIEW / MOVE")
+  self.appearanceAll.Text=U.tr(st,"ALL SETTINGS");self.search.PlaceholderText=U.tr(st,"Search functions...")
+  self.afkBack.Text=U.tr(st,"RETURN TO WORKSPACE");self.bindEmpty.Text=U.tr(st,"No keybinds assigned")
+  if self.searchEmpty then self.searchEmpty.Text=U.tr(st,"No functions found") end
+  self:refreshAppearanceSamples()
+  self.pageDrag.Text=U.tr(st,self.tab:upper()).." / "..U.tr(st,"MOVE PANEL")
+ end
  local space=Color3.fromRGB(7,9,22)
  self.backgroundGradient.Color=ColorSequence.new(U.hex(st.constellationBgA):Lerp(space,.64),U.hex(st.constellationBgB):Lerp(space,.53))
  self.backgroundGradient.Rotation=st.constellationAngle
@@ -2005,7 +2019,7 @@ function UI:sync()
  if self.iconKey~=iconKey then self.iconKey=iconKey;for _,asset in self.icons do asset:sync(st.iconAtlas,st.iconAtlasTile) end;self:layout() end
  for _,f in self.syncs do f() end
  if self.editorAdapter then for _,f in self.editorAdapter.syncs do f() end end
- local themeParts={st.accent,st.uiFontColor,st.uiMutedColor,st.uiPanelColor,st.uiButtonColor,st.uiHoverColor,st.uiRowColor,st.uiStrokeColor,st.uiSpecularColor,st.uiGlassOpacity,st.uiReflection,st.rim,st.clockGlass,st.fpsGlass,st.clockText,st.fpsText,st.glassColor,st.glass,st.inputColor,st.modulePanelColor,st.moduleRowColor,st.moduleStrokeColor,st.moduleTextColor,st.moduleToggleOnColor,st.moduleToggleOffColor,st.moduleBackgroundOpacity,st.afkBgA,st.afkTitleColor,st.afkButtonColor,st.afkButtonText,st.afkButtonEdge,self.appearanceSelection or ""}
+ local themeParts={st.language,st.accent,st.uiFontColor,st.uiMutedColor,st.uiPanelColor,st.uiButtonColor,st.uiHoverColor,st.uiRowColor,st.uiStrokeColor,st.uiSpecularColor,st.uiGlassOpacity,st.uiReflection,st.rim,st.clockGlass,st.fpsGlass,st.clockText,st.fpsText,st.glassColor,st.glass,st.inputColor,st.modulePanelColor,st.moduleRowColor,st.moduleStrokeColor,st.moduleTextColor,st.moduleToggleOnColor,st.moduleToggleOffColor,st.moduleBackgroundOpacity,st.afkBgA,st.afkTitleColor,st.afkButtonColor,st.afkButtonText,st.afkButtonEdge,self.appearanceSelection or ""}
  for _,d in S.appearance do
   local p="appearance"..d[1]
   for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do themeParts[#themeParts+1]=tostring(st[p..suffix]) end
@@ -2082,10 +2096,10 @@ function UI:action(fn)
  if not ok then self.app:log("Error",tostring(err));self:message(tostring(err):sub(-150)) end
 end
 function UI:chips(items,fn,cols,selected)
- cols=cols or 3;for start=1,#items,cols do local row=self:row(33,"Actions");row.BackgroundTransparency=1;for j=0,math.min(cols-1,#items-start) do local item=items[start+j];local b=U.button(row,item);b:SetAttribute("AETHERThemeButton",not selected);b.BackgroundColor3=U.hex(self.app.s.uiButtonColor);b.Name=item;b.Size=UDim2.new(1/cols,-4,1,0);b.Position=UDim2.fromScale(j/cols,0);self.page:on(b.Activated,function() self:action(function() fn(item) end) end);if selected then self:watch(function() b.BackgroundColor3=U.hex(if selected()==item then self.app.s.uiHoverColor else self.app.s.uiButtonColor) end) end end end
+ cols=cols or 3;for start=1,#items,cols do local row=self:row(33,"Actions");row.BackgroundTransparency=1;for j=0,math.min(cols-1,#items-start) do local item=items[start+j];local b=U.button(row,U.tr(self.app.s,item));b:SetAttribute("AETHERSourceText",item);b:SetAttribute("AETHERThemeButton",not selected);b.BackgroundColor3=U.hex(self.app.s.uiButtonColor);b.Name=item;b.Size=UDim2.new(1/cols,-4,1,0);b.Position=UDim2.fromScale(j/cols,0);self.page:on(b.Activated,function() self:action(function() fn(item) end) end);if selected then self:watch(function() b.BackgroundColor3=U.hex(if selected()==item then self.app.s.uiHoverColor else self.app.s.uiButtonColor) end) end end end
 end
 function UI:box(label,initial,h,commit)
- self:title(label);local r=self:row(h or 34,"Field");local t=U.new("TextBox",{Name=label,Size=UDim2.new(1,-12,1,-4),Position=UDim2.fromOffset(6,2),ClearTextOnFocus=false,MultiLine=(h or 0)>45,TextWrapped=(h or 0)>45,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=if (h or 0)>45 then Enum.TextYAlignment.Top else Enum.TextYAlignment.Center,BackgroundTransparency=1,Text=initial or "",PlaceholderText=label,Font=Enum.Font.Code,TextSize=13,TextColor3=Color3.fromRGB(232,222,255)},r);if commit then self.page:on(t.FocusLost,function() self:action(function() commit(t.Text) end) end) end;return t
+ self:title(label);local r=self:row(h or 34,"Field");local t=U.new("TextBox",{Name=label,Size=UDim2.new(1,-12,1,-4),Position=UDim2.fromOffset(6,2),ClearTextOnFocus=false,MultiLine=(h or 0)>45,TextWrapped=(h or 0)>45,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=if (h or 0)>45 then Enum.TextYAlignment.Top else Enum.TextYAlignment.Center,BackgroundTransparency=1,Text=initial or "",PlaceholderText=U.tr(self.app.s,label),Font=Enum.Font.Code,TextSize=13,TextColor3=Color3.fromRGB(232,222,255)},r);if commit then self.page:on(t.FocusLost,function() self:action(function() commit(t.Text) end) end) end;return t
 end
 -- Appearance edits must commit the override and its value together. Explicitly
 -- disabling Individual style still restores the shared theme.
@@ -2109,8 +2123,8 @@ function UI:control(k)
  self.controlKeys[k]=true
  local d=S.defs[k];local app=self.app;local a=d.kind;if a=="players" then return end
  if a=="text" or a=="asset" then local box=self:box(d.label,tostring(app.s[k]),32,function(v) app:set(k,v) end);self:watch(function() if not box:IsFocused() then box.Text=tostring(app.s[k]) end end);return end
- local row=self:row(if a=="number" or a=="angle" then 48 else 34,k);local label=U.label(row,d.label,12,UDim2.fromOffset(9,0),UDim2.new(.57,0,0,30));label.TextColor3=Color3.fromRGB(219,210,234)
- if a=="bool" or a=="choice" then local b=U.button(row,"");b.Name="Value";b.Position=UDim2.new(.58,0,0,3);b.Size=UDim2.new(.42,-6,1,-6);self.page:on(b.Activated,function() if a=="bool" then app:set(k,not app.s[k]) else app:set(k,d.min[(table.find(d.min,app.s[k]) or 0)%#d.min+1]) end end);self:watch(function() b.Text=if a=="bool" then (if app.s[k] then "ON" else "OFF") else tostring(app.s[k]).."  ›";b.BackgroundColor3=U.hex(if a=="bool" and not app.s[k] then app.s.uiButtonColor else app.s.uiHoverColor) end);return end
+ local row=self:row(if a=="number" or a=="angle" then 48 else 34,k);local label=U.label(row,U.tr(app.s,d.label),12,UDim2.fromOffset(9,0),UDim2.new(.57,0,0,30));label.TextColor3=Color3.fromRGB(219,210,234)
+ if a=="bool" or a=="choice" then local b=U.button(row,"");b.Name="Value";b.Position=UDim2.new(.58,0,0,3);b.Size=UDim2.new(.42,-6,1,-6);self.page:on(b.Activated,function() if a=="bool" then app:set(k,not app.s[k]) else app:set(k,d.min[(table.find(d.min,app.s[k]) or 0)%#d.min+1]);if k=="language" then self:open(self.tab,self.appearanceSelection) end end end);self:watch(function() b.Text=if a=="bool" then (if app.s[k] then "ON" else "OFF") else U.tr(app.s,tostring(app.s[k])).."  ›";b.BackgroundColor3=U.hex(if a=="bool" and not app.s[k] then app.s.uiButtonColor else app.s.uiHoverColor) end);return end
  local box=U.new("TextBox",{Name="Value",Position=UDim2.new(.6,0,0,3),Size=UDim2.new(.4,-7,0,23),BackgroundColor3=bg,ClearTextOnFocus=false,TextColor3=Color3.new(1,1,1),Font=Enum.Font.Code,TextSize=12,Text="",BorderSizePixel=0},row);U.corner(box,6)
  self.page:on(box.FocusLost,function() self:action(function() writeEditorValue(app,k,if a=="angle" then assert(tonumber(box.Text),"Enter a finite angle") elseif a=="number" then math.clamp(math.round(assert(tonumber(box.Text),"Enter a number")),d.min,d.max) else (box.Text:gsub("^#",""))) end);self:sync() end)
  if a=="color" then self:watch(function() if not box:IsFocused() then box.Text="#"..app.s[k] end;label.TextColor3=U.hex(app.s[k]) end);return end

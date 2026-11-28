@@ -1434,7 +1434,7 @@ function UI.new(app,gui,scope)
  local rule=U.frame(self.appearancePanel,"HeaderDivider",UDim2.fromOffset(9,29),UDim2.new(1,-18,0,1),Color3.new(1,1,1),.82)
  rule.ZIndex=5;rule.Active=false;rule.Interactable=false
  self.appearanceSamples={}
- local all=U.button(self.appearancePanel,"ALL SETTINGS");all.Size=UDim2.new(1,-16,0,25);all.Position=UDim2.fromOffset(8,36);all.ZIndex=5;all.TextSize=10
+ local all=U.button(self.appearancePanel,"ALL SETTINGS");self.appearanceAll=all;all.Size=UDim2.new(1,-16,0,25);all.Position=UDim2.fromOffset(8,36);all.ZIndex=5;all.TextSize=10
  scope:on(all.Activated,function() self:open("Interface") end)
  for i,d in S.appearance do
   local b=U.button(self.appearancePanel,d[2]);b.Name="Style_"..d[1];b.ZIndex=5;b.TextSize=10;b.AutoButtonColor=false
@@ -1482,10 +1482,10 @@ function UI.new(app,gui,scope)
   local id=self.appearanceSelection or self.stylePreviewRole or "Root"
   local d=S.appearanceById[id] or S.appearanceById.Root
   self.stylePreviewRole=d[1];id=d[1]
-  self.stylePreviewName.Text=d[2]:upper()
+  self.stylePreviewName.Text=U.tr(s,d[2]:upper())
   local c,t,e,et,w=U.appearanceSample(s,d)
   self.stylePreviewInfo.Text=string.format("#%s · %d%% transparent  /  EDGE %.1f px · %d%% transparent",c:ToHex():upper(),math.round(t*100),w,math.round(et*100))
-  local parts={id,s.secondary,s.moduleAccentColor,s.fontGradient,s.fontA,s.fontB,s.font,s.fontAsset,s.weight,s.uiFontColor,s.uiMutedColor,s.uiPanelColor,s.uiGlassOpacity,s.uiStrokeColor,s.uiSpecularColor,s.uiReflection,s.rim,s.uiButtonColor,s.uiHoverColor,s.uiRowColor,s.clockGlass,s.fpsGlass,s.clockText,s.fpsText,s.glassColor,s.glass,s.moduleTextColor,s.moduleMutedColor,s.modulePanelColor,s.moduleRowColor,s.moduleToggleOnColor,s.moduleToggleOffColor,s.moduleStrokeColor,s.moduleBackgroundOpacity,s.afkBgA,s.afkBgB,s.afkBackground,s.afkGradientAngle,s.afkTitleColor,s.afkBrandColor,s.afkDetailColor,s.afkButtonColor,s.afkButtonText,s.afkButtonEdge,s.afkPatternColor,s.afkPatternOpacity,s.afkImageAsset,s.afkImageOpacity,s.afkImageTint,s.inputColor}
+  local parts={id,s.language,s.secondary,s.moduleAccentColor,s.fontGradient,s.fontA,s.fontB,s.font,s.fontAsset,s.weight,s.uiFontColor,s.uiMutedColor,s.uiPanelColor,s.uiGlassOpacity,s.uiStrokeColor,s.uiSpecularColor,s.uiReflection,s.rim,s.uiButtonColor,s.uiHoverColor,s.uiRowColor,s.clockGlass,s.fpsGlass,s.clockText,s.fpsText,s.glassColor,s.glass,s.moduleTextColor,s.moduleMutedColor,s.modulePanelColor,s.moduleRowColor,s.moduleToggleOnColor,s.moduleToggleOffColor,s.moduleStrokeColor,s.moduleBackgroundOpacity,s.afkBgA,s.afkBgB,s.afkBackground,s.afkGradientAngle,s.afkTitleColor,s.afkBrandColor,s.afkDetailColor,s.afkButtonColor,s.afkButtonText,s.afkButtonEdge,s.afkPatternColor,s.afkPatternOpacity,s.afkImageAsset,s.afkImageOpacity,s.afkImageTint,s.inputColor}
   for _,role in S.appearance do
    local p="appearance"..role[1]
    for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do parts[#parts+1]=tostring(s[p..suffix]) end
@@ -1505,9 +1505,9 @@ function UI.new(app,gui,scope)
     return f
    end
    local function label(parent,text,x,y,width,height,size,colorKey)
-    local l=U.label(parent,text,size,UDim2.fromOffset(x,y),UDim2.fromOffset(width,height))
+    local l=U.label(parent,U.tr(s,text),size,UDim2.fromOffset(x,y),UDim2.fromOffset(width,height))
     l.ZIndex=parent.ZIndex+1;l.Interactable=false;l.TextXAlignment=Enum.TextXAlignment.Center;l:SetAttribute("AETHERKeepFontColor",true)
-    table.insert(self.stylePreviewPaint,{label=l,colorKey=colorKey or "uiFontColor",role=parent:GetAttribute("AETHERAppearanceRole") or id,muted=colorKey=="uiMutedColor" or colorKey=="moduleMutedColor" or y>=40 and (id=="Clock" or id=="FPS")})
+    table.insert(self.stylePreviewPaint,{label=l,sourceText=text,colorKey=colorKey or "uiFontColor",role=parent:GetAttribute("AETHERAppearanceRole") or id,muted=colorKey=="uiMutedColor" or colorKey=="moduleMutedColor" or y>=40 and (id=="Clock" or id=="FPS")})
     return l
    end
    local function centerBox(role,width,height)
@@ -1592,7 +1592,7 @@ function UI.new(app,gui,scope)
   for _,p in self.stylePreviewPaint do
    if p.tintFrame then p.tintFrame.BackgroundColor3=U.hex(s[p.colorKey])
    elseif p.label then
-    p.label.TextColor3=U.appearanceText(s,p.role,p.muted,U.hex(s[p.colorKey]));p.label.FontFace=U.font(s)
+    p.label.Text=U.tr(s,p.sourceText);p.label.TextColor3=U.appearanceText(s,p.role,p.muted,U.hex(s[p.colorKey]));p.label.FontFace=U.font(s)
     if p.role=="Clock" or p.role=="FPS" then
      local flag="appearance"..p.role..(if p.muted then "Muted" else "Text").."Custom"
      local gradient=p.label:FindFirstChildOfClass("UIGradient") or U.gradient(p.label,U.hex(s.fontA),U.hex(s.fontB),0)
@@ -1639,7 +1639,7 @@ function UI.new(app,gui,scope)
    local rim=b:FindFirstChildOfClass("UIStroke")
    rim.Color=e;rim.Transparency=et;rim.Thickness=w;rim.Enabled=w>0 and et<1
    b.TextColor3=U.hex(if d[1]=="Quick" or d[1]:sub(1,5)=="Quick" then s.moduleTextColor elseif d[1]=="Clock" then s.clockText elseif d[1]=="FPS" then s.fpsText elseif d[1]=="AFK" then s.afkTitleColor elseif d[1]=="AFKButton" then s.afkButtonText else s.uiFontColor)
-   b.Text=(if self.appearanceSelection==d[1] then "› " else "")..d[2]
+   b.Text=(if self.appearanceSelection==d[1] then "› " else "")..U.tr(s,d[2])
   end
  end
  self.modeBar=U.frame(self.panel,"WorkspaceModes",nil,UDim2.fromOffset(320,30),nil,.5)
@@ -2127,7 +2127,7 @@ function UI.new(app,gui,scope)
   local pageOffset=workspaceOffset(self,"Page");local pageX,pageY=contentX+pageOffset.X,y+pageOffset.Y
   local inset=math.min(8,math.floor((bodyW-1)/2))
   local innerW=math.max(1,bodyW-2*inset)
-  self.pageDrag.Position=UDim2.fromOffset(pageX+inset,pageY-25);self.pageDrag.Size=UDim2.fromOffset(innerW,25);self.pageDrag.Text=self.tab:upper().." / MOVE PANEL"
+  self.pageDrag.Position=UDim2.fromOffset(pageX+inset,pageY-25);self.pageDrag.Size=UDim2.fromOffset(innerW,25);self.pageDrag.Text=U.tr(s,self.tab:upper()).." / "..U.tr(s,"MOVE PANEL")
   self.search.Position=UDim2.fromOffset(pageX+inset,pageY+4);self.search.Size=UDim2.fromOffset(innerW,30)
   self.search.BackgroundTransparency=if s.appearanceSearchCustom then s.appearanceSearchTransparency/100 else .53
   self.contentGlass.Position=UDim2.fromOffset(pageX,pageY-30);self.contentGlass.Size=UDim2.fromOffset(bodyW,bodyH+72)
@@ -2726,7 +2726,7 @@ local function searchMatch(text,words)
 end
 function UI:refreshSearch()
  if not self.search or not self.searchResults then return end
- local q=self.search.Text:lower():match("^%s*(.-)%s*$")
+ local q=U.lowerText(self.search.Text):match("^%s*(.-)%s*$")
  local words=string.split(q," ")
  local has=q~=""
  self.searchResults.Visible=has
@@ -2735,7 +2735,7 @@ function UI:refreshSearch()
  if not has then return end
  local matches,seen={},{}
  for _,item in self.searchIndex do
-  if self.buttons[item.tab] and searchMatch(item.term,words) then
+  if self.buttons[item.tab] and searchMatch(item.term.." "..U.lowerText(U.tr(self.app.s,item.label).." "..U.tr(self.app.s,item.tab)),words) then
    local id=item.tab.."|"..item.label:lower()
    if not seen[id] then
     seen[id]=true
@@ -2754,12 +2754,12 @@ function UI:refreshSearch()
    self.searchPool[i]=b
    self.scope:on(b.Activated,function() local item=self.searchTargets and self.searchTargets[i];if item then self:jumpTo(item) end end)
   end
-  b.Visible=true;b.LayoutOrder=i;b.Text=matches[i].item.label.."  ·  "..matches[i].item.tab
+  b.Visible=true;b.LayoutOrder=i;b.Text=U.tr(self.app.s,matches[i].item.label).."  ·  "..U.tr(self.app.s,matches[i].item.tab)
  end
  self.searchTargets={}
  for i=1,math.min(60,#matches) do self.searchTargets[i]=matches[i].item end
  if not self.searchEmpty then
-  self.searchEmpty=U.label(self.searchResults,"No functions found",12,nil,UDim2.new(1,-8,0,34));self.searchEmpty.LayoutOrder=999
+  self.searchEmpty=U.label(self.searchResults,U.tr(self.app.s,"No functions found"),12,nil,UDim2.new(1,-8,0,34));self.searchEmpty.LayoutOrder=999
  end
  self.searchEmpty.Visible=#matches==0
  for i=math.min(60,#matches)+1,#self.searchPool do self.searchPool[i].Visible=false end
@@ -2780,7 +2780,7 @@ function UI:jumpTo(item)
    if item.key and row.Name==item.key then return row end
    for _,obj in row:GetDescendants() do
     if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
-     if obj.Text:lower()==label or obj.Name:lower()==label then return row end
+     if obj.Text:lower()==label or obj.Name:lower()==label or obj:GetAttribute("AETHERSourceText")==item.label then return row end
     end
    end
   end
@@ -2842,13 +2842,27 @@ function UI:makeCatalogEditor()
  return editor
 end
 function UI:row(h,name) self.seq+=1;local f=U.frame(self.sc,name or "Row",nil,UDim2.new(1,-8,0,h),U.hex(self.app.s.uiRowColor),.62);f:SetAttribute("AETHERControlRow",true);f.LayoutOrder=self.seq;U.corner(f,8);return f end
-function UI:title(str) local f=self:row(26,"Heading");f.BackgroundTransparency=1;local n=U.label(f,str,13);n.TextColor3=U.hex(self.app.s.accent);self.titleLabel=n;return n end
-function UI:note(str,h) local f=self:row(h or 36,"Note");f.BackgroundTransparency=1;local l=U.label(f,str,12);l.TextWrapped=true;l.TextTruncate=Enum.TextTruncate.None;l.TextColor3=dim;l:SetAttribute("AETHERMuted",true);return l end
+function UI:title(str) local f=self:row(26,"Heading");f.BackgroundTransparency=1;local n=U.label(f,U.tr(self.app.s,str),13);n:SetAttribute("AETHERSourceText",str);n.TextColor3=U.hex(self.app.s.accent);self.titleLabel=n;return n end
+function UI:note(str,h) local f=self:row(h or 36,"Note");f.BackgroundTransparency=1;local l=U.label(f,U.tr(self.app.s,str),12);l.TextWrapped=true;l.TextTruncate=Enum.TextTruncate.None;l.TextColor3=dim;l:SetAttribute("AETHERMuted",true);return l end
 function UI:watch(fn) table.insert(self.syncs,fn);fn() end
 function UI:sync()
  if not self.panel.Parent then return end
  self:applyAFKTheme();self:applyQuickTheme()
  local st=self.app.s
+ if self.displayLanguage~=st.language then
+  self.displayLanguage=st.language;self.themeDirty=true
+  for name,r in self.branchButtons do r.button.Text=U.tr(st,name) end
+  for name,r in self.branchCards do r.title.Text=U.tr(st,name:upper()) end
+  for tab,b in self.buttons do b.Text=U.tr(st,tab) end
+  for mode,b in self.modeButtons do b.Text=U.tr(st,if mode=="GUI" then "GUI VIEW" else "NODE VIEW") end
+  self.homeButton.Text=U.tr(st,"HOME");self.rootDrag.Text=U.tr(st,"AETHER / MOVE")
+  self.appearanceDrag.Text=U.tr(st,"APPEARANCE / MOVE");self.stylePreviewDrag.Text=U.tr(st,"LIVE PREVIEW / MOVE")
+  self.appearanceAll.Text=U.tr(st,"ALL SETTINGS");self.search.PlaceholderText=U.tr(st,"Search functions...")
+  self.afkBack.Text=U.tr(st,"RETURN TO WORKSPACE");self.bindEmpty.Text=U.tr(st,"No keybinds assigned")
+  if self.searchEmpty then self.searchEmpty.Text=U.tr(st,"No functions found") end
+  self:refreshAppearanceSamples()
+  self.pageDrag.Text=U.tr(st,self.tab:upper()).." / "..U.tr(st,"MOVE PANEL")
+ end
  local space=Color3.fromRGB(7,9,22)
  self.backgroundGradient.Color=ColorSequence.new(U.hex(st.constellationBgA):Lerp(space,.64),U.hex(st.constellationBgB):Lerp(space,.53))
  self.backgroundGradient.Rotation=st.constellationAngle
@@ -2868,7 +2882,7 @@ function UI:sync()
  if self.iconKey~=iconKey then self.iconKey=iconKey;for _,asset in self.icons do asset:sync(st.iconAtlas,st.iconAtlasTile) end;self:layout() end
  for _,f in self.syncs do f() end
  if self.editorAdapter then for _,f in self.editorAdapter.syncs do f() end end
- local themeParts={st.accent,st.uiFontColor,st.uiMutedColor,st.uiPanelColor,st.uiButtonColor,st.uiHoverColor,st.uiRowColor,st.uiStrokeColor,st.uiSpecularColor,st.uiGlassOpacity,st.uiReflection,st.rim,st.clockGlass,st.fpsGlass,st.clockText,st.fpsText,st.glassColor,st.glass,st.inputColor,st.modulePanelColor,st.moduleRowColor,st.moduleStrokeColor,st.moduleTextColor,st.moduleToggleOnColor,st.moduleToggleOffColor,st.moduleBackgroundOpacity,st.afkBgA,st.afkTitleColor,st.afkButtonColor,st.afkButtonText,st.afkButtonEdge,self.appearanceSelection or ""}
+ local themeParts={st.language,st.accent,st.uiFontColor,st.uiMutedColor,st.uiPanelColor,st.uiButtonColor,st.uiHoverColor,st.uiRowColor,st.uiStrokeColor,st.uiSpecularColor,st.uiGlassOpacity,st.uiReflection,st.rim,st.clockGlass,st.fpsGlass,st.clockText,st.fpsText,st.glassColor,st.glass,st.inputColor,st.modulePanelColor,st.moduleRowColor,st.moduleStrokeColor,st.moduleTextColor,st.moduleToggleOnColor,st.moduleToggleOffColor,st.moduleBackgroundOpacity,st.afkBgA,st.afkTitleColor,st.afkButtonColor,st.afkButtonText,st.afkButtonEdge,self.appearanceSelection or ""}
  for _,d in S.appearance do
   local p="appearance"..d[1]
   for _,suffix in {"Custom","Color","Transparency","Edge","EdgeTransparency","EdgeWidth"} do themeParts[#themeParts+1]=tostring(st[p..suffix]) end
@@ -2945,10 +2959,10 @@ function UI:action(fn)
  if not ok then self.app:log("Error",tostring(err));self:message(tostring(err):sub(-150)) end
 end
 function UI:chips(items,fn,cols,selected)
- cols=cols or 3;for start=1,#items,cols do local row=self:row(33,"Actions");row.BackgroundTransparency=1;for j=0,math.min(cols-1,#items-start) do local item=items[start+j];local b=U.button(row,item);b:SetAttribute("AETHERThemeButton",not selected);b.BackgroundColor3=U.hex(self.app.s.uiButtonColor);b.Name=item;b.Size=UDim2.new(1/cols,-4,1,0);b.Position=UDim2.fromScale(j/cols,0);self.page:on(b.Activated,function() self:action(function() fn(item) end) end);if selected then self:watch(function() b.BackgroundColor3=U.hex(if selected()==item then self.app.s.uiHoverColor else self.app.s.uiButtonColor) end) end end end
+ cols=cols or 3;for start=1,#items,cols do local row=self:row(33,"Actions");row.BackgroundTransparency=1;for j=0,math.min(cols-1,#items-start) do local item=items[start+j];local b=U.button(row,U.tr(self.app.s,item));b:SetAttribute("AETHERSourceText",item);b:SetAttribute("AETHERThemeButton",not selected);b.BackgroundColor3=U.hex(self.app.s.uiButtonColor);b.Name=item;b.Size=UDim2.new(1/cols,-4,1,0);b.Position=UDim2.fromScale(j/cols,0);self.page:on(b.Activated,function() self:action(function() fn(item) end) end);if selected then self:watch(function() b.BackgroundColor3=U.hex(if selected()==item then self.app.s.uiHoverColor else self.app.s.uiButtonColor) end) end end end
 end
 function UI:box(label,initial,h,commit)
- self:title(label);local r=self:row(h or 34,"Field");local t=U.new("TextBox",{Name=label,Size=UDim2.new(1,-12,1,-4),Position=UDim2.fromOffset(6,2),ClearTextOnFocus=false,MultiLine=(h or 0)>45,TextWrapped=(h or 0)>45,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=if (h or 0)>45 then Enum.TextYAlignment.Top else Enum.TextYAlignment.Center,BackgroundTransparency=1,Text=initial or "",PlaceholderText=label,Font=Enum.Font.Code,TextSize=13,TextColor3=Color3.fromRGB(232,222,255)},r);if commit then self.page:on(t.FocusLost,function() self:action(function() commit(t.Text) end) end) end;return t
+ self:title(label);local r=self:row(h or 34,"Field");local t=U.new("TextBox",{Name=label,Size=UDim2.new(1,-12,1,-4),Position=UDim2.fromOffset(6,2),ClearTextOnFocus=false,MultiLine=(h or 0)>45,TextWrapped=(h or 0)>45,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=if (h or 0)>45 then Enum.TextYAlignment.Top else Enum.TextYAlignment.Center,BackgroundTransparency=1,Text=initial or "",PlaceholderText=U.tr(self.app.s,label),Font=Enum.Font.Code,TextSize=13,TextColor3=Color3.fromRGB(232,222,255)},r);if commit then self.page:on(t.FocusLost,function() self:action(function() commit(t.Text) end) end) end;return t
 end
 -- Appearance edits must commit the override and its value together. Explicitly
 -- disabling Individual style still restores the shared theme.
@@ -2972,8 +2986,8 @@ function UI:control(k)
  self.controlKeys[k]=true
  local d=S.defs[k];local app=self.app;local a=d.kind;if a=="players" then return end
  if a=="text" or a=="asset" then local box=self:box(d.label,tostring(app.s[k]),32,function(v) app:set(k,v) end);self:watch(function() if not box:IsFocused() then box.Text=tostring(app.s[k]) end end);return end
- local row=self:row(if a=="number" or a=="angle" then 48 else 34,k);local label=U.label(row,d.label,12,UDim2.fromOffset(9,0),UDim2.new(.57,0,0,30));label.TextColor3=Color3.fromRGB(219,210,234)
- if a=="bool" or a=="choice" then local b=U.button(row,"");b.Name="Value";b.Position=UDim2.new(.58,0,0,3);b.Size=UDim2.new(.42,-6,1,-6);self.page:on(b.Activated,function() if a=="bool" then app:set(k,not app.s[k]) else app:set(k,d.min[(table.find(d.min,app.s[k]) or 0)%#d.min+1]) end end);self:watch(function() b.Text=if a=="bool" then (if app.s[k] then "ON" else "OFF") else tostring(app.s[k]).."  ›";b.BackgroundColor3=U.hex(if a=="bool" and not app.s[k] then app.s.uiButtonColor else app.s.uiHoverColor) end);return end
+ local row=self:row(if a=="number" or a=="angle" then 48 else 34,k);local label=U.label(row,U.tr(app.s,d.label),12,UDim2.fromOffset(9,0),UDim2.new(.57,0,0,30));label.TextColor3=Color3.fromRGB(219,210,234)
+ if a=="bool" or a=="choice" then local b=U.button(row,"");b.Name="Value";b.Position=UDim2.new(.58,0,0,3);b.Size=UDim2.new(.42,-6,1,-6);self.page:on(b.Activated,function() if a=="bool" then app:set(k,not app.s[k]) else app:set(k,d.min[(table.find(d.min,app.s[k]) or 0)%#d.min+1]);if k=="language" then self:open(self.tab,self.appearanceSelection) end end end);self:watch(function() b.Text=if a=="bool" then (if app.s[k] then "ON" else "OFF") else U.tr(app.s,tostring(app.s[k])).."  ›";b.BackgroundColor3=U.hex(if a=="bool" and not app.s[k] then app.s.uiButtonColor else app.s.uiHoverColor) end);return end
  local box=U.new("TextBox",{Name="Value",Position=UDim2.new(.6,0,0,3),Size=UDim2.new(.4,-7,0,23),BackgroundColor3=bg,ClearTextOnFocus=false,TextColor3=Color3.new(1,1,1),Font=Enum.Font.Code,TextSize=12,Text="",BorderSizePixel=0},row);U.corner(box,6)
  self.page:on(box.FocusLost,function() self:action(function() writeEditorValue(app,k,if a=="angle" then assert(tonumber(box.Text),"Enter a finite angle") elseif a=="number" then math.clamp(math.round(assert(tonumber(box.Text),"Enter a number")),d.min,d.max) else (box.Text:gsub("^#",""))) end);self:sync() end)
  if a=="color" then self:watch(function() if not box:IsFocused() then box.Text="#"..app.s[k] end;label.TextColor3=U.hex(app.s[k]) end);return end
@@ -6350,6 +6364,7 @@ function E.render(a,tab,ui)
    end
    return
   end
+  ui:control("language")
   ui:title("INFINITE WORKSPACE")
   ui:note("Middle mouse: pan. Wheel on background or Ctrl + wheel: zoom. Drag node titles to move individual panels. Home resets camera; Shift + Home resets the current workspace. Double-click or double-tap the background to close.",80)
   ui:control("workspaceMode")
@@ -7169,6 +7184,7 @@ range("Interface","layoutW","GUI width %",86,50,98)
 range("Interface","layoutH","GUI height %",72,40,95)
 range("Interface","navWidth","Branch rail width",156,100,220)
 range("Interface","topScale","Top capsule scale %",100,60,180)
+choice("Interface","language","Language","English",{"English","Russian"})
 choice("Interface","workspaceMode","Workspace view","GUI",{"GUI","Nodes"})
 choice("Interface","afkBackground","AFK background style","Gradient",{"Solid","Gradient","Stars","Grid","Orbits","Image"})
 color("Interface","afkBgA","AFK background start","090811")
@@ -8151,6 +8167,509 @@ function U.topPanel(parent)
  label.Name="AetherTitle";label.TextXAlignment=Enum.TextXAlignment.Center
  label.Active=false;label.Interactable=false
  return panel,rim,{label}
+end
+-- Display-only localization. Never translate configuration keys or action IDs.
+local russian={
+ ["main"]="Главное",
+ ["visuals"]="Визуал",
+ ["utility"]="Инструменты",
+ ["interface"]="Интерфейс",
+ ["dashboard"]="Обзор",
+ ["profiles"]="Конфигурации",
+ ["diagnostics"]="Диагностика",
+ ["character"]="Персонаж",
+ ["wings"]="Крылья",
+ ["halos"]="Нимбы",
+ ["ambient"]="Атмосфера",
+ ["indicators"]="Индикаторы",
+ ["cursor"]="Курсор",
+ ["interaction"]="Управление",
+ ["volleyball"]="Волейбол",
+ ["clock"]="Часы",
+ ["fps"]="FPS",
+ ["top panel"]="Верхняя панель",
+ ["input display"]="Клавиши",
+ ["reticle"]="Прицел",
+ ["keybinds"]="Горячие клавиши",
+ ["quick menu"]="Быстрое меню",
+ ["practice display"]="Тренировка",
+ ["fonts"]="Шрифты",
+ ["language"]="Язык",
+ ["english"]="English",
+ ["russian"]="Русский",
+ ["gui view"]="GUI",
+ ["node view"]="Ноды",
+ ["gui"]="GUI",
+ ["nodes"]="Ноды",
+ ["home"]="Домой",
+ ["aether / move"]="AETHER / ПЕРЕТАЩИТЬ",
+ ["move panel"]="ПЕРЕТАЩИТЬ",
+ ["appearance / move"]="ОФОРМЛЕНИЕ / ПЕРЕТАЩИТЬ",
+ ["live preview / move"]="ПРЕДПРОСМОТР / ПЕРЕТАЩИТЬ",
+ ["appearance"]="Оформление",
+ ["live preview"]="Предпросмотр",
+ ["all settings"]="Все настройки",
+ ["search functions..."]="Поиск функций...",
+ ["no functions found"]="Ничего не найдено",
+ ["root node"]="Главная нода",
+ ["appearance node"]="Нода оформления",
+ ["live preview node"]="Нода предпросмотра",
+ ["main branch"]="Ветка главного меню",
+ ["visuals branch"]="Ветка визуала",
+ ["utility branch"]="Ветка инструментов",
+ ["interface branch"]="Ветка интерфейса",
+ ["settings panel"]="Панель настроек",
+ ["title bar"]="Заголовок",
+ ["view switch"]="Переключатель вида",
+ ["search"]="Поиск",
+ ["branch button"]="Кнопка ветки",
+ ["tab button"]="Кнопка вкладки",
+ ["control row"]="Строка настройки",
+ ["action button"]="Кнопка действия",
+ ["visual catalog"]="Каталог",
+ ["top capsule"]="Верхняя капсула",
+ ["12:00 · clock"]="12:00 · Часы",
+ ["120 fps"]="120 FPS",
+ ["dock"]="Док",
+ ["w a s d"]="W A S D",
+ ["module row"]="Строка модуля",
+ ["afk screen"]="Экран AFK",
+ ["afk return"]="Выход из AFK",
+ ["practice widget"]="Виджет тренировки",
+ ["individual style"]="Индивидуальный стиль",
+ ["fill color"]="Цвет заливки",
+ ["fill transparency %"]="Прозрачность заливки %",
+ ["outline color"]="Цвет обводки",
+ ["outline transparency %"]="Прозрачность обводки %",
+ ["outline width (tenths px)"]="Толщина обводки (0,1 пикс.)",
+ ["text color"]="Цвет текста",
+ ["secondary text color"]="Цвет вторичного текста",
+ ["gradient end"]="Конец градиента",
+ ["custom text color"]="Свой цвет текста",
+ ["custom secondary text color"]="Свой вторичный текст",
+ ["custom gradient end"]="Свой конец градиента",
+ ["fill"]="Заливка",
+ ["outline"]="Обводка",
+ ["text & gradient"]="Текст и градиент",
+ ["afk palette"]="Палитра AFK",
+ ["quick menu palette"]="Палитра быстрого меню",
+ ["pressed key"]="Нажатая клавиша",
+ ["status dot"]="Индикатор состояния",
+ ["infinite workspace"]="Бесконечное пространство",
+ ["reset camera"]="Сбросить камеру",
+ ["reset current workspace"]="Сбросить пространство",
+ ["reset this element"]="Сбросить элемент",
+ ["preview afk screen"]="Предпросмотр AFK",
+ ["reset afk appearance"]="Сбросить оформление AFK",
+ ["quick menu / appearance"]="Быстрое меню / оформление",
+ ["reset quick menu appearance"]="Сбросить быстрое меню",
+ ["layout & widgets"]="Расположение и виджеты",
+ ["widget transitions"]="Переходы виджетов",
+ ["edit gui size / position"]="Размер и позиция GUI",
+ ["edit hud size / position"]="Размер и позиция HUD",
+ ["reset gui layout"]="Сбросить GUI",
+ ["save configuration"]="Сохранить конфигурацию",
+ ["liquid glass"]="Жидкое стекло",
+ ["space background"]="Космический фон",
+ ["motion"]="Анимации",
+ ["edit widget positions"]="Расположение виджетов",
+ ["edit appearance"]="Изменить оформление",
+ ["reset panel position"]="Сбросить позицию",
+ ["return to workspace"]="ВЕРНУТЬСЯ",
+ ["appearance preview"]="Предпросмотр оформления",
+ ["aether · time"]="AETHER · ВРЕМЯ",
+ ["performance"]="ПРОИЗВОДИТЕЛЬНОСТЬ",
+ ["example setting"]="Пример настройки",
+ ["interface option"]="Параметр интерфейса",
+ ["example module"]="Пример модуля",
+ ["visual setting"]="Визуальная настройка",
+ ["sample toggle"]="Пример переключателя",
+ ["modules / preview"]="МОДУЛИ / ПРЕДПРОСМОТР",
+ ["no keybinds assigned"]="Нет привязок",
+ ["ready"]="Готово",
+ ["preview only"]="Только предпросмотр",
+ ["tap a module to expand"]="Нажмите на модуль",
+ ["bind"]="Привязать",
+ ["press key"]="НАЖМИТЕ КЛАВИШУ",
+ ["on"]="ВКЛ",
+ ["off"]="ВЫКЛ",
+ ["yes"]="Да",
+ ["no"]="Нет",
+ ["solid"]="Однотонный",
+ ["gradient"]="Градиент",
+ ["stars"]="Звёзды",
+ ["grid"]="Сетка",
+ ["orbits"]="Орбиты",
+ ["image"]="Изображение",
+ ["glass"]="Стекло",
+ ["fade"]="Затухание",
+ ["slide"]="Сдвиг",
+ ["smooth"]="Плавно",
+ ["linear"]="Линейно",
+ ["sine"]="Синус",
+ ["float"]="Парение",
+ ["pulse"]="Пульсация",
+ ["custom"]="Свой",
+ ["sketch"]="Эскиз",
+ ["left"]="Слева",
+ ["right"]="Справа",
+ ["top"]="Сверху",
+ ["bottom"]="Снизу",
+ ["floating"]="Свободно",
+ ["mixed"]="Смешанный",
+ ["high"]="Высокое",
+ ["low"]="Низкое",
+ ["balanced"]="Среднее",
+ ["ultra"]="Ультра",
+ ["local"]="Локально",
+ ["replicated"]="Репликация",
+ ["none"]="Нет",
+ ["both"]="Оба",
+ ["name"]="Имя",
+ ["distance"]="Расстояние",
+ ["pause"]="Пауза",
+ ["play"]="Воспроизвести",
+ ["reset view"]="Сбросить вид",
+ ["save new"]="Сохранить новый",
+ ["load"]="Загрузить",
+ ["update selected"]="Обновить выбранный",
+ ["rename"]="Переименовать",
+ ["duplicate"]="Дублировать",
+ ["delete"]="Удалить",
+ ["save now"]="Сохранить сейчас",
+ ["reload bank"]="Перезагрузить конфиги",
+ ["export bank"]="Экспорт",
+ ["import bank"]="Импорт",
+ ["hide json tools"]="Скрыть JSON",
+ ["advanced / json backup"]="Дополнительно / JSON",
+ ["config manager"]="МЕНЕДЖЕР КОНФИГУРАЦИЙ",
+ ["storage"]="ХРАНИЛИЩЕ",
+ ["refresh"]="Обновить",
+ ["clear log"]="Очистить журнал",
+ ["reset settings"]="Сбросить настройки",
+ ["session"]="СЕССИЯ",
+ ["session events"]="События сессии",
+ ["unload"]="Выгрузить",
+ ["camera"]="КАМЕРА",
+ ["custom lock / keybind"]="БЛОКИРОВКА КАМЕРЫ / КЛАВИША",
+ ["shift-lock / reticle"]="SHIFT-LOCK / ПРИЦЕЛ",
+ ["live input display"]="ВВОД В РЕАЛЬНОМ ВРЕМЕНИ",
+ ["widget layout"]="РАСПОЛОЖЕНИЕ ВИДЖЕТОВ",
+ ["trail colors"]="ЦВЕТА ШЛЕЙФА",
+ ["search native typefaces"]="Поиск шрифтов",
+ ["accent"]="Акцент",
+ ["second neon"]="Второй неоновый цвет",
+ ["glass tint"]="Цвет стекла",
+ ["studio text color"]="Цвет текста интерфейса",
+ ["studio secondary text"]="Вторичный текст интерфейса",
+ ["original icon atlas roblox asset id"]="ID атласа иконок Roblox",
+ ["atlas tile size (pixels)"]="Размер плитки атласа (пикс.)",
+ ["glass opacity %"]="Непрозрачность стекла %",
+ ["neon rim %"]="Неоновая обводка %",
+ ["floating sparkles"]="Летающие искры",
+ ["animated geometric background"]="Анимированный геометрический фон",
+ ["background style"]="Стиль фона",
+ ["background density"]="Плотность фона",
+ ["background speed %"]="Скорость фона %",
+ ["background intensity %"]="Интенсивность фона %",
+ ["maximum connections"]="Максимум соединений",
+ ["connection distance (px)"]="Дальность соединений (пикс.)",
+ ["line width (tenths of px)"]="Толщина линий (0,1 пикс.)",
+ ["figure size (px)"]="Размер фигур (пикс.)",
+ ["background gradient angle"]="Угол градиента фона",
+ ["background start"]="Начало фона",
+ ["background end"]="Конец фона",
+ ["line start"]="Начало линии",
+ ["line end"]="Конец линии",
+ ["figure start"]="Начало фигуры",
+ ["figure end"]="Конец фигуры",
+ ["menu screen particles"]="Частицы меню",
+ ["screen particle style"]="Стиль частиц",
+ ["screen particle count"]="Количество частиц",
+ ["screen particle intensity %"]="Интенсивность частиц %",
+ ["roblox shortcuts rail"]="Панель кнопок Roblox",
+ ["top aether title"]="Верхний заголовок AETHER",
+ ["menu docking side"]="Сторона закрепления меню",
+ ["menu width (px)"]="Ширина меню (пикс.)",
+ ["menu height (px)"]="Высота меню (пикс.)",
+ ["drag / snap menu"]="Перетаскивание меню",
+ ["resize with corner grip"]="Изменение размера за угол",
+ ["floating horizontal %"]="Свободная позиция X %",
+ ["floating vertical %"]="Свободная позиция Y %",
+ ["reduce motion"]="Уменьшить анимации",
+ ["animation speed %"]="Скорость анимации %",
+ ["transition (ms)"]="Переход (мс)",
+ ["interpolation"]="Интерполяция",
+ ["menu transition"]="Переход меню",
+ ["menu motion intensity %"]="Интенсивность движения меню %",
+ ["animated page transitions"]="Анимация смены страниц",
+ ["animated navigation glow"]="Свечение навигации",
+ ["lock widget positions"]="Закрепить виджеты",
+ ["allow moving top and left panels"]="Перемещение верхней и левой панелей",
+ ["custom top panel position"]="Своя позиция верхней панели",
+ ["top panel x %"]="Верхняя панель X %",
+ ["top panel y %"]="Верхняя панель Y %",
+ ["custom left panel position"]="Своя позиция левой панели",
+ ["left panel x %"]="Левая панель X %",
+ ["left panel y %"]="Левая панель Y %",
+ ["show keybind widget"]="Показать горячие клавиши",
+ ["custom keybind position"]="Своя позиция горячих клавиш",
+ ["keybind widget x %"]="Горячие клавиши X %",
+ ["keybind widget y %"]="Горячие клавиши Y %",
+ ["custom quick menu position"]="Своя позиция быстрого меню",
+ ["quick menu x %"]="Быстрое меню X %",
+ ["quick menu y %"]="Быстрое меню Y %",
+ ["compact health panel"]="Компактная панель здоровья",
+ ["hud layout"]="Расположение HUD",
+ ["widget transition"]="Переход виджета",
+ ["widget motion intensity %"]="Интенсивность анимации виджета %",
+ ["health bar shimmer"]="Блики полосы здоровья",
+ ["damage and healing glow"]="Свечение при изменении здоровья",
+ ["hud smoothing (ms)"]="Плавность HUD (мс)",
+ ["health"]="Здоровье",
+ ["player card"]="Карточка игрока",
+ ["aether menu button"]="Кнопка AETHER",
+ ["horizontal %"]="Горизонталь %",
+ ["vertical %"]="Вертикаль %",
+ ["scale %"]="Масштаб %",
+ ["rotation"]="Поворот",
+ ["opacity %"]="Непрозрачность %",
+ ["last page"]="Последняя вкладка",
+ ["panel tint"]="Цвет панели",
+ ["button tint"]="Цвет кнопки",
+ ["selected button tint"]="Цвет выбранной кнопки",
+ ["control row tint"]="Цвет строки настройки",
+ ["glass edge tint"]="Цвет края стекла",
+ ["glass highlight"]="Блик стекла",
+ ["clock glass tint"]="Цвет стекла часов",
+ ["fps glass tint"]="Цвет стекла FPS",
+ ["clock text"]="Текст часов",
+ ["fps text"]="Текст FPS",
+ ["panel opacity %"]="Непрозрачность панели %",
+ ["glass reflection %"]="Отражение стекла %",
+ ["custom gui arrangement"]="Свое расположение GUI",
+ ["gui horizontal position %"]="Позиция GUI X %",
+ ["gui vertical position %"]="Позиция GUI Y %",
+ ["gui width %"]="Ширина GUI %",
+ ["gui height %"]="Высота GUI %",
+ ["branch rail width"]="Ширина панели веток",
+ ["top capsule scale %"]="Масштаб верхней капсулы %",
+ ["workspace view"]="Вид пространства",
+ ["workspace zoom %"]="Масштаб пространства %",
+ ["afk background style"]="Стиль фона AFK",
+ ["afk background start"]="Начало фона AFK",
+ ["afk background end"]="Конец фона AFK",
+ ["afk pattern color"]="Цвет узора AFK",
+ ["afk brand color"]="Цвет логотипа AFK",
+ ["afk title color"]="Цвет заголовка AFK",
+ ["afk description color"]="Цвет описания AFK",
+ ["afk button color"]="Цвет кнопки AFK",
+ ["afk button text"]="Текст кнопки AFK",
+ ["afk button outline"]="Обводка кнопки AFK",
+ ["afk image tint"]="Оттенок изображения AFK",
+ ["afk gradient angle"]="Угол градиента AFK",
+ ["afk pattern opacity %"]="Непрозрачность узора AFK %",
+ ["afk image opacity %"]="Непрозрачность изображения AFK %",
+ ["afk fade duration (ms)"]="Длительность перехода AFK (мс)",
+ ["afk image asset id"]="ID изображения AFK",
+ ["quick menu glass tint"]="Цвет стекла быстрого меню",
+ ["quick menu row tint"]="Цвет строки быстрого меню",
+ ["quick menu accent"]="Акцент быстрого меню",
+ ["quick menu outline"]="Обводка быстрого меню",
+ ["quick menu text"]="Текст быстрого меню",
+ ["quick menu secondary text"]="Вторичный текст быстрого меню",
+ ["quick menu on color"]="Цвет включения",
+ ["quick menu off color"]="Цвет выключения",
+ ["quick menu opacity %"]="Непрозрачность быстрого меню %",
+ ["quick menu fade duration (ms)"]="Переход быстрого меню (мс)",
+ ["custom walking animation"]="Своя анимация ходьбы",
+ ["animation playback"]="Воспроизведение анимации",
+ ["walking style"]="Стиль ходьбы",
+ ["walking intensity %"]="Интенсивность ходьбы %",
+ ["motion studio configuration"]="Настройки Motion Studio",
+ ["aura particles"]="Частицы ауры",
+ ["motion trail"]="Шлейф движения",
+ ["emission / second"]="Частиц в секунду",
+ ["trail lifetime (ms)"]="Время жизни шлейфа (мс)",
+ ["aura color"]="Цвет ауры",
+ ["show wings"]="Показать крылья",
+ ["silhouette"]="Силуэт",
+ ["span %"]="Размах %",
+ ["sweep (degrees)"]="Стреловидность (град.)",
+ ["flap speed %"]="Скорость взмахов %",
+ ["feather color"]="Цвет перьев",
+ ["prismatic feathers"]="Радужные перья",
+ ["feather detail"]="Детализация перьев",
+ ["walking wing reaction"]="Реакция крыльев на ходьбу",
+ ["original sketch palette"]="Исходная палитра",
+ ["wing neon glow %"]="Неоновое свечение крыльев %",
+ ["floating motion %"]="Парение %",
+ ["red rotating diamond"]="Красный вращающийся ромб",
+ ["blue rotating diamond"]="Синий вращающийся ромб",
+ ["diamond rotation %"]="Вращение ромба %",
+ ["diamond size %"]="Размер ромба %",
+ ["diamond rotation echoes"]="Следы вращения ромба",
+ ["show halo"]="Показать нимб",
+ ["orbit form"]="Форма орбиты",
+ ["radius %"]="Радиус %",
+ ["height above head %"]="Высота над головой %",
+ ["orbit speed %"]="Скорость орбиты %",
+ ["halo color"]="Цвет нимба",
+ ["prismatic halo"]="Радужный нимб",
+ ["halo geometry detail"]="Детализация нимба",
+ ["walking halo reaction"]="Реакция нимба на ходьбу",
+ ["primary color"]="Основной цвет",
+ ["secondary color"]="Вторичный цвет",
+ ["size %"]="Размер %",
+ ["height %"]="Высота %",
+ ["rotation speed %"]="Скорость вращения %",
+ ["neon glow %"]="Неоновое свечение %",
+ ["outline thickness %"]="Толщина обводки %",
+ ["shape count"]="Количество фигур",
+ ["tilt degrees"]="Наклон (град.)",
+ ["apply local atmosphere"]="Локальная атмосфера",
+ ["high sky"]="Верх неба",
+ ["horizon"]="Горизонт",
+ ["ground light"]="Освещение земли",
+ ["fog density %"]="Плотность тумана %",
+ ["time (tenths of an hour)"]="Время (0,1 часа)",
+ ["brightness %"]="Яркость %",
+ ["saturation %"]="Насыщенность %",
+ ["depth blur"]="Размытие глубины",
+ ["atmosphere fade (ms)"]="Переход атмосферы (мс)",
+ ["contrast %"]="Контраст %",
+ ["exposure %"]="Экспозиция %",
+ ["atmospheric glare %"]="Блики атмосферы %",
+ ["sun rays %"]="Солнечные лучи %",
+ ["depth of field %"]="Глубина резкости %",
+ ["focus distance (studs)"]="Дальность фокуса (studs)",
+ ["bloom radius"]="Радиус свечения",
+ ["falling shapes"]="Падающие фигуры",
+ ["falling shape"]="Форма падающих фигур",
+ ["star rotation (degrees/sec)"]="Вращение звёзд (град./с)",
+ ["star material"]="Материал звёзд",
+ ["star count"]="Количество звёзд",
+ ["fall speed (studs/sec)"]="Скорость падения (studs/с)",
+ ["star size (tenths of stud)"]="Размер звёзд (0,1 stud)",
+ ["star opacity %"]="Непрозрачность звёзд %",
+ ["star neon glow %"]="Свечение звёзд %",
+ ["star streaks"]="Следы звёзд",
+ ["rainbow stars"]="Радужные звёзды",
+ ["star color start"]="Начальный цвет звёзд",
+ ["star color end"]="Конечный цвет звёзд",
+ ["directional indicators"]="Указатели направления",
+ ["indicator shape"]="Форма указателя",
+ ["size (px)"]="Размер (пикс.)",
+ ["corner softness %"]="Скругление углов %",
+ ["distance from edges %"]="Отступ от краёв %",
+ ["rotation smoothing (ms)"]="Плавность вращения (мс)",
+ ["neon intensity %"]="Интенсивность неона %",
+ ["neon spread (px)"]="Рассеивание неона (пикс.)",
+ ["gradient start"]="Начало градиента",
+ ["rainbow gradient"]="Радужный градиент",
+ ["pulsation"]="Пульсация",
+ ["arrow labels"]="Подписи стрелок",
+ ["nearby nameplates"]="Имена поблизости",
+ ["tracking range (studs)"]="Дальность отслеживания (studs)",
+ ["custom game pointer"]="Свой игровой курсор",
+ ["pointer shape"]="Форма курсора",
+ ["pointer size"]="Размер курсора",
+ ["pointer glow %"]="Свечение курсора %",
+ ["desktop aether palette"]="Палитра AETHER",
+ ["hotspot x %"]="Точка клика X %",
+ ["hotspot y %"]="Точка клика Y %",
+ ["rainbow pointer"]="Радужный курсор",
+ ["gradient speed %"]="Скорость градиента %",
+ ["cursor animation"]="Анимация курсора",
+ ["cursor motion trail"]="Шлейф курсора",
+ ["trail style"]="Стиль шлейфа",
+ ["trail width (tenths of px)"]="Толщина шлейфа (0,1 пикс.)",
+ ["trail spacing (px)"]="Интервал шлейфа (пикс.)",
+ ["trail glow %"]="Свечение шлейфа %",
+ ["trail start"]="Начало шлейфа",
+ ["trail end"]="Конец шлейфа",
+ ["pointer offset x (px)"]="Смещение курсора X (пикс.)",
+ ["pointer offset y (px)"]="Смещение курсора Y (пикс.)",
+ ["show hotspot marker"]="Показать точку клика",
+ ["roblox image asset id"]="ID изображения Roblox",
+ ["enable camera settings"]="Настройки камеры",
+ ["camera mode"]="Режим камеры",
+ ["field of view"]="Поле зрения",
+ ["shoulder offset (tenths)"]="Смещение плеча (0,1)",
+ ["height offset (tenths)"]="Смещение высоты (0,1)",
+ ["orbit radius (studs)"]="Радиус орбиты (studs)",
+ ["orbit rate (degrees/s)"]="Скорость орбиты (град./с)",
+ ["follow smoothing (ms)"]="Плавность слежения (мс)",
+ ["custom camera lock"]="Своя блокировка камеры",
+ ["share and see aether cosmetics"]="Обмен косметикой AETHER",
+ ["peer rendering quality"]="Качество косметики других игроков",
+ ["block both shift keys"]="Блокировать обе клавиши Shift",
+ ["lock keybind"]="Клавиша блокировки",
+ ["shift-lock reticle"]="Прицел Shift-lock",
+ ["reticle size (px)"]="Размер прицела (пикс.)",
+ ["reticle thickness (px)"]="Толщина прицела (пикс.)",
+ ["reticle color"]="Цвет прицела",
+ ["rainbow reticle"]="Радужный прицел",
+ ["reticle animation"]="Анимация прицела",
+ ["reticle animation %"]="Интенсивность анимации %",
+ ["neon reticle glow"]="Неоновое свечение прицела",
+ ["reticle glow intensity %"]="Интенсивность свечения %",
+ ["reticle glow radius (px)"]="Радиус свечения (пикс.)",
+ ["pulsating glow"]="Пульсирующее свечение",
+ ["show input overlay"]="Показать клавиши",
+ ["show mouse buttons"]="Показать кнопки мыши",
+ ["input overlay x %"]="Панель клавиш X %",
+ ["input overlay y %"]="Панель клавиш Y %",
+ ["input overlay size %"]="Размер панели клавиш %",
+ ["input overlay opacity %"]="Непрозрачность панели клавиш %",
+ ["pressed key color"]="Цвет нажатой клавиши",
+ ["wallhop helper"]="Тренировочный виджет",
+ ["wallhop display x %"]="Тренировка X %",
+ ["wallhop display y %"]="Тренировка Y %",
+ ["wallhop display size %"]="Размер тренировки %",
+ ["wallhop display opacity %"]="Непрозрачность тренировки %",
+ ["typeface"]="Шрифт",
+ ["weight"]="Насыщенность шрифта",
+ ["optional roblox font family id"]="ID семейства шрифтов Roblox",
+ ["preview text"]="Текст предпросмотра",
+ ["hud type scale %"]="Размер текста HUD %",
+ ["gradient lettering"]="Градиент текста",
+ ["text outline %"]="Обводка текста %",
+ ["letter glow %"]="Свечение букв %",
+ ["letter color"]="Цвет букв",
+ ["letter gradient"]="Градиент букв",
+ ["middle mouse: pan. wheel on background or ctrl + wheel: zoom. drag node titles to move individual panels. home resets camera; shift + home resets the current workspace. double-click or double-tap the background to close."]="Средняя кнопка мыши — перемещение. Колесо на фоне или Ctrl + колесо — масштаб. Перетаскивайте ноды за заголовок. Home — сброс камеры, Shift + Home — сброс пространства. Двойное нажатие на фон закрывает меню.",
+ ["edits automatically enable individual style and update live preview. turn it off to restore the shared theme."]="Изменения автоматически включают индивидуальный стиль и обновляют предпросмотр. Выключите его для возврата к общей теме.",
+ ["type afk in the workspace to open its full-screen view. preview only changes appearance; it does not activate anti-afk."]="Введите AFK в рабочем пространстве для открытия экрана. Предпросмотр меняет только оформление.",
+ ["image mode uses a roblox image asset id. only images accessible in the current experience can load."]="Укажите ID изображения Roblox. Доступны только разрешённые в текущей игре изображения.",
+ ["independent colors and fade for the compact modules panel under the aether capsule."]="Отдельные цвета и плавный переход компактной панели под капсулой AETHER.",
+ ["enabled styles use fade only. off disables transitions. no idle floating or pulsing."]="Плавное появление и исчезновение. Выкл. отключает переходы. Без постоянного покачивания и пульсации.",
+ ["choose a branch on the left. visual collections, interface settings and profiles are organized separately."]="Выберите ветку слева. Визуальные коллекции, настройки интерфейса и конфигурации разделены.",
+ ["no configurations yet. enter a name and save."]="Конфигураций пока нет. Введите имя и сохраните.",
+ ["read-only practice display."]="Тренировочный виджет только для просмотра.",
+}
+local ruUpper="АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"
+local ruLower="абвгдеёжзийклмнопрстуфхцчшщъыьэюя"
+local lowerMap={}
+local lowerChars={}
+for _,cp in utf8.codes(ruLower) do table.insert(lowerChars,utf8.char(cp)) end
+local idx=0
+for _,cp in utf8.codes(ruUpper) do idx+=1;lowerMap[utf8.char(cp)]=lowerChars[idx] end
+function U.lowerText(str)
+ local out={}
+ for _,cp in utf8.codes(str) do local c=utf8.char(cp);out[#out+1]=lowerMap[c] or string.lower(c) end
+ return table.concat(out)
+end
+function U.tr(s,str)
+ if not s or s.language~="Russian" or type(str)~="string" then return str end
+ local translated=russian[str:lower()]
+ if translated then return translated end
+ -- Generated setting labels and compound headings retain their original keys.
+ local left,right=str:match("^(.-) · (.+)$")
+ if left then return U.tr(s,left).." · "..U.tr(s,right) end
+ left,right=str:match("^(.-)%s+/%s+(.+)$")
+ if left then return U.tr(s,left).." / "..U.tr(s,right) end
+ return str
 end
 function U.hex(s) return Color3.fromHex(s) end
 function U.appearanceColor(s,id,slot,fallback)

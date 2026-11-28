@@ -949,6 +949,7 @@ function E.render(a,tab,ui)
    end
    return
   end
+  ui:control("language")
   ui:title("INFINITE WORKSPACE")
   ui:note("Middle mouse: pan. Wheel on background or Ctrl + wheel: zoom. Drag node titles to move individual panels. Home resets camera; Shift + Home resets the current workspace. Double-click or double-tap the background to close.",80)
   ui:control("workspaceMode")
