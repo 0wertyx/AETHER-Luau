@@ -345,6 +345,29 @@ for _,row in {
 function S.sky(row) return {ambient=true,skyA=row[2],skyB=row[3],skyC=row[4],fog=row[5],bloom=0,time=row[7],light=row[8],saturation=row[9],worldContrast=row[10] or 0,worldExposure=0,worldGlare=row[12] or 0,worldRays=row[13] or 0,worldFocus=row[14] or 0,worldFocusDistance=60,worldBloomSize=26} end
 S.presets={Theme={Violet={accent="A68AFF",secondary="FF89C7",glassColor="211C35"},Ocean={accent="68CEF4",secondary="9B91FF",glassColor="112636"},Rose={accent="F699C6",secondary="D8A5FF",glassColor="301B31"}},HUD={Classic={hpX=82,hpY=13,clockX=3,clockY=93,compact=false},Broadcast={hpX=3,hpY=78,clockX=95,clockY=5,hpScale=115},Compact={compact=true,hpX=96,hpY=16,hpScale=80}},Motion={Calm={speed=70,duration=520},Swift={speed=155,duration=150},Still={reduce=true}},Wings={Seraph={wings=true,wingStyle="Seraph",wingSpan=115},Blade={wings=true,wingStyle="Blade",wingColor="76E3FF"},Sylph={wings=true,wingStyle="Sylph",wingRainbow=true}},Halos={Crown={halo=true,haloStyle="Crown"},Binary={halo=true,haloStyle="Binary",haloColor="82D9FF"}},Character={},Neon={},Cursor={Aurora={cursor=true,cursorShape="Rounded Triangle",cursorRainbow=true},Diamond={cursor=true,cursorShape="Diamond",hotX=50,hotY=50}},Camera={Portrait={camera=true,cameraMode="Orbit",fov=55,radius=8,lock=false},Shoulder={camera=true,cameraMode="Follow",lock=true}},Fonts={Terminal={font="Code",weight="Bold",fontAsset="",fontGradient=false},Soft={font="FredokaOne",weight="Regular",fontAsset=""}},Indicators={},Ambient={},Scripts={Vitals={cue=S.example}}}
 for _,v in S.shapes do S.presets.Indicators[v]={shape=v,indicators=true} end
+-- Complete monochrome glass theme; only appearance settings are changed.
+local monoGlass={
+ accent="FFFFFF",secondary="B8B8B8",glassColor="181818",uiFontColor="F5F5F5",uiMutedColor="B5B5B5",
+ uiPanelColor="343434",uiButtonColor="303030",uiHoverColor="585858",uiRowColor="252525",
+ uiStrokeColor="EEEEEE",uiSpecularColor="FFFFFF",uiGlassOpacity=48,uiReflection=75,rim=55,glass=48,
+ clockGlass="242424",fpsGlass="242424",clockText="FFFFFF",fpsText="FFFFFF",
+ modulePanelColor="343434",moduleRowColor="262626",moduleAccentColor="B8B8B8",moduleStrokeColor="EEEEEE",
+ moduleTextColor="FFFFFF",moduleMutedColor="B5B5B5",moduleToggleOnColor="626262",moduleToggleOffColor="171717",moduleBackgroundOpacity=48,
+ constellationBgA="FFFFFF",constellationBgB="000000",constellationAngle=135,
+ constellationLineA="FFFFFF",constellationLineB="777777",constellationNodeA="FFFFFF",constellationNodeB="AAAAAA",
+ fontA="FFFFFF",fontB="B8B8B8",afkBgA="282828",afkBgB="000000",afkPatternColor="AAAAAA",
+ afkBrandColor="DDDDDD",afkTitleColor="FFFFFF",afkDetailColor="B5B5B5",afkButtonColor="303030",afkButtonText="FFFFFF",afkButtonEdge="DDDDDD",
+ menuTransition="Glass",menuAnimStrength=70,tabTransition=true,navGlow=true,
+}
+for _,role in S.appearance do
+ local id=role[1];local p="appearance"..id
+ monoGlass[p.."Custom"]=false
+ for _,extra in S.appearanceExtras[id] do
+  monoGlass[extra.flag]=extra.slot=="GradientEnd" and id~="AFK"
+  if extra.slot=="GradientEnd" and id~="AFK" then monoGlass[extra.key]="080808" end
+ end
+end
+S.presets.Theme["Blur Glass Mono"]=monoGlass
 S.presets.HUD.GlassMotion={hudMotion="Glass",hudMotionStrength=65,hudShine=true,hudReaction=true}
 S.presets.HUD.FloatMotion={hudMotion="Float",hudMotionStrength=75,hudShine=true,hudReaction=true}
 S.presets.HUD.PulseMotion={hudMotion="Pulse",hudMotionStrength=80,hudShine=true,hudReaction=true}
